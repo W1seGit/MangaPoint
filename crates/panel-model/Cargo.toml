@@ -1,0 +1,18 @@
+[package]
+name = "panel-model"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+converter = { path = "../converter" }
+tract-onnx = "0.23"
+sha2 = "0.10"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["fs", "io-util"] }
+
+[dev-dependencies]
+converter = { path = "../converter", features = ["decode"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+tokio = { version = "1", features = ["rt", "macros"] }

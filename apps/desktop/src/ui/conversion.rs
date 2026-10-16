@@ -3,7 +3,9 @@
 
 use crate::state::AppState;
 use crate::ui::widgets::Help;
-use converter::process::{CropMode, Layout, Margins, SpreadMode, StripCut};
+use converter::process::{CropMode, Layout, Margins, PanelFinder, PanelView, SpreadMode, StripCut};
+use crate::panel_ai::ModelStatus;
+use crate::ui::widgets::ProgressBar;
 use converter::xtc::ReadDirection;
 use converter::Dither;
 use dioxus::prelude::*;
@@ -169,6 +171,61 @@ pub fn ConversionControls(
         },
         None,
     );
+    let panel_tiles = choices(
+        vec![
+            (
+                "Whole page",
+                "As drawn",
+                "panelsoff",
+                c.panel_view == PanelView::Off,
+            ),
+            (
+                "Panel by panel",
+                "One panel per page",
+                "panels",
+                c.panel_view == PanelView::Panels,
+            ),
+            (
+                "Page, then panels",
+                "Overview first",
+                "pagepanels",
+                c.panel_view == PanelView::PageThenPanels,
+            ),
+        ],
+        |s, v| {
+            s.panel_view = match v.as_str() {
+                "panels" => PanelView::Panels,
+                "pagepanels" => PanelView::PageThenPanels,
+                _ => PanelView::Off,
+            }
+        },
+        None,
+    );
+    let finder_tiles = choices(
+        vec![
+            (
+                "Gaps",
+                "Framed panels, instant",
+                "findgaps",
+                c.panel_finder == PanelFinder::Gutters,
+            ),
+            (
+                "AI model",
+                "Any layout, 40 MB",
+                "findai",
+                c.panel_finder == PanelFinder::Model,
+            ),
+        ],
+        |s, v| {
+            s.panel_finder = if v == "findai" {
+                PanelFinder::Model
+            } else {
+                PanelFinder::Gutters
+            }
+        },
+        None,
+    );
+    let model_status = state.panel_model.read().clone();
     let direction_tiles = choices(
         vec![
             (
@@ -242,6 +299,44 @@ pub fn ConversionControls(
             div { class: "mp-choice-grid two", role: "group", aria_label: "Reading direction", {direction_tiles.into_iter()} }
             h4 { class: "mp-control-heading", "Double-page spreads" }
             div { class: "mp-choice-grid", role: "group", aria_label: "Double-page spreads", {spread_tiles.into_iter()} }
+            if c.layout != Layout::Webtoon {
+                h4 { class: "mp-control-heading",
+                    "Panels"
+                    Help { text: "Cuts each page at the gaps between its panels and shows one panel per page, in reading order, as large as the screen allows. A page whose panels cannot be told apart (a splash page, or panels joined by a drawing) stays whole. Long strips are not cut into panels." }
+                }
+                div { class: "mp-choice-grid", role: "group", aria_label: "Panels", {panel_tiles.into_iter()} }
+                if c.panel_view != PanelView::Off {
+                    h4 { class: "mp-control-heading",
+                        "How panels are found"
+                        Help { text: "Gaps finds framed panels by the white space between them: instant, and right for most manga. The AI model (a 40 MB download, once) also finds panels without frames, odd shapes and panels a drawing runs across. It takes about a second per page, shared over your processor's cores." }
+                    }
+                    div { class: "mp-choice-grid two", role: "group", aria_label: "How panels are found", {finder_tiles.into_iter()} }
+                    if c.panel_finder == PanelFinder::Model {
+                        match model_status {
+                            ModelStatus::Ready => rsx! { p { class: "muted small", "AI model ready." } },
+                            ModelStatus::Loading => rsx! { p { class: "muted small", "Loading the AI model…" } },
+                            ModelStatus::Downloading(done) => rsx! {
+                                div { class: "field",
+                                    span { class: "muted small", "Downloading the AI model…" }
+                                    ProgressBar { fraction: Some(done) }
+                                }
+                            },
+                            ModelStatus::Missing => rsx! {
+                                div { class: "field",
+                                    span { class: "muted small", "Until the model is downloaded, panels are found by the gaps." }
+                                    button { class: "btn primary small", onclick: move |_| crate::panel_ai::download(state), "Download the AI model (40 MB)" }
+                                }
+                            },
+                            ModelStatus::Failed(message) => rsx! {
+                                div { class: "field",
+                                    span { class: "muted small", "{message}" }
+                                    button { class: "btn small", onclick: move |_| crate::panel_ai::download(state), "Try again" }
+                                }
+                            },
+                        }
+                    }
+                }
+            }
             if strips {
                 h4 { class: "mp-control-heading",
                     "Where long strips are cut"

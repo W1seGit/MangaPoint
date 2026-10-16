@@ -53,3 +53,14 @@
 .mp-diagram.cutquiet i, .mp-diagram.cutrepeat i { width: 30px; height: 17px; flex-shrink: 0; display: block; }
 .mp-diagram.cutrepeat { gap: 0; }
 .mp-diagram.cutrepeat i:nth-child(2) { margin-top: -6px; border-top: 6px solid var(--warn); }
+.mp-diagram.panelsoff i:nth-child(2) { display: none; }
+.mp-diagram.panelsoff i:first-child, .mp-diagram.pagepanels i:first-child { background: linear-gradient(#e8e8e8 0 0) 2px 2px / 15px 11px no-repeat, linear-gradient(#e8e8e8 0 0) 2px 15px / 6px 15px no-repeat, linear-gradient(#e8e8e8 0 0) 10px 15px / 7px 15px no-repeat, #555; }
+.mp-diagram.panels { gap: 3px; }
+.mp-diagram.panels i, .mp-diagram.pagepanels i:not(:first-child) { display: block; width: 16px; height: 26px; background: linear-gradient(#e8e8e8 0 0) center / 12px 10px no-repeat, #fff; }
+.mp-diagram.panels i:first-child { background-size: 12px 18px; }
+.mp-diagram.pagepanels { gap: 3px; }
+.mp-diagram.pagepanels i:not(:first-child) { width: 13px; height: 22px; background-size: 9px 8px; }
+.mp-diagram.findgaps i:nth-child(2), .mp-diagram.findai i:nth-child(2) { display: none; }
+.mp-diagram.findgaps i:first-child { width: 24px; background: linear-gradient(var(--warn) 0 0) 0 13px / 100% 2px no-repeat, linear-gradient(var(--warn) 0 0) 11px 0 / 2px 100% no-repeat, #e8e8e8; }
+.mp-diagram.findai i:first-child { width: 24px; background: linear-gradient(140deg, #e8e8e8 0 30%, #555 31% 45%, #e8e8e8 46%); }
+.mp-diagram.findai:after { content: 'AI'; position: absolute; right: 6px; bottom: 2px; font-size: 13px; font-weight: 700; color: var(--warn); }

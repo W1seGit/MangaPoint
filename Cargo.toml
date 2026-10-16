@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["apps/desktop", "crates/device-profiles", "crates/converter", "crates/catalog", "crates/library", "crates/sources", "crates/search", "crates/pipeline"]
+members = ["apps/desktop", "crates/device-profiles", "crates/converter", "crates/panel-model", "crates/catalog", "crates/library", "crates/sources", "crates/search", "crates/pipeline"]
 
 [workspace.package]
 version = "1.0.1"
@@ -22,6 +22,9 @@ opt-level = 1
 opt-level = 3
 
 [profile.dev.package.converter]
+opt-level = 3
+
+[profile.dev.package.panel-model]
 opt-level = 3
 
 [profile.dev.package.pipeline]

@@ -9,6 +9,7 @@ mod covers;
 mod logfile;
 mod logic;
 mod notify;
+mod panel_ai;
 mod queue;
 mod sample;
 mod state;

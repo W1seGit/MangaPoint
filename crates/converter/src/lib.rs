@@ -7,6 +7,7 @@
 pub mod decode;
 pub mod dither;
 pub mod gray;
+pub mod panels;
 pub mod plan;
 pub mod process;
 pub mod testpattern;
@@ -14,7 +15,12 @@ pub mod xtc;
 
 pub use dither::{quantize, Dither};
 pub use gray::{Depth, GrayImage, ImageError, LevelImage};
+pub use panels::{
+    find_panels, panel_model_ready, panels_for, panels_from_frames, set_panel_model, PanelModel,
+    Rect,
+};
 pub use plan::{ChapterPlan, PlannedPage, Prepared, Source};
 pub use process::{
-    crop_bounds, process_page, CropMode, Layout, Margins, ProcessOptions, SpreadMode, StripCut,
+    crop_bounds, process_page, CropMode, Layout, Margins, PanelFinder, PanelView, ProcessOptions,
+    SpreadMode, StripCut,
 };

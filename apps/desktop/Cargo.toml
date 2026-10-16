@@ -14,6 +14,7 @@ sources = { path = "../../crates/sources" }
 search = { path = "../../crates/search" }
 pipeline = { path = "../../crates/pipeline" }
 converter = { path = "../../crates/converter", features = ["serde"] }
+panel-model = { path = "../../crates/panel-model" }
 device-profiles = { path = "../../crates/device-profiles", features = ["serde"] }
 tokio = { version = "1", features = ["rt", "macros", "time", "sync"] }
 futures-util = "0.3"

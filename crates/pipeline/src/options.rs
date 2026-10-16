@@ -1,5 +1,6 @@
 //! Mapping saved settings onto the converter's options.
 
+use converter::process::PanelFinder;
 use converter::{Depth, ProcessOptions};
 use device_profiles::DeviceProfile;
 use library::{ConversionSettings, Settings};
@@ -7,6 +8,10 @@ use library::{ConversionSettings, Settings};
 /// Everything the converter needs for pages shown on `device`, converted the
 /// way `conversion` says. Previews and exports both call this, so what you
 /// see is what gets written.
+///
+/// The AI panel finder is asked for only once its model is loaded; until then
+/// the gaps are used, and the options say so, so nothing drawn or cached
+/// without the model passes for having used it.
 pub fn process_options_for(
     device: &DeviceProfile,
     conversion: &ConversionSettings,
@@ -25,6 +30,11 @@ pub fn process_options_for(
         auto_levels: conversion.auto_levels,
         strip_cut: conversion.strip_cut,
         overlap_percent: conversion.overlap_percent,
+        panel_view: conversion.panel_view,
+        panel_finder: match conversion.panel_finder {
+            PanelFinder::Model if !converter::panel_model_ready() => PanelFinder::Gutters,
+            finder => finder,
+        },
         dither: conversion.dither,
         depth: output_depth(device, conversion),
     }

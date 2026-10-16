@@ -551,6 +551,7 @@ pub fn crop_page_key(page: &PlannedPage) -> String {
                 Part::Whole => "whole".into(),
                 Part::Rotated => "rotated".into(),
                 Part::Half(n) => format!("half:{n}"),
+                Part::Panel(r) => format!("panel:{}:{}:{}:{}", r.x, r.y, r.w, r.h),
             };
             format!("image:{index}:{part}")
         }

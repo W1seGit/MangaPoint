@@ -17,3 +17,7 @@ serde = ["dep:serde"]
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif"] }
+
+[[example]]
+name = "panels"
+required-features = ["decode"]

@@ -82,6 +82,14 @@ strips cut into screen-sized slices, contrast and dithering are all there, with 
 live preview that shows the source next to the result. Start from a preset
 (Manga, Manhwa, Manhua) or keep your own.
 
+Small screen? Turn on **Panels** to read a page one panel at a time: each page
+is cut at the gaps between its panels and every panel fills the screen, in
+right-to-left or left-to-right order. "Page, then panels" shows the whole page
+first as an overview. Panels are found by the gaps between them, which is
+instant and right for most pages; for frameless panels, odd shapes and drawings
+that run across the gutter, choose the **AI model** (a 40 MB download, once,
+run on your own computer). Pages that cannot be cut cleanly stay whole.
+
 <div align="center">
 <img src="docs/screenshots/export.png" alt="The Export screen: presets, layout and crop options, and the source next to the converted page" width="780" />
 </div>

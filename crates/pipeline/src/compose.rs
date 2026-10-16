@@ -469,6 +469,7 @@ async fn cover_page(
     opts.crop = converter::process::CropMode::Full;
     opts.margins = Default::default();
     opts.spread = converter::process::SpreadMode::Fit;
+    opts.panel_view = converter::process::PanelView::Off;
     tokio::task::spawn_blocking(move || {
         let gray = decode_page(&bytes).ok()?;
         let page = converter::plan::convert_chapter(&[gray], &opts)
@@ -587,6 +588,18 @@ async fn convert_chapter(
             chapter.name
         )));
     }
+    // Without its model the AI panel finder falls back to the gaps: the
+    // converted chapter is cached as what was really used.
+    let effective;
+    let settings = if settings.panel_finder != opts.panel_finder {
+        effective = library::ConversionSettings {
+            panel_finder: opts.panel_finder,
+            ..settings.clone()
+        };
+        &effective
+    } else {
+        settings
+    };
     let total = pages.len();
     let cache_path = files.chapter_dir(series_id, &chapter.key).join(if settings.epub {
         conversion_cache::EPUB_FILE_NAME

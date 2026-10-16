@@ -580,6 +580,8 @@ pub struct AppState {
     pub testing: Signal<HashSet<String>>,
     /// True while "install all recommended" is running.
     pub installing: Signal<bool>,
+    /// The AI panel finder's model: downloaded, loading, ready.
+    pub panel_model: Signal<crate::panel_ai::ModelStatus>,
 }
 
 impl AppState {
@@ -666,6 +668,7 @@ impl AppState {
             sources_version: sig(0),
             testing: sig(HashSet::new()),
             installing: sig(false),
+            panel_model: sig(crate::panel_ai::ModelStatus::default()),
         }
     }
 

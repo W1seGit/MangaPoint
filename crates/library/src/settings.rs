@@ -1,7 +1,8 @@
 //! User preferences.
 
 use converter::process::{
-    CropMode, Layout, Margins, SpreadMode, StripCut, DEFAULT_TRIM_PADDING, DEFAULT_TRIM_SENSITIVITY,
+    CropMode, Layout, Margins, PanelFinder, PanelView, SpreadMode, StripCut, DEFAULT_TRIM_PADDING,
+    DEFAULT_TRIM_SENSITIVITY,
 };
 use converter::xtc::{Format, ReadDirection};
 use converter::Dither;
@@ -69,6 +70,15 @@ pub struct ConversionSettings {
     pub strip_cut: StripCut,
     /// With the older cut, how much of a page repeats on the next.
     pub overlap_percent: u8,
+    /// Ordinary pages shown panel by panel. Left out of the saved settings
+    /// while off, so the converted chapters cached before it existed stay
+    /// valid.
+    #[serde(skip_serializing_if = "PanelView::is_off")]
+    pub panel_view: PanelView,
+    /// How the panels are found: the gaps between them, or the AI model.
+    /// Left out while it is the gaps, for the same reason.
+    #[serde(skip_serializing_if = "PanelFinder::is_gutters")]
+    pub panel_finder: PanelFinder,
     pub dither: Dither,
 }
 
@@ -92,6 +102,8 @@ impl Default for ConversionSettings {
             auto_levels: true,
             strip_cut: StripCut::Overlap,
             overlap_percent: 8,
+            panel_view: PanelView::Off,
+            panel_finder: PanelFinder::Gutters,
             dither: Dither::FloydSteinberg,
         }
     }
@@ -113,11 +125,13 @@ pub enum ConversionField {
     AutoLevels,
     StripCut,
     OverlapPercent,
+    PanelView,
+    PanelFinder,
     Dither,
 }
 
 impl ConversionField {
-    pub const ALL: [ConversionField; 13] = [
+    pub const ALL: [ConversionField; 15] = [
         ConversionField::Format,
         ConversionField::Direction,
         ConversionField::Layout,
@@ -130,6 +144,8 @@ impl ConversionField {
         ConversionField::AutoLevels,
         ConversionField::StripCut,
         ConversionField::OverlapPercent,
+        ConversionField::PanelView,
+        ConversionField::PanelFinder,
         ConversionField::Dither,
     ];
 }
@@ -183,6 +199,8 @@ impl ConversionSettings {
             ConversionField::AutoLevels => self.auto_levels = from.auto_levels,
             ConversionField::StripCut => self.strip_cut = from.strip_cut,
             ConversionField::OverlapPercent => self.overlap_percent = from.overlap_percent,
+            ConversionField::PanelView => self.panel_view = from.panel_view,
+            ConversionField::PanelFinder => self.panel_finder = from.panel_finder,
             ConversionField::Dither => self.dither = from.dither,
         }
     }

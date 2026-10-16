@@ -80,6 +80,43 @@ pub enum StripCut {
     Overlap,
 }
 
+/// Whether a page is shown panel by panel.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PanelView {
+    /// One page per image, as drawn.
+    #[default]
+    Off,
+    /// Each panel on its own page, in reading order, instead of the page.
+    Panels,
+    /// The whole page first, then each of its panels.
+    PageThenPanels,
+}
+
+impl PanelView {
+    pub fn is_off(&self) -> bool {
+        *self == PanelView::Off
+    }
+}
+
+/// How the panels of a page are found.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PanelFinder {
+    /// The gaps around framed panels. Quick, and needs nothing else.
+    #[default]
+    Gutters,
+    /// A trained model, which also finds panels without frames. Falls back
+    /// to the gutters while no model is loaded.
+    Model,
+}
+
+impl PanelFinder {
+    pub fn is_gutters(&self) -> bool {
+        *self == PanelFinder::Gutters
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ProcessOptions {
     pub width: u32,
@@ -105,6 +142,9 @@ pub struct ProcessOptions {
     /// With [`StripCut::Overlap`], slices overlap by this share of the screen
     /// height (0..=50).
     pub overlap_percent: u8,
+    /// Ordinary pages only: cut each page into its panels.
+    pub panel_view: PanelView,
+    pub panel_finder: PanelFinder,
     pub dither: Dither,
     pub depth: Depth,
 }
@@ -127,6 +167,8 @@ impl ProcessOptions {
             auto_levels: true,
             strip_cut: StripCut::Quiet,
             overlap_percent: 8,
+            panel_view: PanelView::Off,
+            panel_finder: PanelFinder::Gutters,
             dither: Dither::FloydSteinberg,
             depth,
         }

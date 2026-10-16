@@ -8,7 +8,9 @@
 //! screen can show it next to the downloaded pages.
 //!
 //! * Paged chapters: one page per image. A double-page spread is split at its
-//!   spine, rotated, or fitted, as the settings say.
+//!   spine, rotated, or fitted, as the settings say. With panel view on, an
+//!   image whose panels can be found becomes one page per panel instead (or
+//!   as well, after the whole page).
 //! * Webtoon chapters: every image is scaled to the screen width and joined.
 //!   Pages are cut at the blank gutters between scenes when there is one near
 //!   the bottom of the screen. When there is not, the cut is made at the
@@ -19,9 +21,11 @@
 //! wide), which do not depend on the device.
 
 use crate::gray::{GrayImage, LevelImage};
+use crate::panels::{panels_for, Rect};
 use crate::process::{
     border_median, crop_bounds, crop_rect, finish, fit, letterbox_top, resize, rotate_cw,
-    trim_bounds, trim_threshold, CropMode, Layout, Margins, ProcessOptions, SpreadMode, StripCut,
+    trim_bounds, trim_threshold, CropMode, Layout, Margins, PanelView, ProcessOptions, SpreadMode,
+    StripCut,
 };
 use crate::xtc::ReadDirection;
 
@@ -40,6 +44,8 @@ pub enum Part {
     Rotated,
     /// A physical spread half: 0 is left, 1 is right, independent of reading direction.
     Half(u8),
+    /// One panel, in the (cropped) image's pixels.
+    Panel(Rect),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -258,9 +264,14 @@ pub fn plan(prepared: &Prepared, opts: &ProcessOptions) -> ChapterPlan {
 
 fn plan_paged(images: &[GrayImage], opts: &ProcessOptions) -> ChapterPlan {
     let mut pages = Vec::new();
+    let mut found = if opts.panel_view.is_off() {
+        vec![Vec::new(); images.len()]
+    } else {
+        all_panels(images, opts)
+    };
     for (index, img) in images.iter().enumerate() {
         let landscape = img.width as f32 > img.height as f32 * 1.1;
-        let parts: &[Part] = if !landscape {
+        let whole: &[Part] = if !landscape {
             &[Part::Whole]
         } else {
             match opts.spread {
@@ -272,7 +283,21 @@ fn plan_paged(images: &[GrayImage], opts: &ProcessOptions) -> ChapterPlan {
                 SpreadMode::Split => &[Part::Half(0), Part::Half(1)],
             }
         };
-        for &part in parts {
+        // A spread is cut as one picture: the gap at its spine is a gutter
+        // like any other, so its panels come out in reading order across both
+        // halves. An image whose panels cannot be found is kept as it is.
+        let panels = std::mem::take(&mut found[index]);
+        let parts: Vec<Part> = match opts.panel_view {
+            _ if panels.is_empty() => whole.to_vec(),
+            PanelView::Off => whole.to_vec(),
+            PanelView::Panels => panels.into_iter().map(Part::Panel).collect(),
+            PanelView::PageThenPanels => whole
+                .iter()
+                .copied()
+                .chain(panels.into_iter().map(Part::Panel))
+                .collect(),
+        };
+        for part in parts {
             pages.push(PlannedPage {
                 source: Source::Image { index, part },
                 unit_top: 0,
@@ -341,6 +366,47 @@ fn plan_strip(strip: &Strip, opts: &ProcessOptions) -> ChapterPlan {
         pages,
         unit_height: to_units(strip.total, strip.width),
     }
+}
+
+/// The panels of every image. A model takes a while per page, so the pages
+/// are shared among the machine's cores.
+#[cfg(not(target_arch = "wasm32"))]
+fn all_panels(images: &[GrayImage], opts: &ProcessOptions) -> Vec<Vec<Rect>> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let workers = std::thread::available_parallelism()
+        .map_or(1, |n| n.get())
+        .min(images.len());
+    if workers <= 1 {
+        return images.iter().map(|img| panels_for(img, opts)).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let mut out = vec![Vec::new(); images.len()];
+    std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..workers)
+            .map(|_| {
+                scope.spawn(|| {
+                    let mut done = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(img) = images.get(i) else { break };
+                        done.push((i, panels_for(img, opts)));
+                    }
+                    done
+                })
+            })
+            .collect();
+        for handle in handles {
+            for (i, panels) in handle.join().expect("a panel finder panicked") {
+                out[i] = panels;
+            }
+        }
+    });
+    out
+}
+
+#[cfg(target_arch = "wasm32")]
+fn all_panels(images: &[GrayImage], opts: &ProcessOptions) -> Vec<Vec<Rect>> {
+    images.iter().map(|img| panels_for(img, opts)).collect()
 }
 
 /// One row of the strip.
@@ -437,6 +503,7 @@ fn paged_screen(img: &GrayImage, part: Part, opts: &ProcessOptions) -> GrayImage
             let half = if n == 1 { right } else { left };
             fit(&half, opts.width, opts.height)
         }
+        Part::Panel(r) => fit(&crop_rect(img, r.x, r.y, r.w, r.h), opts.width, opts.height),
     }
 }
 
@@ -797,6 +864,78 @@ mod tests {
         assert_eq!(second.get(240, 400), 0);
     }
 
+    /// A white page with two black-bordered panels, one above the other; the
+    /// top one is black inside, the bottom one white.
+    fn two_panel_page() -> GrayImage {
+        let mut img = GrayImage::new(1000, 1400, 255).unwrap();
+        img.fill_rect(40, 40, 920, 640, 0);
+        img.fill_rect(40, 720, 920, 640, 0);
+        img.fill_rect(46, 726, 908, 628, 255);
+        img
+    }
+
+    #[test]
+    fn panel_view_gives_a_page_per_panel_or_the_page_and_then_its_panels() {
+        let mut o = opts();
+        o.layout = Layout::Manga;
+        o.trim_padding = 0;
+        let images = [two_panel_page(), GrayImage::new(1000, 1400, 128).unwrap()];
+        let prepared = prepare(&images, &o);
+        assert_eq!(
+            plan(&prepared, &o).pages.len(),
+            2,
+            "off: one page per image"
+        );
+
+        o.panel_view = PanelView::Panels;
+        let p = plan(&prepared, &o);
+        // The first image's two panels, then the second image, which has none, whole.
+        assert_eq!(p.pages.len(), 3);
+        assert!(matches!(
+            p.pages[0].source,
+            Source::Image {
+                index: 0,
+                part: Part::Panel(_)
+            }
+        ));
+        assert_eq!(
+            p.pages[2].source,
+            Source::Image {
+                index: 1,
+                part: Part::Whole
+            }
+        );
+        let top = render_page(&prepared, &p.pages[0], &o);
+        assert_eq!((top.width, top.height), (480, 800));
+        assert_eq!(top.get(240, 400), 0, "the black panel fills the page");
+        let bottom = render_page(&prepared, &p.pages[1], &o);
+        assert_eq!(bottom.get(240, 400), 3, "then the white one");
+        // Measured at a smaller size: the edges may gain a pixel when mapped back.
+        let width = page_source(&prepared, &p.pages[1], &o).width;
+        assert!((920..=924).contains(&width), "{width}");
+
+        o.panel_view = PanelView::PageThenPanels;
+        let p = plan(&prepared, &o);
+        assert_eq!(p.pages.len(), 4);
+        assert_eq!(
+            p.pages[0].source,
+            Source::Image {
+                index: 0,
+                part: Part::Whole
+            }
+        );
+    }
+
+    #[test]
+    fn panel_view_leaves_long_strips_alone() {
+        let mut o = opts();
+        o.panel_view = PanelView::Panels;
+        let images = scenes(1, 6000, 600, 90);
+        let with = plan(&prepare(&images, &o), &o);
+        o.panel_view = PanelView::Off;
+        assert_eq!(with, plan(&prepare(&images, &o), &o));
+    }
+
     #[test]
     fn spread_fit_and_turn_give_one_page() {
         let spread = GrayImage::new(1600, 1000, 128).unwrap();
@@ -932,6 +1071,7 @@ pub fn page_source(prepared: &Prepared, page: &PlannedPage, _opts: &ProcessOptio
                         crop_rect(img, 0, 0, mid, img.height)
                     }
                 }
+                Part::Panel(r) => crop_rect(img, r.x, r.y, r.w, r.h),
             }
         }
         _ => unreachable!("a plan belongs to its prepared chapter"),

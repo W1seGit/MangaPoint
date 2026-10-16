@@ -67,6 +67,8 @@ pub fn App() -> Element {
     use_hook(|| {
         spawn_forever(backend::boot(state, false));
     });
+    // The AI panel model, if it was downloaded before.
+    use_hook(|| crate::panel_ai::load_if_downloaded(state));
     // Stop it when the window closes, so no process is left behind.
     use_wry_event_handler(|event, _| {
         if let Event::WindowEvent {
