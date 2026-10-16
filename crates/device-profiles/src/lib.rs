@@ -105,7 +105,7 @@ pub struct KnownInfo {
     pub maker: &'static str,
     /// The screen's diagonal in inches, as the maker gives it.
     pub diagonal: f32,
-    /// The file types it opens, of those MangaPoint can make: XTC, XTCH, EPUB.
+    /// The file types it opens, of those MangaPoint can make: XTC, XTCH, EPUB, CBZ.
     pub formats: &'static [&'static str],
     /// Whether the CrossPoint firmware runs on it. Where it does not, the
     /// reader runs only its own (stock) firmware.
@@ -165,24 +165,24 @@ const KNOWN: &[Entry] = &[
     entry("kindle-10", "Amazon", "Kindle (10th gen, 2019)", (600, 800, 167, 6.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
     entry("kindle-oasis-3", "Amazon", "Kindle Oasis (3rd gen)", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
     entry("kindle-scribe", "Amazon", "Kindle Scribe", (1860, 2480, 300, 10.2), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kobo-clara-bw", "Rakuten Kobo", "Kobo Clara BW", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, ""),
-    entry("kobo-clara-colour", "Rakuten Kobo", "Kobo Clara Colour", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, ""),
-    entry("kobo-clara-2e", "Rakuten Kobo", "Kobo Clara 2E", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, ""),
-    entry("kobo-libra-2", "Rakuten Kobo", "Kobo Libra 2", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, ""),
-    entry("kobo-libra-colour", "Rakuten Kobo", "Kobo Libra Colour", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, ""),
-    entry("kobo-sage", "Rakuten Kobo", "Kobo Sage", (1440, 1920, 300, 8.0), 16, &["EPUB"], false, ""),
-    entry("kobo-elipsa-2e", "Rakuten Kobo", "Kobo Elipsa 2E", (1404, 1872, 227, 10.3), 16, &["EPUB"], false, ""),
-    entry("kobo-nia", "Rakuten Kobo", "Kobo Nia", (758, 1024, 212, 6.0), 16, &["EPUB"], false, ""),
-    entry("boox-palma", "Onyx Boox", "Boox Palma", (824, 1648, 300, 6.13), 16, &["EPUB"], false, ""),
-    entry("boox-go-6", "Onyx Boox", "Boox Go 6", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, ""),
-    entry("boox-page", "Onyx Boox", "Boox Page", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, ""),
-    entry("boox-go-10-3", "Onyx Boox", "Boox Go 10.3", (1404, 1872, 227, 10.3), 16, &["EPUB"], false, ""),
-    entry("boox-note-air3", "Onyx Boox", "Boox Note Air3", (1404, 1872, 227, 10.3), 16, &["EPUB"], false, ""),
-    entry("boox-tab-ultra", "Onyx Boox", "Boox Tab Ultra", (1404, 1872, 227, 10.3), 16, &["EPUB"], false, ""),
-    entry("pocketbook-verse", "PocketBook", "PocketBook Verse", (758, 1024, 212, 6.0), 16, &["EPUB"], false, ""),
-    entry("pocketbook-verse-pro", "PocketBook", "PocketBook Verse Pro", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, ""),
-    entry("pocketbook-era", "PocketBook", "PocketBook Era", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, ""),
-    entry("pocketbook-inkpad-4", "PocketBook", "PocketBook InkPad 4", (1404, 1872, 300, 7.8), 16, &["EPUB"], false, ""),
+    entry("kobo-clara-bw", "Rakuten Kobo", "Kobo Clara BW", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("kobo-clara-colour", "Rakuten Kobo", "Kobo Clara Colour", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("kobo-clara-2e", "Rakuten Kobo", "Kobo Clara 2E", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("kobo-libra-2", "Rakuten Kobo", "Kobo Libra 2", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("kobo-libra-colour", "Rakuten Kobo", "Kobo Libra Colour", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("kobo-sage", "Rakuten Kobo", "Kobo Sage", (1440, 1920, 300, 8.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("kobo-elipsa-2e", "Rakuten Kobo", "Kobo Elipsa 2E", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
+    entry("kobo-nia", "Rakuten Kobo", "Kobo Nia", (758, 1024, 212, 6.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("boox-palma", "Onyx Boox", "Boox Palma", (824, 1648, 300, 6.13), 16, &["EPUB", "CBZ"], false, ""),
+    entry("boox-go-6", "Onyx Boox", "Boox Go 6", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("boox-page", "Onyx Boox", "Boox Page", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("boox-go-10-3", "Onyx Boox", "Boox Go 10.3", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
+    entry("boox-note-air3", "Onyx Boox", "Boox Note Air3", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
+    entry("boox-tab-ultra", "Onyx Boox", "Boox Tab Ultra", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
+    entry("pocketbook-verse", "PocketBook", "PocketBook Verse", (758, 1024, 212, 6.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("pocketbook-verse-pro", "PocketBook", "PocketBook Verse Pro", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("pocketbook-era", "PocketBook", "PocketBook Era", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
+    entry("pocketbook-inkpad-4", "PocketBook", "PocketBook InkPad 4", (1404, 1872, 300, 7.8), 16, &["EPUB", "CBZ"], false, ""),
     entry("remarkable-2", "reMarkable", "reMarkable 2", (1404, 1872, 226, 10.3), 16, &["EPUB"], false, ""),
 ];
 
@@ -466,6 +466,19 @@ mod tests {
             assert_eq!(info.crosspoint, xteink, "{}", p.name);
             assert_eq!(info.formats.contains(&"XTC"), xteink, "{}", p.name);
             assert_eq!(p.gray_levels, if xteink { 4 } else { 16 }, "{}", p.name);
+        }
+    }
+
+    #[test]
+    fn cbz_is_listed_for_the_readers_that_open_it_and_not_for_those_that_do_not() {
+        let opens = |id: &str| known_info(id).unwrap().formats.contains(&"CBZ");
+        for id in ["kobo-clara-bw", "kobo-libra-colour", "boox-palma", "boox-tab-ultra", "pocketbook-era"] {
+            assert!(opens(id), "{id} opens CBZ");
+        }
+        // Kindle takes no CBZ, reMarkable is better served by PDF, and the Xteink
+        // firmware is not documented to read it.
+        for id in ["kindle-paperwhite-12", "kindle-scribe", "remarkable-2", "xteink-x4", "xteink-x4-pro", "xteink-x3"] {
+            assert!(!opens(id), "{id} is not listed for CBZ");
         }
     }
 

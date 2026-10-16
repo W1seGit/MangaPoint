@@ -780,6 +780,73 @@ async fn an_epub_has_every_page_the_chapters_and_the_readers_screen() {
 }
 
 #[tokio::test]
+async fn a_cbz_has_every_page_in_order_and_a_comic_info_with_the_chapters() {
+    let (lib, mut series) = three_chapters("ex-cbz").await;
+    series.info = Some(library::SeriesInfo {
+        description: "A test story.".into(),
+        author: "A. Writer".into(),
+        genres: vec!["Drama".into()],
+        status: "Ongoing".into(),
+        ..Default::default()
+    });
+    let mut j = job(&lib, &series, Grouping::Single);
+    j.series.settings.set_output(library::OutputFormat::Cbz);
+    let out = export(&lib, &j).await.unwrap();
+    assert_eq!(names(&out), ["Test Series - Ch 1-3.cbz"]);
+    assert_eq!((out.pages, out.chapters), (9, 3));
+    let path = out.files[0].location.clone();
+
+    let zip = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
+    let mut pictures: Vec<String> = zip.file_names().filter(|n| n.ends_with(".png") || n.ends_with(".jpg")).map(String::from).collect();
+    pictures.sort();
+    let expected: Vec<String> = (1..=9).map(|n| format!("{n:05}.png")).collect();
+    assert_eq!(pictures, expected, "an Xteink shows four grays, so 2-bit PNGs, named to sort in order");
+    let xml = epub_text(&path, "ComicInfo.xml");
+    for want in [
+        "<Series>Test Series</Series>",
+        "<Summary>A test story.</Summary>",
+        "<Writer>A. Writer</Writer>",
+        "<Genre>Drama</Genre>",
+        "<PageCount>9</PageCount>",
+        "<Manga>YesAndRightToLeft</Manga>",
+        "<Page Image=\"0\" Type=\"FrontCover\" Bookmark=\"Chapter 1\"",
+        "<Page Image=\"3\" Bookmark=\"Chapter 2\"",
+        "<Page Image=\"6\" Bookmark=\"Chapter 3\"",
+        "ImageWidth=\"480\" ImageHeight=\"800\"",
+    ] {
+        assert!(xml.contains(want), "missing {want} in
+{xml}");
+    }
+    assert_eq!(lib.leftover_scratch(), 0, "temporary files are cleaned up");
+
+    // A second export comes from cached pictures and is the same book.
+    let again = export(&lib, &j).await.unwrap();
+    assert_eq!(again.cached_chapters, 3);
+    assert_eq!(epub_text(&again.files[0].location, "ComicInfo.xml").matches("<Page ").count(), 9);
+    let _ = fs::remove_dir_all(lib.root);
+}
+
+#[tokio::test]
+async fn a_cbz_for_each_chapter_is_that_issue_and_a_long_series_is_not_cut_at_800_pages() {
+    let (lib, series) = three_chapters("ex-cbz-each").await;
+    let mut j = job(&lib, &series, Grouping::PerChapter);
+    j.series.settings.set_output(library::OutputFormat::Cbz);
+    let out = export(&lib, &j).await.unwrap();
+    assert_eq!(out.files.len(), 3);
+    let xml = epub_text(&out.files[1].location, "ComicInfo.xml");
+    assert!(xml.contains("<Title>Chapter 2</Title>") && xml.contains("<Number>2</Number>"), "{xml}");
+    assert!(xml.contains("<Series>Test Series</Series>"));
+
+    // The EPUB limit of 800 pages does not apply to a CBZ.
+    let mut j = job(&lib, &series, Grouping::Single);
+    j.series.settings.set_output(library::OutputFormat::Cbz);
+    j.max_pages_per_file = 5;
+    let split = export(&lib, &j).await.unwrap();
+    assert!(split.files.len() >= 2, "the job's own page limit still applies");
+    let _ = fs::remove_dir_all(lib.root);
+}
+
+#[tokio::test]
 async fn an_epub_for_a_reader_with_many_grays_is_made_of_jpegs_at_its_size() {
     let (lib, series) = three_chapters("ex-epub-kindle").await;
     let mut j = job(&lib, &series, Grouping::PerChapter);
