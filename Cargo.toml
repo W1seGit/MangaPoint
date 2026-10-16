@@ -38,3 +38,12 @@ opt-level = 3
 
 [profile.dev.package.sources]
 opt-level = 3
+
+# The optimiser (LLVM) can recurse too deeply while analysing loops in the app's
+# own code and crash the compiler in a release build (a SIGSEGV on Linux, SIGBUS on
+# macOS, on Rust 1.99.1), as soon as the user interface grows past some size. The
+# crash is in the compiler, so a bigger stack does not help. The app crate holds
+# only the interface, so it is built at opt-level 2; the converter, pipeline and the
+# rest, where speed matters, stay at the full level.
+[profile.release.package.mangapoint]
+opt-level = 2

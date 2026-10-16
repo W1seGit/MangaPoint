@@ -856,7 +856,7 @@ mod tests {
         assert_eq!(kindle.firmware, Firmware::Stock, "CrossPoint does not run on it");
         let mut s = library::Settings::default();
         add_known(&mut s, device_profiles::known("kobo-libra-2").unwrap()).unwrap();
-        assert_eq!(s.reader_setup().formats, ["EPUB"]);
+        assert_eq!(s.reader_setup().formats, ["EPUB", "CBZ"], "Kobo opens CBZ itself");
         assert_eq!(s.reader_setup().firmware, Firmware::Stock);
         add_custom(&mut s, "My own").unwrap();
         assert_eq!(s.reader_setup().firmware, Firmware::Stock);

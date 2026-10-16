@@ -36,7 +36,7 @@ result over. MangaPoint does all of it for you, in one app:
 | Sending it | Work out the format, then copy files around | Export to a folder, USB drive, SD card or Wi-Fi |
 
 It was built for the Xteink readers (X4, X4 Pro, X3), and it also makes
-standard EPUB files for Kindle, Kobo, Boox, PocketBook and reMarkable.
+standard EPUB files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ comic archives for the readers that open them.
 Everything runs on your computer. There is no account and no server of ours.
 
 ## Features
@@ -94,7 +94,8 @@ SD card (found automatically, with a "Safe to unplug" message), or Wi-Fi.
 | | |
 |---|---|
 | **XTC**: black and white; the smallest files and the quickest to open | **XTCH**: four grays; twice the size |
-| **EPUB**: a fixed-layout EPUB 3 that nearly every reader opens, with the chapters as its table of contents | **One file** per series, per chapter, or every N chapters; long series are cut into parts |
+| **EPUB**: a fixed-layout EPUB 3 that nearly every reader opens, with the chapters as its table of contents | **CBZ**: a comic archive with a `ComicInfo.xml` (series, author, summary, genres, reading direction) and the chapters as page bookmarks |
+| **One file** per series, per chapter, or every N chapters; long EPUBs are cut into parts | |
 
 <div align="center">
 <img src="docs/screenshots/send-to.png" alt="The Send to panel: reader, destination, format and files" width="300" />
@@ -118,12 +119,18 @@ that reader opens.
 |---|---|---|
 | Xteink | X4, X4 Pro, X3 (with CrossPoint or stock firmware) | XTC, XTCH, EPUB |
 | Amazon | Kindle Paperwhite, Oasis, Scribe and others in the catalog | EPUB (through Send to Kindle) |
-| Kobo | Clara, Libra, Sage, Elipsa and others | EPUB |
-| Boox, PocketBook, reMarkable | The models in the catalog | EPUB |
+| Kobo | Clara, Libra, Sage, Elipsa and others | EPUB, CBZ |
+| Boox, PocketBook | The models in the catalog | EPUB, CBZ |
+| reMarkable | reMarkable 2 | EPUB |
+
+CBZ is listed only for the readers that open it themselves (Kobo, PocketBook and
+Boox; KOReader on any reader also does). Kindle does not take CBZ, reMarkable is
+better served by EPUB or PDF, and the Xteink firmware is not documented to read it.
+You can switch CBZ on for any reader in **Settings → Your reader → File formats**.
 
 The reader list is in [`crates/device-profiles`](crates/device-profiles/src/lib.rs).
 If yours is missing, add it as your own reader in **Settings → Your reader** (a
-name, the screen size in inches and its pixels per inch) and pick EPUB.
+name, the screen size in inches and its pixels per inch) and pick EPUB or CBZ.
 
 > **A note on testing.** The conversion, the file formats and the app are tested
 > automatically and by hand on Windows. The Linux build, its tests and the `.deb`
@@ -270,7 +277,7 @@ through the app with real mouse events.
 ```
  Search ─► Suwayomi (local server, loopback only) ─► sources
               │
- Download queue ──► page files on disk ──► converter ──► XTC / XTCH / EPUB ──► folder · USB · Wi-Fi
+ Download queue ──► page files on disk ──► converter ──► XTC / XTCH / EPUB / CBZ ──► folder · USB · Wi-Fi
 ```
 
 | Crate | Role |
@@ -281,7 +288,7 @@ through the app with real mouse events.
 | `crates/catalog` | Installs and talks to the Suwayomi server |
 | `crates/sources` | Source and extension management, health checks |
 | `crates/search` | Fan-out search, grouping, ranking, chapter merging |
-| `crates/pipeline` | Downloads, conversion, EPUB writing and export targets |
+| `crates/pipeline` | Downloads, conversion, EPUB and CBZ writing and export targets |
 | `crates/library` | Settings, library, presets and exports on disk |
 
 ## Releases and versions
@@ -302,10 +309,11 @@ in the [changelog](CHANGELOG.md).
 
 - Wi-Fi export is slow, because readers take files slowly over their built-in
   transfer; USB or the SD card in your computer is much quicker.
-- EPUB files and the Xteink chapter menu and covers still need checking on more
+- EPUB and CBZ files and the Xteink chapter menu and covers still need checking on more
   real readers.
-- Apart from the cover, XTC, XTCH and EPUB files do not yet carry the author or
-  description.
+- CBZ files carry the series, author, summary, genres and chapter bookmarks in their
+  `ComicInfo.xml`; apart from the cover, XTC, XTCH and EPUB files do not yet carry the
+  author or description.
 - macOS builds are unsigned.
 
 ## Responsible use

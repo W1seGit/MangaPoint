@@ -8,6 +8,7 @@
 //!    network, then send them with [`export`] (folder, SD card, Wi-Fi)
 
 pub mod balance;
+pub mod cbz;
 pub mod compose;
 mod conversion_cache;
 pub mod download;

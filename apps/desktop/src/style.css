@@ -702,7 +702,12 @@ table.chapters th.size, table.chapters td.size { width: 90px; text-align: right;
 .px-layer-cover .cover.empty { display: flex; align-items: center; justify-content: center; background: var(--panel-2); font-size: 0.9rem; }
 .px-layer-text { display: flex; flex-direction: column; min-width: 0; }
 .px-layer-text strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.px-all { display: flex; align-items: center; gap: 10px; padding: 8px 4px; border-bottom: 1px solid var(--line); font-weight: 500; cursor: pointer; }
+.px-sticky { position: sticky; top: 0; z-index: 3; margin: 0 -14px; padding: 4px 14px 0; background: var(--panel); border-bottom: 1px solid var(--line); }
+.px-all-row { display: flex; align-items: center; gap: 10px; }
+.px-all { display: flex; align-items: center; gap: 10px; padding: 8px 4px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+.px-range { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; margin-left: auto; }
+.px-range input { flex: 1; min-width: 0; width: 100%; }
+.px-range-error { margin: 0 0 8px; color: var(--bad); font-size: 0.8rem; }
 .px-chapters { display: flex; flex-direction: column; }
 .px-chapter { display: flex; align-items: center; gap: 10px; padding: 6px 4px; cursor: pointer; border-radius: 6px; }
 .px-chapter:hover { background: var(--panel-2); }
