@@ -104,7 +104,7 @@ jobs:
           bash tools/package-macos.sh "target/${{ matrix.target }}/release/mangapoint" "${{ steps.version.outputs.value }}" "dist/$name"
           (cd dist && shasum -a 256 "$name" > "$name.sha256")
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MangaPoint-${{ matrix.label }}
           path: dist/*
