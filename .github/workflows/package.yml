@@ -36,7 +36,7 @@ jobs:
             target: x86_64-apple-darwin
             label: macos-x86_64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Linux system packages
         if: runner.os == 'Linux'
