@@ -506,6 +506,21 @@ pub struct JobView {
     pub cancel: CancelFlag,
 }
 
+/// Where getting a newer version has got to.
+#[derive(Clone, Debug, PartialEq)]
+pub enum UpdatePhase {
+    /// The offer is showing and nothing has been started.
+    Idle,
+    /// Downloading and checking the file (0.0 to 1.0).
+    Downloading(f32),
+    /// The installer is running and this program is about to close.
+    Replacing,
+    /// The file was opened or shown; what to do next.
+    Handed { path: String, command: Option<String> },
+    /// It did not work; this says why.
+    Failed(String),
+}
+
 #[derive(Clone, Copy)]
 pub struct AppState {
     pub boot: Signal<BootState>,
@@ -554,6 +569,10 @@ pub struct AppState {
     pub plan: Signal<Vec<PlanEntry>>,
     /// Asking where a download should go, if it is open.
     pub download_dialog: Signal<Option<DownloadDialog>>,
+    /// A newer version being offered, if the dialog for it is open.
+    pub update_prompt: Signal<Option<crate::updates::Update>>,
+    /// Where getting that version has got to.
+    pub update_phase: Signal<UpdatePhase>,
     /// Series whose details are being fetched right now.
     pub info_busy: Signal<HashSet<String>>,
     pub workspace: Signal<Option<Workspace>>,
@@ -651,6 +670,8 @@ impl AppState {
             )),
             plan: sig(Vec::new()),
             download_dialog: sig(None),
+            update_prompt: sig(None),
+            update_phase: sig(UpdatePhase::Idle),
             info_busy: sig(HashSet::new()),
             workspace: sig(None),
             parked_workspace: sig(None),
