@@ -733,6 +733,7 @@ fn format_help(output: OutputFormat) -> &'static str {
         OutputFormat::Xtc => "Black and white pages, made for the Xteink readers. The smallest files, and the quickest to open and turn. The one to pick if you are not sure.",
         OutputFormat::Xtch => "Four grays instead of two, also for the Xteink readers. Files are twice the size, and the reader is slower and laggier with them, so it is the less recommended choice.",
         OutputFormat::Epub => "An ordinary e-book that nearly every reader opens: Kindle (through Send to Kindle), Kobo, Boox, PocketBook, and the Xteink too. Each page is a picture the size of the reader's screen, made as small as it can be. Long series are cut into parts of 800 pages.",
+        OutputFormat::Cbz => "A comic book archive. It carries the series, the author, the genres, the reading direction and a list of chapters, which comic readers show. Kobo, PocketBook, many Boox readers and KOReader open it; Kindle does not. Pages are pictures the size of the reader's screen.",
     }
 }
 

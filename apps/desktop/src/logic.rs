@@ -495,6 +495,7 @@ pub fn estimate_output_bytes(pages: usize, output: library::OutputFormat) -> u64
         library::OutputFormat::Xtc => estimate_export_bytes(pages, converter::xtc::Format::Xtc),
         library::OutputFormat::Xtch => estimate_export_bytes(pages, converter::xtc::Format::Xtch),
         library::OutputFormat::Epub => pages as u64 * 24_000,
+        library::OutputFormat::Cbz => pages as u64 * 23_000,
     }
 }
 

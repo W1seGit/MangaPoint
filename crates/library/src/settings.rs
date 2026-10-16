@@ -20,10 +20,19 @@ pub enum OutputFormat {
     Xtch,
     /// `.epub`: a fixed-layout book of page pictures, which most readers open.
     Epub,
+    /// `.cbz`: a comic book archive: a zip of page pictures with a ComicInfo.xml
+    /// that carries the series, the chapters and the reading direction. Kobo,
+    /// PocketBook, many Boox readers and KOReader open it.
+    Cbz,
 }
 
 impl OutputFormat {
-    pub const ALL: [OutputFormat; 3] = [OutputFormat::Xtc, OutputFormat::Xtch, OutputFormat::Epub];
+    pub const ALL: [OutputFormat; 4] = [
+        OutputFormat::Xtc,
+        OutputFormat::Xtch,
+        OutputFormat::Epub,
+        OutputFormat::Cbz,
+    ];
 
     /// The file extension, without the dot.
     pub fn extension(self) -> &'static str {
@@ -31,6 +40,7 @@ impl OutputFormat {
             OutputFormat::Xtc => "xtc",
             OutputFormat::Xtch => "xtch",
             OutputFormat::Epub => "epub",
+            OutputFormat::Cbz => "cbz",
         }
     }
 
@@ -40,6 +50,7 @@ impl OutputFormat {
             OutputFormat::Xtc => "XTC",
             OutputFormat::Xtch => "XTCH",
             OutputFormat::Epub => "EPUB",
+            OutputFormat::Cbz => "CBZ",
         }
     }
 }
@@ -51,6 +62,8 @@ pub struct ConversionSettings {
     pub format: Format,
     /// Make an EPUB instead of an XTC or XTCH book.
     pub epub: bool,
+    /// Make a CBZ (a comic book archive) instead. Wins over `epub` if both are set.
+    pub cbz: bool,
     pub direction: ReadDirection,
     pub layout: Layout,
     /// Trim blank borders automatically.
@@ -81,6 +94,7 @@ impl Default for ConversionSettings {
         Self {
             format: Format::Xtc,
             epub: false,
+            cbz: false,
             direction: ReadDirection::RightToLeft,
             layout: Layout::Auto,
             crop: CropMode::Margins,
@@ -137,20 +151,29 @@ impl ConversionField {
 impl ConversionSettings {
     /// What the book is made as.
     pub fn output(&self) -> OutputFormat {
-        match (self.epub, self.format) {
-            (true, _) => OutputFormat::Epub,
-            (false, Format::Xtc) => OutputFormat::Xtc,
-            (false, Format::Xtch) => OutputFormat::Xtch,
+        match (self.cbz, self.epub, self.format) {
+            (true, _, _) => OutputFormat::Cbz,
+            (false, true, _) => OutputFormat::Epub,
+            (false, false, Format::Xtc) => OutputFormat::Xtc,
+            (false, false, Format::Xtch) => OutputFormat::Xtch,
         }
     }
 
     /// Choose what the book is made as.
     pub fn set_output(&mut self, output: OutputFormat) {
+        self.cbz = false;
         match output {
             OutputFormat::Xtc => (self.epub, self.format) = (false, Format::Xtc),
             OutputFormat::Xtch => (self.epub, self.format) = (false, Format::Xtch),
             OutputFormat::Epub => self.epub = true,
+            OutputFormat::Cbz => (self.epub, self.cbz) = (false, true),
         }
+    }
+
+    /// Whether pages are made as pictures the size of the reader's screen (an
+    /// EPUB or a CBZ) rather than packed into an XTC or XTCH book.
+    pub fn pictures(&self) -> bool {
+        self.epub || self.cbz
     }
 
     /// The settings in which `self` and `other` differ.
@@ -171,6 +194,7 @@ impl ConversionSettings {
             ConversionField::Format => {
                 self.format = from.format;
                 self.epub = from.epub;
+                self.cbz = from.cbz;
             }
             ConversionField::Direction => self.direction = from.direction,
             ConversionField::Layout => self.layout = from.layout,
@@ -587,6 +611,20 @@ mod tests {
         other.copy_field(&epub, ConversionField::Format);
         assert_eq!(other.output(), OutputFormat::Epub);
         assert_eq!(other.differing(&epub), Vec::new());
+        // A CBZ is its own choice, and choosing anything else drops it.
+        c.set_output(OutputFormat::Cbz);
+        assert_eq!((c.output(), c.epub, c.cbz, c.pictures()), (OutputFormat::Cbz, false, true, true));
+        c.set_output(OutputFormat::Epub);
+        assert_eq!((c.output(), c.cbz, c.pictures()), (OutputFormat::Epub, false, true));
+        c.set_output(OutputFormat::Cbz);
+        c.set_output(OutputFormat::Xtch);
+        assert_eq!((c.output(), c.cbz, c.pictures()), (OutputFormat::Xtch, false, false));
+        let mut cbz = ConversionSettings::default();
+        cbz.set_output(OutputFormat::Cbz);
+        let mut other = ConversionSettings::default();
+        other.copy_field(&cbz, ConversionField::Format);
+        assert_eq!(other.output(), OutputFormat::Cbz);
+        assert_eq!(OutputFormat::Cbz.extension(), "cbz");
         // Files from before EPUB existed have no such choice.
         let old: ConversionSettings = serde_json::from_str(r#"{"format":"Xtch"}"#).unwrap();
         assert_eq!(old.output(), OutputFormat::Xtch);
