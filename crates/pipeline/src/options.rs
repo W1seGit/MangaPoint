@@ -35,7 +35,7 @@ pub fn process_options_for(
 /// way the settings say) for a reader that shows four, and the full grays,
 /// which it shows as it can, for one that shows more.
 pub fn output_depth(device: &DeviceProfile, conversion: &ConversionSettings) -> Depth {
-    if conversion.epub {
+    if conversion.pictures() {
         if device.gray_levels <= 4 {
             Depth::Two
         } else {

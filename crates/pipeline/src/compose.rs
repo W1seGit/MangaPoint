@@ -6,6 +6,7 @@
 //! a whole series is fine.
 
 use crate::conversion_cache;
+use crate::cbz::{CbzBuilder, CbzMeta};
 use crate::epub::{self, EpubBuilder, EpubMeta};
 use crate::error::{PipelineError, Result};
 use crate::export::{output_file_name, sanitize_component, ExportTarget, ExportedFile};
@@ -105,10 +106,11 @@ pub struct ExportOutcome {
     pub cached_chapters: usize,
 }
 
-/// A book being built: an XTC or XTCH, or an EPUB.
+/// A book being built: an XTC or XTCH, an EPUB, or a CBZ.
 enum Book {
     Xtc(XtcBuilder),
     Epub(Box<EpubBuilder>),
+    Cbz(Box<CbzBuilder>),
 }
 
 impl Book {
@@ -116,6 +118,7 @@ impl Book {
         match self {
             Book::Xtc(b) => b.page_count(),
             Book::Epub(b) => b.page_count(),
+            Book::Cbz(b) => b.page_count(),
         }
     }
 
@@ -124,11 +127,12 @@ impl Book {
         match self {
             Book::Xtc(b) => Ok(b.add_encoded_page(page)?),
             Book::Epub(b) => b.add_page(page),
+            Book::Cbz(b) => b.add_page(page),
         }
     }
 
     /// A chapter that starts at page `start` and runs to the last page so far.
-    fn chapter(&mut self, name: &str, start: usize) {
+    fn chapter(&mut self, name: &str, start: usize, number: Option<f64>) {
         match self {
             Book::Xtc(b) => {
                 let end = b.page_count().saturating_sub(1);
@@ -139,6 +143,7 @@ impl Book {
                 })
             }
             Book::Epub(b) => b.push_chapter(name, start),
+            Book::Cbz(b) => b.push_chapter(name, start, number),
         }
     }
 }
@@ -169,12 +174,12 @@ impl Drop for Scratch {
 /// what keeps a file under the size the reader can take in one go.
 fn pages_per_file(job: &ExportJob, format: Format) -> usize {
     let mut cap = job.max_pages_per_file;
-    let epub = job.series.settings.epub;
-    if epub {
+    // An EPUB is cut into parts a reader can load; a CBZ has no such limit.
+    if job.series.settings.epub && !job.series.settings.cbz {
         cap = cap.min(epub::MAX_PAGES);
     }
     if matches!(job.target, ExportTarget::WebDav { .. }) {
-        let by_size = if epub {
+        let by_size = if job.series.settings.pictures() {
             let depth = crate::options::output_depth(&job.device, &job.series.settings);
             (crate::export::WIFI_MAX_FILE_BYTES / epub::typical_page_bytes(depth)).max(1) as usize
         } else {
@@ -305,7 +310,7 @@ pub async fn export_series(
 
     // The series' own cover opens every file, so the reader lists it by its cover.
     let cover = if job.cover {
-        cover_page(files, &job.series.id, &chapters[0].key, &opts, settings.epub).await
+        cover_page(files, &job.series.id, &chapters[0].key, &opts, settings.pictures()).await
     } else {
         None
     };
@@ -336,7 +341,26 @@ pub async fn export_series(
         if open.is_none() {
             let spool = job.work_dir.join(unique_name("spool"));
             scratch.0.push(spool.clone());
-            let book = if settings.epub {
+            let book = if settings.cbz {
+                let info = job.series.info.as_ref();
+                Book::Cbz(Box::new(CbzBuilder::create(
+                    &spool,
+                    CbzMeta {
+                        series: job.series.title.clone(),
+                        language: job.language.clone(),
+                        rtl: settings.direction == converter::xtc::ReadDirection::RightToLeft,
+                        summary: info.map(|i| i.description.clone()).unwrap_or_default(),
+                        author: info.map(|i| i.author.clone()).unwrap_or_default(),
+                        artist: info.map(|i| i.artist.clone()).unwrap_or_default(),
+                        genres: info.map(|i| i.genres.clone()).unwrap_or_default(),
+                        status: info.map(|i| i.status.clone()).unwrap_or_default(),
+                        sources: info
+                            .map(|i| i.source_names.iter().map(|(_, n)| n.clone()).collect())
+                            .unwrap_or_default(),
+                        created: now_secs(),
+                    },
+                )?))
+            } else if settings.epub {
                 Book::Epub(Box::new(EpubBuilder::create(
                     &spool,
                     EpubMeta {
@@ -366,7 +390,7 @@ pub async fn export_series(
                 book,
 
                 Volume {
-                    temp: if settings.epub { spool.clone() } else { PathBuf::new() },
+                    temp: if settings.pictures() { spool.clone() } else { PathBuf::new() },
                     group,
                     chapter_names: Vec::new(),
                     first_number: None,
@@ -384,7 +408,7 @@ pub async fn export_series(
         for image in &images {
             builder.add(image)?;
         }
-        builder.chapter(&chapter.name, start);
+        builder.chapter(&chapter.name, start, chapter.number);
         volume.chapter_names.push(chapter.name.clone());
         if volume.first_number.is_none() {
             volume.first_number = chapter.number;
@@ -501,8 +525,14 @@ async fn finish_volume(
                 .await
                 .map_err(|e| PipelineError::Upload(format!("writing the book was interrupted: {e}")))?
         }
-        // An EPUB has been written to its file as it grew; this closes it.
+        // An EPUB or a CBZ has been written to its file as it grew; this closes it.
         Book::Epub(builder) => tokio::task::spawn_blocking(move || {
+            (*builder).finish()?;
+            Ok(volume)
+        })
+        .await
+        .map_err(|e| PipelineError::Upload(format!("writing the book was interrupted: {e}")))?,
+        Book::Cbz(builder) => tokio::task::spawn_blocking(move || {
             (*builder).finish()?;
             Ok(volume)
         })
@@ -588,7 +618,7 @@ async fn convert_chapter(
         )));
     }
     let total = pages.len();
-    let cache_path = files.chapter_dir(series_id, &chapter.key).join(if settings.epub {
+    let cache_path = files.chapter_dir(series_id, &chapter.key).join(if settings.pictures() {
         conversion_cache::EPUB_FILE_NAME
     } else {
         conversion_cache::FILE_NAME
@@ -600,7 +630,7 @@ async fn convert_chapter(
         cancel.clone(),
     );
     let (width, height, format) = (opts.width, opts.height, settings.format);
-    let (epub, depth) = (settings.epub, opts.depth);
+    let (epub, depth) = (settings.pictures(), opts.depth);
     let crop_configuration = crops.chapter_configuration(&chapter.key);
     let lookup_crops = crop_configuration.clone();
     // A first export has no cache to look up. Hash its decoded snapshot
