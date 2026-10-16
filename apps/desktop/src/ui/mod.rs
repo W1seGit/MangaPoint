@@ -7,6 +7,7 @@ mod conversion;
 mod devices;
 mod download_dialog;
 mod tasks_page;
+mod update_dialog;
 mod export_page;
 mod hang;
 mod onboarding;
@@ -67,6 +68,11 @@ pub fn App() -> Element {
     use_hook(|| {
         spawn_forever(backend::boot(state, false));
     });
+    // An earlier update leaves nothing behind, and a new one is looked for once a day.
+    use_hook(|| {
+        crate::updates::clear_leftovers();
+        spawn_forever(update_dialog::check_at_startup(state));
+    });
     // Stop it when the window closes, so no process is left behind.
     use_wry_event_handler(|event, _| {
         if let Event::WindowEvent {
@@ -107,6 +113,7 @@ pub fn App() -> Element {
             ModalHost {}
             UnsavedHost {}
             download_dialog::DownloadDialogHost {}
+            update_dialog::UpdateDialogHost {}
             ToastHost {}
         }
     }

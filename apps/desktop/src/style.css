@@ -193,6 +193,20 @@ table.chapters td.name { overflow: hidden; text-overflow: ellipsis; max-width: 0
 .overlay { animation: fade-in 0.2s ease-out both; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
 .modal { animation: pop-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; padding: 22px; max-width: 460px; width: 100%; }
 .modal h2 { font-size: 1.15rem; }
+.update-modal { max-width: 500px; }
+.upd-top { display: flex; justify-content: center; margin: -4px 0 6px; }
+.update-modal h2, .update-modal > p { text-align: center; }
+.upd-cat { image-rendering: pixelated; shape-rendering: crispEdges; }
+.upd-arrow { animation: upd-bob 1s steps(1) infinite; }
+.upd-spark { animation: upd-twinkle 1.4s steps(1) infinite; }
+@keyframes upd-bob { 0% { transform: translateY(0); } 50% { transform: translateY(1px); } }
+@keyframes upd-twinkle { 0% { opacity: 1; } 50% { opacity: 0.15; } }
+.upd-notes { margin: 0 0 12px; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 5px; color: var(--text); font-size: 0.9rem; }
+.upd-notes li::marker { color: var(--muted); }
+.upd-skip { margin-top: 4px; }
+.upd-status { margin-top: 4px; }
+.upd-command { display: block; margin: 4px 0 8px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; font-size: 0.8rem; word-break: break-all; user-select: all; }
+@media (prefers-reduced-motion: reduce) { .upd-arrow, .upd-spark { animation: none; } }
 .modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
 /* ---- the cat ---- */

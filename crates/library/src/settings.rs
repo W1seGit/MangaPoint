@@ -479,6 +479,12 @@ pub struct Settings {
     pub page_quality: PageQuality,
     /// Show a system notification when a download or an export finishes.
     pub notifications: bool,
+    /// Look for a newer MangaPoint when the app starts (at most once a day).
+    pub update_check: bool,
+    /// When the app last looked for a newer version (seconds since the Unix epoch).
+    pub update_last_check: u64,
+    /// A version the user chose to skip. It is not offered again; a newer one is.
+    pub update_skipped: String,
     /// Clean (fades, one part after another) or snappy (pages just appear).
     pub animations: Animations,
     /// How each reader receives files, by device id.
@@ -538,6 +544,9 @@ impl Default for Settings {
             browser_support: false,
             page_quality: PageQuality::Save,
             notifications: true,
+            update_check: true,
+            update_last_check: 0,
+            update_skipped: String::new(),
             animations: Animations::Clean,
             reader_setups: BTreeMap::new(),
             download: DownloadSettings::default(),

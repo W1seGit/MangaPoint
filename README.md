@@ -169,6 +169,24 @@ System Settings → Privacy & Security, scroll to the bottom and press **Open An
 (macOS asks for an administrator's password). On macOS 14 and older, right-click
 the app and choose **Open** also works.
 
+### Updating
+
+Once a day, when it starts, MangaPoint asks GitHub whether a newer version is out. If
+there is, a small window shows what is new and offers **Update and restart**, **Later**,
+or **Skip this version** (it then stays quiet about that version, and speaks up again for
+the next one). **Settings → About → Check for updates** looks any time, and a switch there
+turns the daily check off. Nothing but the version question is sent.
+
+- **Windows, installed with the setup program:** the update downloads, is checked against
+  the release's SHA-256, and installs itself; MangaPoint closes and opens again on the new
+  version.
+- **Everything else** (the portable program, macOS, Linux): the file is downloaded and
+  checked, then handed to you: the disk image opens, the folder is shown, or the install
+  command is given. These cannot be replaced safely while running.
+
+Updating never touches your library, settings or engine, and the one downloaded file is
+removed the next time MangaPoint starts.
+
 ### First run
 
 The first start walks you through three steps:
@@ -205,6 +223,10 @@ MangaPoint keeps everything in one folder:
 Inside are your settings, library, downloaded pages (the download folder can be
 changed in **Settings → Downloads**), the engine, and `logs/mangapoint.log`
 (rolled over at 2 MB). To use another folder, set `MANGAPOINT_HOME`.
+
+The only things MangaPoint contacts are the sources you install, GitHub (for the engine,
+the source lists and the daily check for a newer version), and your reader over Wi-Fi if
+you use that.
 
 ## Build from source
 

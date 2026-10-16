@@ -317,55 +317,47 @@ pub fn SettingsPage() -> Element {
     }
 }
 
-/// The version of MangaPoint, and a button that looks for a newer one and,
-/// when there is one, turns into the button that installs it.
+/// The version of MangaPoint, a button that looks for a newer one (and opens the
+/// offer when there is one, even if that version was skipped), and the switch
+/// for looking when the app starts.
 #[component]
 fn UpdateRow() -> Element {
+    let state = use_context::<AppState>();
     let mut update = use_signal(|| UpdateState::Idle);
+    let checks = state.settings.read().update_check;
     let note = match update() {
         UpdateState::Idle => format!("MangaPoint {VERSION}"),
         UpdateState::Checking => format!("MangaPoint {VERSION}. Looking for a newer version\u{2026}"),
         UpdateState::UpToDate => format!("MangaPoint {VERSION}. This is the newest version."),
         UpdateState::Available { ref version } => format!("MangaPoint {VERSION}. Version {version} is out."),
-        UpdateState::Installing => format!("MangaPoint {VERSION}. Getting the new version\u{2026}"),
         UpdateState::Failed(ref why) => format!("MangaPoint {VERSION}. {why}"),
     };
     rsx! {
         Row { label: "Version", note,
-            {match update() {
-                UpdateState::Available { version } => rsx! {
-                    button { class: "btn primary",
-                        onclick: move |_| {
-                            let version = version.clone();
-                            spawn(async move {
-                                update.set(UpdateState::Installing);
-                                match updates::install(&version).await {
-                                    Ok(()) => update.set(UpdateState::UpToDate),
-                                    Err(why) => update.set(UpdateState::Failed(why)),
-                                }
-                            });
-                        },
-                        Icon { name: "download", size: 15 }
-                        "Update"
-                    }
+            button { class: "btn", disabled: matches!(update(), UpdateState::Checking),
+                onclick: move |_| {
+                    spawn(async move {
+                        update.set(UpdateState::Checking);
+                        match updates::check().await {
+                            Ok(Some(found)) => {
+                                update.set(UpdateState::Available { version: found.version.clone() });
+                                super::update_dialog::offer(state, found);
+                            }
+                            Ok(None) => update.set(UpdateState::UpToDate),
+                            Err(why) => update.set(UpdateState::Failed(why)),
+                        }
+                    });
                 },
-                state => rsx! {
-                    button { class: "btn", disabled: matches!(state, UpdateState::Checking | UpdateState::Installing),
-                        onclick: move |_| {
-                            spawn(async move {
-                                update.set(UpdateState::Checking);
-                                match updates::check().await {
-                                    Ok(Some(version)) => update.set(UpdateState::Available { version }),
-                                    Ok(None) => update.set(UpdateState::UpToDate),
-                                    Err(why) => update.set(UpdateState::Failed(why)),
-                                }
-                            });
-                        },
-                        Icon { name: "refresh-cw", size: 15 }
-                        "Check for updates"
-                    }
-                },
-            }}
+                Icon { name: "refresh-cw", size: 15 }
+                "Check for updates"
+            }
+        }
+        Row { label: "Check when MangaPoint starts",
+            desc: "Once a day, MangaPoint asks GitHub whether a newer version is out, and offers it. Nothing else is sent. You can always check by hand above.",
+            Toggle {
+                on: checks,
+                onchange: move |on: bool| { let mut st = state.settings; st.write().update_check = on; state.save_settings(); },
+            }
         }
     }
 }

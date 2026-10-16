@@ -63,6 +63,9 @@ Name: "{autodesktop}\MangaPoint"; Filename: "{app}\MangaPoint.exe"; Tasks: deskt
 
 [Run]
 Filename: "{app}\MangaPoint.exe"; Description: "Start MangaPoint"; Flags: nowait postinstall skipifsilent
+; An update started from inside the app runs this installer silently with /RELAUNCH=1,
+; and MangaPoint opens again when it is done.
+Filename: "{app}\MangaPoint.exe"; Flags: nowait runasoriginaluser; Check: RelaunchRequested
 
 [Code]
 // MangaPoint draws its windows with Microsoft Edge WebView2. Windows 11 has it;
@@ -75,6 +78,11 @@ begin
     RegQueryStringValue(HKLM32, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', version) or
     RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', version);
   Result := Result and (version <> '') and (version <> '0.0.0.0');
+end;
+
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
 end;
 
 function InitializeSetup: Boolean;
