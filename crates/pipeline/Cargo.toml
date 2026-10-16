@@ -21,7 +21,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 zip = { version = "2", default-features = false, features = ["deflate"] }
 png = "0.17"
 # 0.39 needs Rust 1.95; 0.37 works on 1.90 and has the same Disks API.
-sysinfo = { version = "0.37", default-features = false, features = ["disk"] }
+sysinfo = { version = "0.39", default-features = false, features = ["disk"] }
 
 [dev-dependencies]
 catalog = { path = "../catalog", features = ["fake"] }
