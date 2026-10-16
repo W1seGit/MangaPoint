@@ -53,6 +53,10 @@ pub struct Source {
     pub name: String,
     pub lang: String,
     pub is_nsfw: bool,
+    /// The package of the extension that provides it. Its name need not be
+    /// the extension's (MANGA/in/UA comes from "MangaInUa").
+    #[serde(default)]
+    pub extension_pkg: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -307,17 +311,37 @@ impl SuwayomiClient {
 
     pub async fn list_sources(&self) -> Result<Vec<Source>> {
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Ext {
+            pkg_name: String,
+        }
+        #[derive(Deserialize)]
+        struct Node {
+            #[serde(flatten)]
+            source: Source,
+            extension: Option<Ext>,
+        }
+        #[derive(Deserialize)]
         struct Nodes {
-            nodes: Vec<Source>,
+            nodes: Vec<Node>,
         }
         #[derive(Deserialize)]
         struct R {
             sources: Nodes,
         }
         let r: R = self
-            .graphql("{ sources(first:1000) { nodes { id name lang isNsfw } } }")
+            .graphql(
+                "{ sources(first:1000) { nodes { id name lang isNsfw extension { pkgName } } } }",
+            )
             .await?;
-        Ok(r.sources.nodes)
+        Ok(r.sources
+            .nodes
+            .into_iter()
+            .map(|n| Source {
+                extension_pkg: n.extension.map(|e| e.pkg_name),
+                ..n.source
+            })
+            .collect())
     }
 
     pub async fn browse(&self, source_id: &str, kind: &Browse, page: u32) -> Result<BrowsePage> {

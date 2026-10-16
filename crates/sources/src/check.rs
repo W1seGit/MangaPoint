@@ -276,6 +276,7 @@ mod tests {
             name: id.into(),
             lang: "en".into(),
             is_nsfw: false,
+            extension_pkg: None,
         }
     }
 

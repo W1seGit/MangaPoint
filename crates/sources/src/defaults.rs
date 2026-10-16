@@ -4,6 +4,7 @@
 //! search, chapters, page list, real page image) against Suwayomi v2.4.2366
 //! on 2026-10-11. Sources that need a FlareSolverr service (Manganato,
 //! Mangakakalot) are left out because the app cannot make them work alone.
+//! The Ukrainian sources passed the same test on 2026-10-16.
 
 /// Keiyoushi's extension store, the largest Mihon-compatible one.
 pub const KEIYOUSHI_INDEX: &str = "https://github.com/keiyoushi/extensions/raw/repo/index.pb";
@@ -46,6 +47,7 @@ impl DefaultSource {
 }
 
 const VERIFIED: &str = "2026-10-11";
+const VERIFIED_UK: &str = "2026-10-16";
 
 pub const DEFAULTS: &[DefaultSource] = &[
     DefaultSource {
@@ -128,6 +130,69 @@ pub const DEFAULTS: &[DefaultSource] = &[
         requires: Requires::Nothing,
         reference_title: None,
         verified_on: VERIFIED,
+    },
+    DefaultSource {
+        id: "uk.honeymanga",
+        site: "https://honey-manga.com.ua",
+        name: "HoneyManga",
+        description: "Large Ukrainian catalog of manga, manhwa and manhua.",
+        requires: Requires::Nothing,
+        reference_title: None,
+        verified_on: VERIFIED_UK,
+    },
+    DefaultSource {
+        id: "uk.mangainua",
+        site: "https://manga.in.ua",
+        name: "MANGA/in/UA",
+        description: "Ukrainian translations of popular manga, with long chapter lists.",
+        requires: Requires::Nothing,
+        reference_title: None,
+        verified_on: VERIFIED_UK,
+    },
+    DefaultSource {
+        id: "uk.zenko",
+        site: "https://zenko.online",
+        name: "Zenko",
+        description: "Ukrainian manga and manhwa. Fast.",
+        requires: Requires::Nothing,
+        reference_title: None,
+        verified_on: VERIFIED_UK,
+    },
+    DefaultSource {
+        id: "uk.pureskill",
+        site: "https://mangarama.com.ua",
+        name: "Mangarama",
+        description: "Ukrainian translations, mostly manhwa.",
+        requires: Requires::Nothing,
+        reference_title: None,
+        verified_on: VERIFIED_UK,
+    },
+    DefaultSource {
+        id: "uk.dgmanga",
+        site: "https://dgmanga.app",
+        name: "DGManga",
+        description: "Ukrainian manga translations. Fast.",
+        requires: Requires::Nothing,
+        reference_title: None,
+        verified_on: VERIFIED_UK,
+    },
+    DefaultSource {
+        id: "uk.faust",
+        site: "https://faust-web.com",
+        name: "Faust",
+        description: "Ukrainian manhwa and manga.",
+        requires: Requires::Nothing,
+        reference_title: None,
+        verified_on: VERIFIED_UK,
+    },
+    DefaultSource {
+        id: "uk.comixtopia",
+        site: "https://comixtopia.in.ua",
+        name: "ComixTopia",
+        description: "Ukrainian translations of comics and manga.",
+        requires: Requires::Nothing,
+        reference_title: None,
+        verified_on: VERIFIED_UK,
     },
 ];
 

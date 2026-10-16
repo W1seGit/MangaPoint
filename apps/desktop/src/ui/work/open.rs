@@ -237,6 +237,7 @@ pub(super) fn members_from_saved(
                     name: s.source_name.clone(),
                     lang: s.lang.clone(),
                     is_nsfw: false,
+                    extension_pkg: None,
                 },
                 &catalog::MangaSummary {
                     id: s.manga_id,

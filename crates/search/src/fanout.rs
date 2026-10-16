@@ -190,6 +190,7 @@ mod tests {
             name: format!("Source {id}"),
             lang: "en".into(),
             is_nsfw: false,
+            extension_pkg: None,
         }
     }
 

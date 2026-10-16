@@ -1079,6 +1079,7 @@ mod tests {
                     name: format!("Source {source}"),
                     lang: "en".into(),
                     is_nsfw: false,
+                    extension_pkg: None,
                 },
                 &catalog::MangaSummary {
                     id: manga_id,
@@ -1390,6 +1391,7 @@ mod sort_tests {
                     name: format!("Source {source}"),
                     lang: "en".into(),
                     is_nsfw: false,
+                    extension_pkg: None,
                 },
                 &catalog::MangaSummary {
                     id: 1,

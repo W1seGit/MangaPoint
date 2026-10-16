@@ -1,6 +1,6 @@
 //! Live end-to-end check against a real Suwayomi (needs network).
 //!
-//!   cargo run -p catalog --example smoke -- <work-dir> [--browser]
+//!   cargo run -p catalog --example smoke -- <work-dir> [--browser] [--only uk.zenko,uk.honeymanga]
 //!
 //! Provisions Suwayomi into `<work-dir>/suwayomi`, starts it with data in
 //! `<work-dir>/data`, installs the starter sources and, for each, runs the
@@ -29,6 +29,13 @@ const STARTERS: &[(&str, &str)] = &[
     ("MangaKatana", "en.mangakatana"),
     ("Asura Scans", "en.asurascans"),
     ("Flame Comics", "en.flamecomics"),
+    ("HoneyManga", "uk.honeymanga"),
+    ("MANGA/in/UA", "uk.mangainua"),
+    ("Zenko", "uk.zenko"),
+    ("Mangarama", "uk.pureskill"),
+    ("DGManga", "uk.dgmanga"),
+    ("Faust", "uk.faust"),
+    ("ComixTopia", "uk.comixtopia"),
     // Expected to need the browser / FlareSolverr:
     ("Comikey", "all.comikey"),
     ("Manganato", "en.manganelo"),
@@ -44,12 +51,23 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = std::env::args().skip(1);
+    let args: Vec<String> = std::env::args().skip(1).collect();
     let work: PathBuf = args
-        .next()
-        .ok_or("usage: smoke <work-dir> [--browser]")?
+        .first()
+        .ok_or("usage: smoke <work-dir> [--browser] [--only a,b]")?
         .into();
-    let browser_on = args.any(|a| a == "--browser");
+    let browser_on = args.iter().any(|a| a == "--browser");
+    // `--only uk.zenko,uk.honeymanga`: check just these starters.
+    let only: Option<Vec<&str>> = args
+        .iter()
+        .position(|a| a == "--only")
+        .and_then(|i| args.get(i + 1))
+        .map(|list| list.split(',').collect());
+    let starters: Vec<(&str, &str)> = STARTERS
+        .iter()
+        .copied()
+        .filter(|(_, suffix)| only.as_ref().is_none_or(|o| o.contains(suffix)))
+        .collect();
 
     println!("== provisioning Suwayomi");
     let asset = current_asset()?;
@@ -119,7 +137,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         extensions.len() > 100,
         "the extension repo did not load; see the server log"
     );
-    for (name, suffix) in STARTERS {
+    for &(name, suffix) in &starters {
         let pkg = format!("eu.kanade.tachiyomi.extension.{suffix}");
         if extensions.iter().any(|e| e.pkg_name == pkg) {
             server.client.install_extension(&pkg).await?;
@@ -131,16 +149,14 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("== per-source check (popular -> search -> chapters -> pages -> image)");
     let mut passed = 0;
-    for (name, suffix) in STARTERS {
-        // Match the source by its extension: sources are named after it.
-        let pkg_name = extensions
-            .iter()
-            .find(|e| e.pkg_name.ends_with(suffix))
-            .map(|e| e.name.clone());
-        let Some(pkg_name) = pkg_name else { continue };
+    for &(name, suffix) in &starters {
+        // Match the source by the extension that provides it.
+        let pkg = format!("eu.kanade.tachiyomi.extension.{suffix}");
+        let lang = suffix.split('.').next().unwrap_or("all");
         let Some(source) = sources
             .iter()
-            .find(|s| s.name == pkg_name && (s.lang == "en" || s.lang == "all"))
+            .filter(|s| s.extension_pkg.as_deref() == Some(pkg.as_str()))
+            .find(|s| s.lang == lang || s.lang == "en" || s.lang == "all")
         else {
             println!("{name:<14} no matching source after install");
             continue;

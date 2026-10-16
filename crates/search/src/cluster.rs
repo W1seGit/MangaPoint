@@ -129,6 +129,7 @@ pub(crate) mod test_support {
                 name: format!("Source {source}"),
                 lang: "en".into(),
                 is_nsfw: false,
+                extension_pkg: None,
             },
             &MangaSummary {
                 id,

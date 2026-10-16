@@ -168,8 +168,9 @@ impl<'a, C: Catalog> SourceManager<'a, C> {
     }
 }
 
-/// Match an extension to the source it provides: same name, and the
-/// extension's own language, or `language` for multi-language ("all") ones.
+/// Match an extension to the source it provides: one from that extension
+/// (or, when the server does not say, of the same name), in the extension's
+/// own language, or `language` for multi-language ("all") ones.
 pub fn source_for_extension<'s>(
     ext: &Extension,
     sources: &'s [Source],
@@ -180,14 +181,15 @@ pub fn source_for_extension<'s>(
     } else {
         &ext.lang
     };
+    let from_ext = |s: &&Source| match &s.extension_pkg {
+        Some(pkg) => *pkg == ext.pkg_name,
+        None => s.name == ext.name,
+    };
     sources
         .iter()
-        .find(|s| s.name == ext.name && s.lang == want)
-        .or_else(|| {
-            sources
-                .iter()
-                .find(|s| s.name == ext.name && s.lang == "all")
-        })
+        .filter(from_ext)
+        .find(|s| s.lang == want)
+        .or_else(|| sources.iter().filter(from_ext).find(|s| s.lang == "all"))
 }
 
 /// Only plain https addresses are accepted as extension stores.
@@ -402,6 +404,33 @@ mod tests {
             .unwrap()
             .default
             .is_none());
+    }
+
+    #[test]
+    fn a_source_named_unlike_its_extension_is_found_by_package() {
+        let ext = Extension {
+            pkg_name: "eu.kanade.tachiyomi.extension.uk.mangainua".into(),
+            name: "MangaInUa".into(),
+            lang: "uk".into(),
+            is_installed: true,
+            is_nsfw: false,
+            has_update: false,
+        };
+        let source = |id: &str, name: &str, pkg: Option<&str>| Source {
+            id: id.into(),
+            name: name.into(),
+            lang: "uk".into(),
+            is_nsfw: false,
+            extension_pkg: pkg.map(String::from),
+        };
+        let sources = [
+            source("other", "MangaInUa", Some("eu.kanade.tachiyomi.extension.uk.other")),
+            source("inua", "MANGA/in/UA", Some("eu.kanade.tachiyomi.extension.uk.mangainua")),
+        ];
+        assert_eq!(source_for_extension(&ext, &sources, "en").unwrap().id, "inua");
+        // A server that does not name the package: matched by name, as before.
+        let unnamed = [source("plain", "MangaInUa", None)];
+        assert_eq!(source_for_extension(&ext, &unnamed, "en").unwrap().id, "plain");
     }
 
     #[tokio::test]

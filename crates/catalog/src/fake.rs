@@ -86,6 +86,7 @@ impl FakeCatalog {
             name: name.into(),
             lang: lang.into(),
             is_nsfw: false,
+            extension_pkg: Some(pkg.into()),
         });
     }
 
