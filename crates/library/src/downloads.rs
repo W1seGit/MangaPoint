@@ -165,6 +165,24 @@ pub struct DownloadedSeries {
     /// When it was added to the library (seconds since the Unix epoch).
     pub added_at: u64,
     pub updated_at: u64,
+    /// Set for a series made by importing files instead of downloading: its
+    /// details can be edited by hand, and it has no source to look at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportInfo>,
+}
+
+/// The `source_id` of the chapters of an imported series: they came from files
+/// on this computer, not from a source, so there is nothing to download again.
+pub const IMPORT_SOURCE: &str = "import";
+
+/// Where an imported series came from.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ImportInfo {
+    /// The names of the files and folders it was made from, as a record.
+    pub files: Vec<String>,
+    /// When it was first imported (seconds since the Unix epoch).
+    pub at: u64,
 }
 
 /// The title of the made-up series the Export screen shows when nothing has
@@ -175,6 +193,11 @@ impl DownloadedSeries {
     /// The made-up series of sample pages.
     pub fn is_sample(&self) -> bool {
         self.title == SAMPLE_TITLE
+    }
+
+    /// Made by importing files.
+    pub fn is_imported(&self) -> bool {
+        self.imported.is_some()
     }
 
     pub fn bytes(&self) -> u64 {
@@ -228,6 +251,7 @@ impl LibraryDb {
                     chapter_total: None,
                     added_at: now,
                     updated_at: now,
+                    imported: None,
                 });
                 self.series.len() - 1
             }
@@ -282,9 +306,131 @@ impl LibraryDb {
                 chapter_total: None,
                 added_at: now,
                 updated_at: now,
+                imported: None,
             }),
         }
         id
+    }
+
+    /// The id the next imported chapter takes: imported chapters have no id
+    /// from a source, so they count down from -1 and cannot meet a real one.
+    pub fn next_import_chapter_id(&self) -> i64 {
+        self.series
+            .iter()
+            .flat_map(|s| &s.chapters)
+            .filter(|c| c.source_id == IMPORT_SOURCE)
+            .map(|c| c.chapter_id)
+            .min()
+            .map_or(-1, |lowest| lowest.min(0) - 1)
+    }
+
+    /// A title no other series of the library has, by adding " (2)", " (3)"
+    /// and so on, for importing something that is not the series it shares
+    /// a name with.
+    pub fn free_title(&self, title: &str) -> String {
+        let mut candidate = title.to_string();
+        let mut n = 2;
+        while self.find(&series_id(&candidate)).is_some() {
+            candidate = format!("{title} ({n})");
+            n += 1;
+        }
+        candidate
+    }
+
+    /// Put imported chapters into a series, which is made if it is not there.
+    /// What `info` says fills in what the series does not have yet (nothing
+    /// that was edited is replaced). Returns the series id.
+    pub fn add_imported(
+        &mut self,
+        title: &str,
+        defaults: &ConversionSettings,
+        info: Option<SeriesInfo>,
+        files: Vec<String>,
+        chapters: Vec<DownloadedChapter>,
+        now: u64,
+    ) -> String {
+        let id = series_id(title);
+        if self.find(&id).is_none() {
+            self.series.push(DownloadedSeries {
+                id: id.clone(),
+                title: title.to_string(),
+                settings: defaults.clone(),
+                added_at: now,
+                updated_at: now,
+                imported: Some(ImportInfo { files: Vec::new(), at: now }),
+                ..Default::default()
+            });
+        }
+        for chapter in chapters {
+            self.record_chapter(title, defaults, chapter, now);
+        }
+        let Some(series) = self.series.iter_mut().find(|s| s.id == id) else {
+            return id;
+        };
+        if let Some(from) = series.imported.as_mut() {
+            for file in files {
+                if !from.files.contains(&file) {
+                    from.files.push(file);
+                }
+            }
+        }
+        if let Some(new) = info {
+            match series.info.as_mut() {
+                None => series.info = Some(new),
+                Some(have) => {
+                    if have.description.is_empty() {
+                        have.description = new.description;
+                    }
+                    if have.author.is_empty() {
+                        have.author = new.author;
+                    }
+                    if have.artist.is_empty() {
+                        have.artist = new.artist;
+                    }
+                    if have.status.is_empty() {
+                        have.status = new.status;
+                    }
+                    if have.genres.is_empty() {
+                        have.genres = new.genres;
+                    }
+                    have.has_cover |= new.has_cover;
+                }
+            }
+        }
+        id
+    }
+
+    /// Change what one chapter is called and numbered. Its folder (the key)
+    /// stays, so the saved pages are not touched. True if there was such a chapter.
+    pub fn set_chapter_details(
+        &mut self,
+        series_id: &str,
+        key: &str,
+        number: Option<f64>,
+        name: &str,
+    ) -> bool {
+        let Some(series) = self.series.iter_mut().find(|s| s.id == series_id) else {
+            return false;
+        };
+        let Some(chapter) = series.chapters.iter_mut().find(|c| c.key == key) else {
+            return false;
+        };
+        chapter.number = number;
+        chapter.name = name.to_string();
+        series.chapters.sort_by(|a, b| {
+            a.number
+                .unwrap_or(f64::MAX)
+                .total_cmp(&b.number.unwrap_or(f64::MAX))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        true
+    }
+
+    /// Rename a series. Its id, and so its folder, stay as they are.
+    pub fn set_title(&mut self, series_id: &str, title: &str) {
+        if let Some(s) = self.series.iter_mut().find(|s| s.id == series_id) {
+            s.title = title.trim().to_string();
+        }
     }
 
     /// Note more sources a series can be found at.
@@ -580,6 +726,90 @@ mod tests {
             bytes: 1000,
             downloaded_at: 5,
         }
+    }
+
+    fn imported(number: Option<f64>, id: i64, name: &str) -> DownloadedChapter {
+        DownloadedChapter {
+            source_id: IMPORT_SOURCE.into(),
+            ..chapter(number, id, name)
+        }
+    }
+
+    #[test]
+    fn imported_chapters_count_down_from_minus_one_so_they_never_meet_a_real_id() {
+        let mut db = LibraryDb::default();
+        assert_eq!(db.next_import_chapter_id(), -1);
+        let defaults = ConversionSettings::default();
+        db.add_imported("Mine", &defaults, None, vec!["a.cbz".into()], vec![imported(Some(1.0), -1, "One")], 5);
+        db.add_imported("Mine", &defaults, None, vec!["b.cbz".into()], vec![imported(Some(2.0), -2, "Two")], 6);
+        assert_eq!(db.next_import_chapter_id(), -3);
+        // A downloaded chapter's id does not count.
+        db.record_chapter("Other", &defaults, chapter(Some(1.0), 900, "x"), 1);
+        assert_eq!(db.next_import_chapter_id(), -3);
+    }
+
+    #[test]
+    fn an_imported_series_is_marked_collects_its_files_and_fills_only_what_is_empty() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let info = |author: &str, description: &str| SeriesInfo {
+            author: author.into(),
+            description: description.into(),
+            ..Default::default()
+        };
+        let id = db.add_imported(
+            "Mine",
+            &defaults,
+            Some(info("A. Writer", "")),
+            vec!["a.cbz".into()],
+            vec![imported(Some(1.0), -1, "One")],
+            5,
+        );
+        let series = db.find(&id).unwrap();
+        assert!(series.is_imported() && !series.is_sample());
+        assert_eq!(series.imported.as_ref().unwrap().at, 5);
+        // More pages later: the details that were edited stay, the empty ones fill in.
+        db.set_info(&id, info("Edited", ""));
+        db.add_imported(
+            "Mine",
+            &defaults,
+            Some(info("Someone else", "A story.")),
+            vec!["a.cbz".into(), "b.cbz".into()],
+            vec![imported(Some(2.0), -2, "Two")],
+            9,
+        );
+        let series = db.find(&id).unwrap();
+        assert_eq!(series.chapters.len(), 2);
+        assert_eq!(series.imported.as_ref().unwrap().files, ["a.cbz", "b.cbz"]);
+        let info = series.info.as_ref().unwrap();
+        assert_eq!((info.author.as_str(), info.description.as_str()), ("Edited", "A story."));
+        // A title already taken by another series gets a free one.
+        db.record_chapter("Taken", &defaults, chapter(Some(1.0), 1, "x"), 1);
+        assert_eq!(db.free_title("Taken"), "Taken (2)");
+        assert_eq!(db.free_title("Fresh"), "Fresh");
+    }
+
+    #[test]
+    fn a_chapter_can_be_renamed_and_renumbered_without_moving_its_pages() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported(
+            "Mine",
+            &defaults,
+            None,
+            vec![],
+            vec![imported(Some(1.0), -1, "One"), imported(None, -2, "Extra")],
+            5,
+        );
+        assert!(db.set_chapter_details(&id, "c1", Some(7.0), "Seven"));
+        let series = db.find(&id).unwrap();
+        assert_eq!(series.chapters[1].key, "u-2", "unnumbered last");
+        assert_eq!(series.chapters[0].key, "c1", "the folder name did not change");
+        assert_eq!((series.chapters[0].number, series.chapters[0].name.as_str()), (Some(7.0), "Seven"));
+        assert!(!db.set_chapter_details(&id, "nope", None, ""));
+        db.set_title(&id, "  Renamed ");
+        assert_eq!(db.find(&id).unwrap().title, "Renamed");
+        assert_eq!(db.find(&id).unwrap().id, id, "the id stays");
     }
 
     #[test]

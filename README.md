@@ -74,6 +74,20 @@ you delete a series or only some of its chapters.
 <img src="docs/screenshots/tasks.png" alt="The Tasks page with a download in progress" width="780" />
 </div>
 
+### Bring in what you already have
+
+Import comics, books and pictures from your own computer: **CBZ, ZIP, CBR, RAR,
+CB7, 7Z, EPUB and PDF** books, **folders** (a folder of folders is a series of
+chapters, a folder of archives has one chapter in each) and loose **JPG, PNG,
+WEBP, GIF and TIFF** pictures. A book's own details are read where it has them
+(its title, author, description, genres, direction, cover and chapters), and a
+dialog shows what was found so you can correct names and chapter numbers before
+anything is written. Imported series are tagged **Imported** in the Library,
+their details and cover can be edited by hand, and **Import pages** adds more
+chapters to one, numbering them from their names or the next free number. They
+export like any other series. PDFs must have pictures for pages (scans, comics);
+MOBI and AZW3 are locked formats and are not read.
+
 ### Convert for your reader's own screen
 
 Pages are made at your reader's exact size and density, so nothing is scaled
@@ -319,6 +333,8 @@ in the [changelog](CHANGELOG.md).
   `ComicInfo.xml`; apart from the cover, XTC, XTCH and EPUB files do not yet carry the
   author or description.
 - macOS builds are unsigned.
+- Import reads PDFs only when their pages are pictures (it does not draw text or vector
+  pages), and cannot open password-protected archives, MOBI or AZW3 files.
 
 ## Responsible use
 
@@ -338,6 +354,8 @@ which devices it works with.
   Mihon/Tachiyomi extension community, which make the sources possible.
 - [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader), the
   open firmware for the Xteink readers.
+- The [UnRAR](https://www.rarlab.com/rar_add.htm) source code, which reads RAR and CBR
+  archives (its licence is in `THIRD-PARTY-LICENSES.md`).
 - [Dioxus](https://dioxuslabs.com), the UI framework, and the Rust crates this
   project stands on (see `Cargo.lock`).
 

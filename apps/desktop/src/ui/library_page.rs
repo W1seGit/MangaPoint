@@ -3,7 +3,7 @@
 
 use super::widgets::{open_folder, Chip, Cover, EmptyState, Icon, NoCover};
 use super::work::{
-    ensure_series_info, fill_chapter_totals, load_saved_cover, open_export, open_plan, open_series_from_library,
+    start_import, ensure_series_info, fill_chapter_totals, load_saved_cover, open_export, open_plan, open_series_from_library,
     saved_cover_key,
 };
 use crate::logic::{human_bytes, library_order, plural, LibrarySort, LibraryView};
@@ -19,6 +19,8 @@ pub fn LibraryPage() -> Element {
     let mut filter = use_signal(String::new);
     let mut picked = use_signal(HashSet::<String>::new);
     let mut more = use_signal(|| false);
+    // The menu of the Import button.
+    let mut import_menu = use_signal(|| false);
     // The poster whose menu is open.
     let mut menu = use_signal(|| None::<String>);
     // Fetch the details and covers of series that do not have them yet, and
@@ -151,6 +153,26 @@ pub fn LibraryPage() -> Element {
                 },
                 Icon { name: "folder-open", size: 16 } "Open folder"
             }
+            div { class: "menu-anchor import-anchor",
+                button {
+                    class: "btn", title: "Bring in comics, books and pictures you already have",
+                    onclick: move |_| import_menu.set(!import_menu()),
+                    Icon { name: "file-up", size: 16 } "Import"
+                }
+                if import_menu() {
+                    div { class: "menu-scrim", onclick: move |_| import_menu.set(false) }
+                    div { class: "menu down",
+                        button { class: "menu-item",
+                            onclick: move |_| { import_menu.set(false); start_import(state, None, false); },
+                            Icon { name: "file-up", size: 15 } "Choose files…"
+                        }
+                        button { class: "menu-item",
+                            onclick: move |_| { import_menu.set(false); start_import(state, None, true); },
+                            Icon { name: "folder-open", size: 15 } "Choose a folder…"
+                        }
+                    }
+                }
+            }
         }
 
         if library.series.is_empty() {
@@ -159,6 +181,7 @@ pub fn LibraryPage() -> Element {
                 message: "Find a series and add it to your library. You can download its chapters now or whenever you like.",
                 shelf: true,
                 button { class: "btn primary", onclick: move |_| state.go(Page::Search), Icon { name: "search", size: 16 } "Find a series" }
+                button { class: "btn", onclick: move |_| start_import(state, None, false), Icon { name: "file-up", size: 16 } "Import files" }
             }
         } else {
             div { class: "lib-tools",
@@ -324,11 +347,13 @@ pub fn LibraryPage() -> Element {
                                                 Icon { name: "file-down", size: 15 } "Export…"
                                             }
                                         }
-                                        button { class: "menu-item",
-                                            onclick: move |_| { menu.set(None); open_plan(state, vec![plan_id.clone()]); },
-                                            Icon { name: "download", size: 15 } "Download chapters…"
+                                        if !s.is_imported() {
+                                            button { class: "menu-item",
+                                                onclick: move |_| { menu.set(None); open_plan(state, vec![plan_id.clone()]); },
+                                                Icon { name: "download", size: 15 } "Download chapters…"
+                                            }
                                         }
-                                        if chapters > 0 {
+                                        if chapters > 0 && !s.is_imported() {
                                             button { class: "menu-item danger",
                                                 onclick: move |_| { menu.set(None); state.ask(delete_modal.clone()); },
                                                 Icon { name: "trash", size: 15 } "Delete downloads"
@@ -356,7 +381,9 @@ pub fn LibraryPage() -> Element {
                                         span { class: "muted small poster-about", title: "{about}", "{about}" }
                                     }
                                     div { class: "poster-tags",
-                                        if chapters > 0 {
+                                        if s.is_imported() {
+                                            Chip { text: "Imported", kind: Some("accent".to_string()) }
+                                        } else if chapters > 0 {
                                             Chip { text: "Downloaded", kind: Some("ok".to_string()) }
                                         } else {
                                             Chip { text: "Saved for later" }

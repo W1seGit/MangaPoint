@@ -44,6 +44,15 @@ pub fn ChaptersTab() -> Element {
     let Some(ws) = state.workspace.read().clone() else {
         return rsx! {};
     };
+    // Files imported have no source: only what is saved here, which can be edited.
+    if state
+        .library
+        .read()
+        .find(&ws.series_id)
+        .is_some_and(|s| s.is_imported())
+    {
+        return rsx! { super::downloads::ImportedChapters {} };
+    }
     let mut range_text = use_signal(String::new);
     let mut range_error = use_signal(|| None::<String>);
     // What the list needs of the queue: only this series. A download of another

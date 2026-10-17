@@ -10,6 +10,7 @@ mod tasks_page;
 mod update_dialog;
 mod export_page;
 mod hang;
+mod import;
 mod onboarding;
 mod walker;
 mod icons;
@@ -64,6 +65,8 @@ pub fn App() -> Element {
             crate::notify::finished(state, "Export finished", "The Greatest Estate Developer: Exported 1 file(s).");
         }
     });
+    // Debug builds can start an import from a file dropped in a folder (for trying it).
+    use_hook(|| import::watch_for_test_imports(state));
     // Start the catalog server once, when the app opens.
     use_hook(|| {
         spawn_forever(backend::boot(state, false));
@@ -100,6 +103,7 @@ pub fn App() -> Element {
         style { "{CSS}" }
         style { {include_str!("../page-editor.css")} }
         style { {include_str!("../editor-controls.css")} }
+        style { {include_str!("../import.css")} }
         div { class: "app", "data-motion": if snappy { "snappy" } else { "clean" },
             {match boot {
                 BootState::Failed(message) => rsx! { Failed { message } },
@@ -114,6 +118,7 @@ pub fn App() -> Element {
             UnsavedHost {}
             download_dialog::DownloadDialogHost {}
             update_dialog::UpdateDialogHost {}
+            import::ImportHost {}
             ToastHost {}
         }
     }

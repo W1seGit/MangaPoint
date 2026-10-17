@@ -55,6 +55,7 @@ Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "S
 [Files]
 Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "MangaPoint.exe"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\THIRD-PARTY-LICENSES.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

@@ -1,0 +1,56 @@
+/* Importing books and pictures. */
+.modal.import { max-width: 860px; width: min(860px, 100%); max-height: 90vh; display: flex; flex-direction: column; }
+.import-body { overflow-y: auto; min-height: 0; padding: 4px 2px 2px; display: flex; flex-direction: column; gap: 12px; }
+.import-wait { padding: 30px 0; }
+.import-failures { margin: 0; }
+.import-combine { margin: 0 0 2px; color: var(--muted); }
+.import-book { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); animation: import-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; transition: opacity 0.2s ease, transform 0.2s ease; flex: none; }
+.import-book.leaving { opacity: 0; transform: translateX(24px) scale(0.98); pointer-events: none; }
+@keyframes import-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.import-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.import-title { flex: 1; min-width: 0; font-weight: 600; }
+.import-title-fixed { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-file { flex: 0 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.import-remove { flex: none; }
+/* A card folds by easing its body's height between 0 and its own. */
+.import-fold-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.28s ease; }
+.import-book.open .import-fold-body { grid-template-rows: 1fr; }
+.import-fold-inner { overflow: hidden; min-height: 0; }
+.import-book-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; padding: 4px 12px 12px; }
+.import-book-body:not(:has(.import-cover)) { grid-template-columns: minmax(0, 1fr); }
+.import-cover { position: relative; width: 112px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); align-self: start; }
+.import-cover img, .import-cover .cover, .import-cover .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.import-cover-change { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 0; background: rgba(0, 0, 0, 0.62); color: #fff; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; opacity: 0; transition: opacity 0.16s ease; }
+.import-cover:hover .import-cover-change, .import-cover-change:focus-visible { opacity: 1; }
+.import-main { min-width: 0; }
+.import-count { margin: 2px 0 0; }
+.import-warning { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--warn); }
+.import-chapters { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 220px; overflow-y: auto; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.import-chapter { display: grid; grid-template-columns: auto 74px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.import-chapter.off .import-name, .import-chapter.off .import-number { opacity: 0.5; }
+.import-chapter .import-place { grid-column: 1; max-width: 190px; }
+.import-number { width: 74px; text-align: center; }
+.import-name { min-width: 0; }
+.import-pages { white-space: nowrap; min-width: 62px; text-align: right; }
+.import-progress { padding: 10px 0 4px; }
+.import-done { display: flex; gap: 10px; align-items: flex-start; padding: 8px 2px; color: var(--ok); }
+.import-done > div { color: var(--text); }
+.import-done strong { color: var(--text); }
+
+/* The fields of a series' details, in the import dialog and on the edit page. */
+.info-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-top: 12px; }
+.info-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.info-field > span:first-child { color: var(--muted); font-size: 0.8rem; font-weight: 600; }
+.info-field.wide { grid-column: 1 / -1; }
+.info-field input[type="text"], .info-field select, .info-field textarea { width: 100%; }
+.info-field textarea { resize: vertical; min-height: 84px; font: inherit; }
+.info-cover-row { display: flex; gap: 14px; align-items: flex-end; }
+.info-cover-art { width: 84px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); flex: none; }
+.info-cover-art img, .info-cover-art .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.info-cover-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.edit-info { margin-top: 4px; }
+.edit-info .info-fields { margin-top: 0; }
+.edit-info-actions { display: flex; gap: 10px; margin-top: 16px; }
+.chapter-edit { width: 100%; padding: 5px 8px; }
+.chapter-edit.num { width: 64px; text-align: center; }
+.import-anchor { display: inline-block; }

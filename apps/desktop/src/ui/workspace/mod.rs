@@ -3,6 +3,7 @@
 mod chapters;
 pub(super) mod crop_editor;
 mod downloads;
+mod edit_info;
 mod overview;
 pub(super) mod preview;
 

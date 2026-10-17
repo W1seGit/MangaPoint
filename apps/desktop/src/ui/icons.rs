@@ -83,6 +83,9 @@ pub fn body(name: &str) -> Option<&'static str> {
         "move-horizontal" => {
             Some(r#"<path d="m18 8 4 4-4 4" /> <path d="M2 12h20" /> <path d="m6 8-4 4 4 4" />"#)
         }
+        "file-up" => Some(
+            r#"<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /> <path d="M14 2v4a2 2 0 0 0 2 2h4" /> <path d="M12 12v6" /> <path d="m15 15-3-3-3 3" />"#,
+        ),
         "external-link" => Some(
             r#"<path d="M15 3h6v6" /> <path d="M10 14 21 3" /> <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />"#,
         ),

@@ -31,6 +31,8 @@ pub enum PipelineError {
     Upload(String),
     #[error("the job has no chapters")]
     EmptyJob,
+    #[error("import: {0}")]
+    Import(String),
 }
 
 pub type Result<T> = std::result::Result<T, PipelineError>;
