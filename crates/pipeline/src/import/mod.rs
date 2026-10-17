@@ -241,7 +241,28 @@ impl ImportBook {
             merged.warnings.extend(book.warnings);
             merged.label = format!("{} + {}", merged.label, book.label);
         }
+        merged.renumber_repeats();
         Some(merged)
+    }
+
+    /// Books put together can each have a "Chapter 1". A chapter whose number
+    /// an earlier one has is given a fresh number after the highest, so they
+    /// stay separate chapters in the order they were put together.
+    fn renumber_repeats(&mut self) {
+        let mut seen: Vec<f64> = Vec::new();
+        for chapter in &mut self.chapters {
+            match chapter.number {
+                Some(n) if seen.iter().any(|s| (s - n).abs() < 0.0005) => {
+                    if chapter.name == format!("Chapter {}", plain(n)) {
+                        chapter.name.clear();
+                    }
+                    chapter.number = None;
+                }
+                Some(n) => seen.push(n),
+                None => {}
+            }
+        }
+        self.number_chapters(&[]);
     }
 
     /// Give the chapters that have no number one, after the numbers that are
@@ -581,9 +602,14 @@ pub fn commit(
             let Some(places) = map.get(key) else {
                 return Ok(());
             };
+            let mut bytes = bytes;
+            let mut left = places.len();
             for &(c, p) in places {
+                left -= 1;
+                // The last place takes the bytes; a page used twice is copied.
+                let own = if left == 0 { std::mem::take(&mut bytes) } else { bytes.clone() };
                 let plan = &planned[c];
-                match accept(bytes.clone()) {
+                match accept(own) {
                     Some(good) => {
                         let path = files.page_path(target.series_id, &plan.key, plan.base + p);
                         std::fs::write(&path, good).map_err(|e| io(&path, e))?;

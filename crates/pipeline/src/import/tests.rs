@@ -559,6 +559,18 @@ fn books_merge_with_their_pages_pointing_at_the_right_source() {
 }
 
 #[test]
+fn books_with_the_same_chapter_numbers_are_numbered_on_when_put_together() {
+    let a = pages_book("a.cbz", &[(Some(1.0), "Chapter 1", 1), (Some(2.0), "Chapter 2", 1)]);
+    let b = pages_book("b.cbz", &[(Some(1.0), "Chapter 1", 1), (Some(2.0), "A named one", 1)]);
+    let merged = ImportBook::merge(vec![a, b]).unwrap();
+    let chapters: Vec<_> = merged.chapters.iter().map(|c| (c.number, c.name.as_str())).collect();
+    assert_eq!(
+        chapters,
+        [(Some(1.0), "Chapter 1"), (Some(2.0), "Chapter 2"), (Some(3.0), "Chapter 3"), (Some(4.0), "A named one")]
+    );
+}
+
+#[test]
 fn chapters_without_numbers_are_numbered_after_the_ones_the_series_has() {
     let mut book = pages_book("loose", &[(None, "Prologue", 1), (Some(5.0), "Five", 1), (None, "Finale", 1)]);
     book.number_chapters(&[1.0, 2.0, 9.5]);

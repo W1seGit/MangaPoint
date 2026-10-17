@@ -803,9 +803,9 @@ mod tests {
         );
         assert!(db.set_chapter_details(&id, "c1", Some(7.0), "Seven"));
         let series = db.find(&id).unwrap();
-        assert_eq!(series.chapters[0].key, "u-2", "unnumbered last");
-        assert_eq!(series.chapters[1].key, "c1", "the folder name did not change");
-        assert_eq!((series.chapters[1].number, series.chapters[1].name.as_str()), (Some(7.0), "Seven"));
+        assert_eq!(series.chapters[1].key, "u-2", "unnumbered last");
+        assert_eq!(series.chapters[0].key, "c1", "the folder name did not change");
+        assert_eq!((series.chapters[0].number, series.chapters[0].name.as_str()), (Some(7.0), "Seven"));
         assert!(!db.set_chapter_details(&id, "nope", None, ""));
         db.set_title(&id, "  Renamed ");
         assert_eq!(db.find(&id).unwrap().title, "Renamed");
