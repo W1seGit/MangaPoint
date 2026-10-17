@@ -430,7 +430,7 @@ dependencies = [
 
 [[package]]
 name = "catalog"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "flate2",
@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "converter"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "device-profiles",
  "image",
@@ -900,7 +900,7 @@ dependencies = [
 
 [[package]]
 name = "device-profiles"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "serde",
 ]
@@ -2718,7 +2718,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "library"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "converter",
  "device-profiles",
@@ -2889,7 +2889,7 @@ dependencies = [
 
 [[package]]
 name = "mangapoint"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "base64 0.22.1",
  "catalog",
@@ -3687,7 +3687,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipeline"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "catalog",
  "converter",
@@ -4500,7 +4500,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "search"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "catalog",
  "futures-util",
@@ -4860,7 +4860,7 @@ dependencies = [
 
 [[package]]
 name = "sources"
-version = "1.0.1"
+version = "1.1.0"
 dependencies = [
  "catalog",
  "futures-util",
