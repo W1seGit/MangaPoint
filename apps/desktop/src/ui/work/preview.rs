@@ -180,7 +180,8 @@ pub(super) async fn decode_chapter(
         digest.update((bytes.len() as u64).to_le_bytes());
         digest.update(bytes);
     }
-    let cache_key = format!("{cache_key}/{:x}", digest.finalize());
+    let fingerprint: String = digest.finalize().iter().map(|b| format!("{b:02x}")).collect();
+    let cache_key = format!("{cache_key}/{fingerprint}");
     if let Some((k, grays)) = DECODED.lock().ok().and_then(|g| g.clone()) {
         if k == cache_key {
             return Ok((cache_key, grays));
