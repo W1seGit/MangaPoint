@@ -597,6 +597,9 @@ pub struct AppState {
     pub export_plan: Signal<ExportPlan>,
     /// The manual crop being dragged, for the page on screen.
     pub crop_draft: Signal<library::CropRect>,
+    /// The groups of the Edit controls that are open. They all start folded,
+    /// and stay as they were left when the screen is visited again.
+    pub open_groups: Signal<Vec<&'static str>>,
     /// The running (or just finished) download or export.
     pub job: Signal<Option<JobView>>,
     /// The exports lined up behind the running one, in the order they go.
@@ -690,6 +693,7 @@ impl AppState {
             export_opts: sig(ExportOpts::default()),
             export_plan: sig(ExportPlan::default()),
             crop_draft: sig(library::CropRect::default()),
+            open_groups: sig(Vec::new()),
             job: sig(None),
             export_waiting: sig(Vec::new()),
             sources_version: sig(0),

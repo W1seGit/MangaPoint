@@ -304,8 +304,6 @@ pub fn ConversionControls(
     let trim = change.clone();
     let reset = change.clone();
 
-    // One group is open at a time, so the others stay as one line each.
-    let open_group = use_signal(|| None::<&'static str>);
     let layout_note = layout_summary(&c);
     let spreads_note = spreads_summary(&c);
     let crop_note = crop_summary(&c, manual);
@@ -315,7 +313,7 @@ pub fn ConversionControls(
 
     rsx! {
         div { class: "{class} mp-conversion",
-            ConversionGroup { title: "Layout", summary: layout_note, open_group,
+            ConversionGroup { title: "Layout", summary: layout_note,
                 div { class: "mp-choice-grid", role: "group", aria_label: "Page layout", {layout_tiles.into_iter()} }
                 if strips {
                     h4 { class: "mp-control-heading",
@@ -351,7 +349,7 @@ pub fn ConversionControls(
                 }
                 div { class: "mp-choice-grid two", role: "group", aria_label: "Orientation", {orientation_tiles.into_iter()} }
             }
-            ConversionGroup { title: "Spreads and zoom", summary: spreads_note, open_group,
+            ConversionGroup { title: "Spreads and zoom", summary: spreads_note,
                 h4 { class: "mp-control-heading", "Double-page spreads" }
                 div { class: "mp-choice-grid", role: "group", aria_label: "Double-page spreads", {spread_tiles.into_iter()} }
                 h4 { class: "mp-control-heading",
@@ -384,7 +382,7 @@ pub fn ConversionControls(
                     }
                 }
             }
-            ConversionGroup { title: "Crop", summary: crop_note, open_group, reveal: manual && manual_crop_active.unwrap_or(false),
+            ConversionGroup { title: "Crop", summary: crop_note, reveal: manual && manual_crop_active.unwrap_or(false),
                 h4 { class: "mp-control-heading",
                     "Cropping"
                     Help { text: "Manual cuts the edges: with percentages, or with handles on the page in the editor, for one page, a chapter or the whole series." }
@@ -451,7 +449,7 @@ pub fn ConversionControls(
                     }
                 }
             }
-            ConversionGroup { title: "Look", summary: look_note, open_group,
+            ConversionGroup { title: "Look", summary: look_note,
                 div { class: "field",
                     label { "Contrast ({c.contrast})"
                         Help { text: "50 leaves the page as it is. A little higher (55) usually looks better on e-paper." }
@@ -495,29 +493,36 @@ pub fn ConversionControls(
 }
 
 /// One folded part of the controls: a header that opens it, and when it is
-/// closed a line saying what is chosen inside. Only one is open at a time
-/// (`open_group` holds which). `reveal` opens it when something outside asks
-/// to (a crop being edited).
+/// closed a line saying what is chosen inside. Any number can be open; which
+/// are is kept in the app's state, so it survives leaving the screen. `reveal`
+/// opens it when something outside asks to (a crop being edited).
 #[component]
 fn ConversionGroup(
     title: &'static str,
     summary: String,
-    open_group: Signal<Option<&'static str>>,
     reveal: Option<bool>,
     children: Element,
 ) -> Element {
-    let mut open_group = open_group;
+    let state = use_context::<AppState>();
+    let mut open_groups = state.open_groups;
     let reveal = reveal.unwrap_or(false);
     use_effect(use_reactive!(|reveal| {
-        if reveal {
-            open_group.set(Some(title));
+        if reveal && !open_groups.peek().contains(&title) {
+            open_groups.write().push(title);
         }
     }));
-    let shown = open_group() == Some(title);
+    let shown = open_groups.read().contains(&title);
     rsx! {
         section { class: if shown { "mp-group open" } else { "mp-group" },
             button { class: "mp-group-head", r#type: "button", "aria-expanded": "{shown}",
-                onclick: move |_| open_group.set(if shown { None } else { Some(title) }),
+                onclick: move |_| {
+                    let mut groups = open_groups.write();
+                    if let Some(at) = groups.iter().position(|g| *g == title) {
+                        groups.remove(at);
+                    } else {
+                        groups.push(title);
+                    }
+                },
                 Icon { name: "chevron-down", size: 15 }
                 span { class: "mp-group-title", "{title}" }
                 if !shown {
