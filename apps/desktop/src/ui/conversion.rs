@@ -3,7 +3,7 @@
 
 use crate::state::AppState;
 use crate::ui::widgets::Help;
-use converter::process::{CropMode, Layout, Margins, SpreadMode, StripCut};
+use converter::process::{CropMode, Layout, Margins, SpreadMode, StripCut, ZoomMode, ZOOM_FIT, ZOOM_MAX};
 use converter::xtc::ReadDirection;
 use converter::Dither;
 use dioxus::prelude::*;
@@ -18,6 +18,35 @@ fn percent(raw: &str) -> u8 {
         .parse::<u8>()
         .unwrap_or(0)
         .min(Margins::MAX_PERCENT)
+}
+
+/// What the zoom box holds: "Fit" or a percentage.
+fn zoom_text(zoom: u16) -> String {
+    if zoom <= ZOOM_FIT {
+        "Fit".to_string()
+    } else {
+        format!("{zoom}%")
+    }
+}
+
+/// A zoom typed in the box: "Fit" (or nothing), "150", "150%" or "1.5x", held
+/// to 100 (Fit) through 300. Anything else leaves the zoom as it was.
+fn parse_zoom(raw: &str, current: u16) -> u16 {
+    let t = raw.trim().to_lowercase();
+    if t.is_empty() || t == "fit" {
+        return ZOOM_FIT;
+    }
+    let (digits, times) = match t.strip_suffix('x') {
+        Some(d) => (d.trim(), true),
+        None => (t.trim_end_matches('%').trim(), false),
+    };
+    match digits.parse::<f64>() {
+        Ok(v) if v.is_finite() => {
+            let percent = if times { v * 100.0 } else { v };
+            (percent.round().clamp(ZOOM_FIT as f64, ZOOM_MAX as f64)) as u16
+        }
+        _ => current,
+    }
 }
 
 fn number(raw: &str, fallback: u8, max: u8) -> u8 {
@@ -54,6 +83,11 @@ pub fn ConversionControls(
         move |e: Event<FormData>| ch(edit, e.checked().to_string())
     };
 
+    let on_zoom = on(|s, v| s.zoom = parse_zoom(&v, s.zoom));
+    let ch = change.clone();
+    let zoom_pieces = move |_| ch(|s, _| s.zoom_mode = ZoomMode::Tile, String::new());
+    let ch = change.clone();
+    let zoom_crop = move |_| ch(|s, _| s.zoom_mode = ZoomMode::Crop, String::new());
     let on_overlap = on(|s, v| s.overlap_percent = number(&v, 8, 30));
     let on_contrast = on(|s, v| s.contrast = number(&v, 55, 100));
     let on_levels = on_check(|s, v| s.auto_levels = v == "true");
@@ -281,6 +315,17 @@ pub fn ConversionControls(
             div { class: "mp-choice-grid two", role: "group", aria_label: "Reading direction", {direction_tiles.into_iter()} }
             h4 { class: "mp-control-heading", "Double-page spreads" }
             div { class: "mp-choice-grid", role: "group", aria_label: "Double-page spreads", {spread_tiles.into_iter()} }
+            h4 { class: "mp-control-heading",
+                "Zoom"
+                Help { text: "Type Fit to show the whole page, or a percentage from 100 to 300 to zoom in. Cut into pieces shows the zoomed page as several screens in reading order, so nothing is lost. Crop to centre shows one screen from the middle and cuts the edges off. Long strips always fit the screen width." }
+            }
+            div { class: "mp-zoom",
+                input { class: "mp-zoom-box", aria_label: "Zoom", r#type: "text", placeholder: "Fit", value: "{zoom_text(c.zoom)}", onchange: on_zoom }
+                div { class: "seg", role: "tablist", aria_label: "What zooming does",
+                    button { r#type: "button", role: "tab", class: if c.zoom_mode == ZoomMode::Tile { "on" } else { "" }, aria_selected: c.zoom_mode == ZoomMode::Tile, onclick: zoom_pieces, "Cut into pieces" }
+                    button { r#type: "button", role: "tab", class: if c.zoom_mode == ZoomMode::Crop { "on" } else { "" }, aria_selected: c.zoom_mode == ZoomMode::Crop, onclick: zoom_crop, "Crop to centre" }
+                }
+            }
             if strips {
                 h4 { class: "mp-control-heading",
                     "Where long strips are cut"

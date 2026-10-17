@@ -20,8 +20,9 @@
 
 use crate::gray::{GrayImage, LevelImage};
 use crate::process::{
-    border_median, crop_bounds, crop_rect, finish, fit, letterbox_top, resize, rotate_cw,
-    trim_bounds, trim_threshold, CropMode, Layout, Margins, ProcessOptions, SpreadMode, StripCut,
+    border_median, crop_bounds, crop_rect, finish, letterbox_top, resize, rotate_cw, show, tile,
+    tile_order, trim_bounds, trim_threshold, zoom_grid, CropMode, Layout, Margins, ProcessOptions,
+    SpreadMode, StripCut, ZoomMode,
 };
 use crate::xtc::ReadDirection;
 
@@ -40,6 +41,45 @@ pub enum Part {
     Rotated,
     /// A physical spread half: 0 is left, 1 is right, independent of reading direction.
     Half(u8),
+    /// One screen of a zoomed-in piece: its column and row counted from the
+    /// left and top of the zoomed piece, whatever the reading direction.
+    Tile { of: Piece, col: u8, row: u8 },
+}
+
+/// The part of an image that a zoom is applied to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Piece {
+    Whole,
+    Rotated,
+    Half(u8),
+}
+
+/// The piece of `img` that `part` shows, before it is scaled to the screen.
+fn piece(img: &GrayImage, of: Piece) -> GrayImage {
+    match of {
+        Piece::Whole => img.clone(),
+        Piece::Rotated => rotate_cw(img),
+        Piece::Half(n) => {
+            let mid = spine(img);
+            if n == 1 {
+                crop_rect(img, mid, 0, img.width - mid, img.height)
+            } else {
+                crop_rect(img, 0, 0, mid, img.height)
+            }
+        }
+    }
+}
+
+/// How big a piece is, without cutting it out.
+fn piece_size(img: &GrayImage, of: Piece) -> (u32, u32) {
+    match of {
+        Piece::Whole => (img.width, img.height),
+        Piece::Rotated => (img.height, img.width),
+        Piece::Half(n) => {
+            let mid = spine(img);
+            (if n == 1 { img.width - mid } else { mid }, img.height)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -273,6 +313,35 @@ fn plan_paged(images: &[GrayImage], opts: &ProcessOptions) -> ChapterPlan {
             }
         };
         for &part in parts {
+            // Zoomed in past Fit, a piece takes several screens, listed in
+            // reading order. A piece that still fits one screen is as before.
+            if opts.zoom > crate::process::ZOOM_FIT && opts.zoom_mode == ZoomMode::Tile {
+                let of = match part {
+                    Part::Rotated => Piece::Rotated,
+                    Part::Half(n) => Piece::Half(n),
+                    _ => Piece::Whole,
+                };
+                let (w, h) = piece_size(img, of);
+                let grid = zoom_grid(w, h, opts);
+                if grid.cols * grid.rows > 1 {
+                    for (col, row) in tile_order(grid.cols, grid.rows, opts.direction) {
+                        pages.push(PlannedPage {
+                            source: Source::Image {
+                                index,
+                                part: Part::Tile {
+                                    of,
+                                    col: col as u8,
+                                    row: row as u8,
+                                },
+                            },
+                            unit_top: 0,
+                            unit_height: 0,
+                            landscape,
+                        });
+                    }
+                    continue;
+                }
+            }
             pages.push(PlannedPage {
                 source: Source::Image { index, part },
                 unit_top: 0,
@@ -428,15 +497,17 @@ pub fn render_page(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOption
 
 fn paged_screen(img: &GrayImage, part: Part, opts: &ProcessOptions) -> GrayImage {
     match part {
-        Part::Whole => fit(img, opts.width, opts.height),
-        Part::Rotated => fit(&rotate_cw(img), opts.width, opts.height),
-        Part::Half(n) => {
-            let mid = spine(img);
-            let left = crop_rect(img, 0, 0, mid, img.height);
-            let right = crop_rect(img, mid, 0, img.width - mid, img.height);
-            let half = if n == 1 { right } else { left };
-            fit(&half, opts.width, opts.height)
-        }
+        Part::Whole => show(img, opts),
+        Part::Rotated => show(&rotate_cw(img), opts),
+        Part::Half(_) => show(&piece(img, half_of(part)), opts),
+        Part::Tile { of, col, row } => tile(&piece(img, of), opts, col as u32, row as u32),
+    }
+}
+
+fn half_of(part: Part) -> Piece {
+    match part {
+        Part::Half(n) => Piece::Half(n),
+        _ => Piece::Whole,
     }
 }
 
@@ -837,6 +908,7 @@ mod tests {
 #[cfg(test)]
 mod manual_crop_tests {
     use super::*;
+    use crate::process::fit;
     use crate::{Depth, Dither};
     #[test]
     fn manual_crop_uses_source_before_fit_and_zero_preserves_pixels() {
@@ -922,16 +994,9 @@ pub fn page_source(prepared: &Prepared, page: &PlannedPage, _opts: &ProcessOptio
             let img = &images[index];
             match part {
                 Part::Whole => img.clone(),
-                Part::Rotated => rotate_cw(img),
-                Part::Half(n) => {
-                    let mid = spine(img);
-                    let right = n == 1;
-                    if right {
-                        crop_rect(img, mid, 0, img.width - mid, img.height)
-                    } else {
-                        crop_rect(img, 0, 0, mid, img.height)
-                    }
-                }
+                Part::Rotated => piece(img, Piece::Rotated),
+                Part::Half(n) => piece(img, Piece::Half(n)),
+                Part::Tile { of, .. } => piece(img, of),
             }
         }
         _ => unreachable!("a plan belongs to its prepared chapter"),
@@ -980,8 +1045,162 @@ pub fn render_page_cropped(
         let w = (cut.width as f64 * scale).round().max(1.0) as u32;
         let h = (cut.height as f64 * scale).round().max(1.0) as u32;
         letterbox_top(&resize(&cut, w, h), opts.width, opts.height)
+    } else if let Source::Image {
+        part: Part::Tile { col, row, .. },
+        ..
+    } = page.source
+    {
+        tile(&cut, opts, col as u32, row as u32)
     } else {
-        fit(&cut, opts.width, opts.height)
+        show(&cut, opts)
     };
     finish(screen, opts)
+}
+
+#[cfg(test)]
+mod zoom_tests {
+    use super::*;
+    use crate::{Depth, Dither};
+
+    /// A 480 x 800 page of four flat quadrants: top left black, top right
+    /// 85, bottom left 170, bottom right white. At zoom 200 each quadrant
+    /// fills one screen exactly.
+    fn quadrants() -> GrayImage {
+        GrayImage::from_fn(480, 800, |x, y| match (x >= 240, y >= 400) {
+            (false, false) => 0,
+            (true, false) => 85,
+            (false, true) => 170,
+            (true, true) => 255,
+        })
+        .unwrap()
+    }
+
+    fn opts(zoom: u16, mode: ZoomMode, direction: ReadDirection) -> ProcessOptions {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
+        o.layout = Layout::Manga;
+        o.crop = CropMode::Full;
+        o.auto_levels = false;
+        o.contrast = 50;
+        o.dither = Dither::Threshold;
+        o.spread = SpreadMode::Split;
+        o.zoom = zoom;
+        o.zoom_mode = mode;
+        o.direction = direction;
+        o
+    }
+
+    fn middle(page: &LevelImage) -> u8 {
+        page.get(page.width / 2, page.height / 2)
+    }
+
+    #[test]
+    fn a_page_zoomed_to_twice_fit_takes_four_screens() {
+        let o = opts(200, ZoomMode::Tile, ReadDirection::LeftToRight);
+        let grid = zoom_grid(480, 800, &o);
+        assert_eq!((grid.width, grid.height, grid.cols, grid.rows), (960, 1600, 2, 2));
+        // At Fit, and a little past it on a page that still fits, one screen.
+        let fit_grid = zoom_grid(480, 800, &opts(100, ZoomMode::Tile, ReadDirection::LeftToRight));
+        assert_eq!((fit_grid.cols, fit_grid.rows), (1, 1));
+    }
+
+    #[test]
+    fn zoomed_screens_follow_the_reading_direction_and_show_each_part_once() {
+        for (direction, want) in [
+            // Left to right: top row left then right, then the bottom row.
+            (ReadDirection::LeftToRight, [0u8, 85, 170, 255]),
+            // Right to left: each row starts at its right.
+            (ReadDirection::RightToLeft, [85, 0, 255, 170]),
+        ] {
+            let o = opts(200, ZoomMode::Tile, direction);
+            let pages = convert_chapter(&[quadrants()], &o);
+            assert_eq!(pages.len(), 4, "{direction:?}");
+            for page in &pages {
+                assert_eq!((page.width, page.height), (480, 800));
+            }
+            let got: Vec<u8> = pages.iter().map(middle).collect();
+            assert_eq!(got, want, "{direction:?}");
+            // Every screen is one quadrant and nothing else: no repeats.
+            for page in &pages {
+                let first = page.levels[0];
+                assert!(page.levels.iter().all(|&l| l == first));
+            }
+        }
+    }
+
+    #[test]
+    fn the_plan_lists_each_screen_so_previews_and_exports_agree() {
+        let images = [quadrants(), quadrants()];
+        let o = opts(200, ZoomMode::Tile, ReadDirection::RightToLeft);
+        let prepared = prepare(&images, &o);
+        let plan = plan(&prepared, &o);
+        assert_eq!(plan.pages.len(), 8);
+        let first = plan.pages[0].source;
+        assert_eq!(
+            first,
+            Source::Image {
+                index: 0,
+                part: Part::Tile { of: Piece::Whole, col: 1, row: 0 }
+            }
+        );
+        let rendered = render_all_cropped(&prepared, &plan.pages, &o, &[]);
+        assert_eq!(rendered, convert_chapter(&images, &o));
+    }
+
+    #[test]
+    fn cropping_keeps_the_middle_and_loses_the_edges() {
+        let o = opts(200, ZoomMode::Crop, ReadDirection::LeftToRight);
+        let pages = convert_chapter(&[quadrants()], &o);
+        assert_eq!(pages.len(), 1);
+        let page = &pages[0];
+        // The window straddles all four quadrants, one in each corner.
+        assert_eq!(page.get(10, 10), 0);
+        assert_eq!(page.get(470, 10), 85);
+        assert_eq!(page.get(10, 790), 170);
+        assert_eq!(page.get(470, 790), 255);
+    }
+
+    #[test]
+    fn fit_is_unchanged_whatever_the_zoom_mode() {
+        let plain = convert_chapter(&[quadrants()], &opts(100, ZoomMode::Tile, ReadDirection::RightToLeft));
+        let crop = convert_chapter(&[quadrants()], &opts(100, ZoomMode::Crop, ReadDirection::RightToLeft));
+        assert_eq!(plain.len(), 1);
+        assert_eq!(plain, crop);
+    }
+
+    #[test]
+    fn each_half_of_a_split_spread_is_zoomed_on_its_own() {
+        // 900 x 450: two 450 x 450 halves, each 1.07 x the screen width at Fit
+        // and 1.6 x at 150%, which is two screens wide and one tall.
+        let spread = GrayImage::new(900, 450, 200).unwrap();
+        let o = opts(150, ZoomMode::Tile, ReadDirection::RightToLeft);
+        let prepared = prepare(std::slice::from_ref(&spread), &o);
+        let plan = plan(&prepared, &o);
+        let parts: Vec<Part> = plan
+            .pages
+            .iter()
+            .map(|p| match p.source {
+                Source::Image { part, .. } => part,
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(
+            parts,
+            vec![
+                Part::Tile { of: Piece::Half(1), col: 1, row: 0 },
+                Part::Tile { of: Piece::Half(1), col: 0, row: 0 },
+                Part::Tile { of: Piece::Half(0), col: 1, row: 0 },
+                Part::Tile { of: Piece::Half(0), col: 0, row: 0 },
+            ]
+        );
+        assert_eq!(convert_chapter(&[spread], &o).len(), 4);
+    }
+
+    #[test]
+    fn a_manual_crop_of_a_zoomed_screen_still_gives_a_full_screen() {
+        let o = opts(200, ZoomMode::Tile, ReadDirection::LeftToRight);
+        let prepared = prepare(&[quadrants()], &o);
+        let plan = plan(&prepared, &o);
+        let shown = render_page_cropped(&prepared, &plan.pages[0], &o, [0.0, 0.0, 0.25, 0.25]);
+        assert_eq!((shown.width, shown.height), (480, 800));
+    }
 }

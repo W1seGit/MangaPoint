@@ -544,13 +544,20 @@ mod crop_tests {
 
 /// Crop identity follows source content, never its position in the page list.
 pub fn crop_page_key(page: &PlannedPage) -> String {
-    use converter::plan::{Part, Source};
+    use converter::plan::{Part, Piece, Source};
     match page.source {
         Source::Image { index, part } => {
+            let name = |piece| match piece {
+                Piece::Whole => "whole".to_string(),
+                Piece::Rotated => "rotated".to_string(),
+                Piece::Half(n) => format!("half:{n}"),
+            };
             let part = match part {
-                Part::Whole => "whole".into(),
-                Part::Rotated => "rotated".into(),
-                Part::Half(n) => format!("half:{n}"),
+                Part::Whole => name(Piece::Whole),
+                Part::Rotated => name(Piece::Rotated),
+                Part::Half(n) => name(Piece::Half(n)),
+                // Each screen of a zoomed page is its own page to crop.
+                Part::Tile { of, col, row } => format!("{}:tile{col}x{row}", name(of)),
             };
             format!("image:{index}:{part}")
         }

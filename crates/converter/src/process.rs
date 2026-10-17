@@ -66,6 +66,29 @@ pub enum SpreadMode {
     Rotate,
 }
 
+/// What happens to the part of a page that no longer fits the screen once
+/// it is zoomed in past Fit.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ZoomMode {
+    /// Cut the zoomed page into screen-sized pieces, shown in reading order.
+    /// Nothing is lost; a page becomes several reader pages.
+    #[default]
+    Tile,
+    /// Keep the middle of the zoomed page and cut the rest off.
+    Crop,
+}
+
+impl ZoomMode {
+    pub fn is_tile(&self) -> bool {
+        *self == ZoomMode::Tile
+    }
+}
+
+/// Zoom of 100 is Fit: the whole page visible. Past it the page is scaled up.
+pub const ZOOM_FIT: u16 = 100;
+pub const ZOOM_MAX: u16 = 300;
+
 /// How a long strip is cut into screen-sized pages where there is no blank
 /// gap to cut in.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -112,6 +135,10 @@ pub struct ProcessOptions {
     /// its native portrait frame displays them upright when it is held
     /// turned counter-clockwise. The pages come out `height` by `width`.
     pub turn: bool,
+    /// How far a paged image is scaled up from Fit, in percent: 100 is Fit,
+    /// 300 the most. Long strips are always fitted to the screen width.
+    pub zoom: u16,
+    pub zoom_mode: ZoomMode,
 }
 
 impl ProcessOptions {
@@ -145,6 +172,8 @@ impl ProcessOptions {
             dither: Dither::FloydSteinberg,
             depth,
             turn: false,
+            zoom: ZOOM_FIT,
+            zoom_mode: ZoomMode::Tile,
         }
     }
 }
@@ -208,11 +237,11 @@ pub fn process_page(img: &GrayImage, opts: &ProcessOptions) -> Vec<LevelImage> {
 fn page_screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
     let landscape = img.width as f32 > img.height as f32 * 1.1;
     if !landscape {
-        return vec![fit(img, opts.width, opts.height)];
+        return screens(img, opts);
     }
     match opts.spread {
-        SpreadMode::Fit => vec![fit(img, opts.width, opts.height)],
-        SpreadMode::Rotate => vec![fit(&rotate_cw(img), opts.width, opts.height)],
+        SpreadMode::Fit => screens(img, opts),
+        SpreadMode::Rotate => screens(&rotate_cw(img), opts),
         SpreadMode::Split => {
             let mid = img.width / 2;
             let left = crop_rect(img, 0, 0, mid, img.height);
@@ -222,12 +251,122 @@ fn page_screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
             } else {
                 (left, right)
             };
-            vec![
-                fit(&first, opts.width, opts.height),
-                fit(&second, opts.width, opts.height),
-            ]
+            let mut out = screens(&first, opts);
+            out.extend(screens(&second, opts));
+            out
         }
     }
+}
+
+/// How a page looks once zoomed: its scale, its size in screen pixels, and
+/// how many screens it takes in each direction.
+pub(crate) struct Grid {
+    pub scale: f64,
+    pub width: u32,
+    pub height: u32,
+    pub cols: u32,
+    pub rows: u32,
+}
+
+/// The zoom of a `w` x `h` page. At Fit the page is one screen; past it, the
+/// scaled page is as many screens wide and tall as it needs.
+pub(crate) fn zoom_grid(w: u32, h: u32, opts: &ProcessOptions) -> Grid {
+    let fit_scale = (opts.width as f64 / w.max(1) as f64).min(opts.height as f64 / h.max(1) as f64);
+    let zoom = opts.zoom.clamp(ZOOM_FIT, ZOOM_MAX);
+    let scale = fit_scale * zoom as f64 / ZOOM_FIT as f64;
+    let width = ((w as f64 * scale).round() as u32).max(1);
+    let height = ((h as f64 * scale).round() as u32).max(1);
+    Grid {
+        scale,
+        width,
+        height,
+        cols: width.div_ceil(opts.width).max(1),
+        rows: height.div_ceil(opts.height).max(1),
+    }
+}
+
+/// The screens of a tiled page in reading order, as `(column, row)` from the
+/// left and top: row by row, each row right to left for a right-to-left book.
+pub(crate) fn tile_order(cols: u32, rows: u32, direction: ReadDirection) -> Vec<(u32, u32)> {
+    let mut order = Vec::new();
+    for row in 0..rows {
+        for step in 0..cols {
+            let col = if direction == ReadDirection::RightToLeft {
+                cols - 1 - step
+            } else {
+                step
+            };
+            order.push((col, row));
+        }
+    }
+    order
+}
+
+/// Every screen a page makes: one at Fit or when cropping, and in tiling
+/// mode as many as the zoomed page takes.
+pub(crate) fn screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
+    if opts.zoom <= ZOOM_FIT || opts.zoom_mode != ZoomMode::Tile {
+        return vec![show(img, opts)];
+    }
+    let grid = zoom_grid(img.width, img.height, opts);
+    if grid.cols * grid.rows == 1 {
+        return vec![fit(img, opts.width, opts.height)];
+    }
+    tile_order(grid.cols, grid.rows, opts.direction)
+        .into_iter()
+        .map(|(col, row)| tile(img, opts, col, row))
+        .collect()
+}
+
+/// A page on one screen: fitted, or at its zoom with the middle kept.
+pub(crate) fn show(img: &GrayImage, opts: &ProcessOptions) -> GrayImage {
+    if opts.zoom > ZOOM_FIT && opts.zoom_mode == ZoomMode::Crop {
+        centre(img, opts)
+    } else {
+        fit(img, opts.width, opts.height)
+    }
+}
+
+/// The part of a zoomed page that lies in screen `(col, row)`. A screen that
+/// is smaller than the display (the pieces of a page are equal, so none is
+/// a sliver) is centred on white.
+pub(crate) fn tile(img: &GrayImage, opts: &ProcessOptions, col: u32, row: u32) -> GrayImage {
+    let grid = zoom_grid(img.width, img.height, opts);
+    let (col, row) = (col.min(grid.cols - 1), row.min(grid.rows - 1));
+    let x0 = grid.width * col / grid.cols;
+    let x1 = grid.width * (col + 1) / grid.cols;
+    let y0 = grid.height * row / grid.rows;
+    let y1 = grid.height * (row + 1) / grid.rows;
+    zoomed_region(img, opts, &grid, (x0, y0, x1, y1))
+}
+
+/// The middle of a zoomed page, as large as the screen shows.
+fn centre(img: &GrayImage, opts: &ProcessOptions) -> GrayImage {
+    let grid = zoom_grid(img.width, img.height, opts);
+    let (w, h) = (grid.width.min(opts.width), grid.height.min(opts.height));
+    let x0 = (grid.width - w) / 2;
+    let y0 = (grid.height - h) / 2;
+    zoomed_region(img, opts, &grid, (x0, y0, x0 + w, y0 + h))
+}
+
+/// The rectangle `(x0, y0, x1, y1)` of the zoomed page, drawn on a screen.
+/// Only the source pixels under it are resampled.
+fn zoomed_region(
+    img: &GrayImage,
+    opts: &ProcessOptions,
+    grid: &Grid,
+    (x0, y0, x1, y1): (u32, u32, u32, u32),
+) -> GrayImage {
+    let source = |a: u32, b: u32, limit: u32| {
+        let from = ((a as f64 / grid.scale).floor() as u32).min(limit - 1);
+        let to = ((b as f64 / grid.scale).ceil() as u32).clamp(from + 1, limit);
+        (from, to - from)
+    };
+    let (sx, sw) = source(x0, x1, img.width);
+    let (sy, sh) = source(y0, y1, img.height);
+    let region = crop_rect(img, sx, sy, sw, sh);
+    let piece = resize(&region, (x1 - x0).max(1), (y1 - y0).max(1));
+    letterbox(&piece, opts.width, opts.height)
 }
 
 /// Scale a tall strip to the screen width and cut it into overlapping slices.
@@ -550,6 +689,24 @@ mod tests {
         assert_eq!(page.get(479, 400), 0);
         assert_eq!(page.get(440, 400), 0);
         assert_eq!(page.get(0, 400), Depth::Two.max_level());
+    }
+
+    #[test]
+    fn the_single_page_path_zooms_like_the_chapter_path() {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
+        o.crop = CropMode::Full;
+        o.auto_levels = false;
+        o.contrast = 50;
+        o.dither = Dither::Threshold;
+        let page = GrayImage::from_fn(480, 800, |x, _| if x < 240 { 0 } else { 255 }).unwrap();
+        o.zoom = 200;
+        // Right to left: the right half first.
+        let pages = process_page(&page, &o);
+        assert_eq!(pages.len(), 4);
+        assert_eq!(pages[0].get(240, 400), 255);
+        assert_eq!(pages[1].get(240, 400), 0);
+        o.zoom_mode = ZoomMode::Crop;
+        assert_eq!(process_page(&page, &o).len(), 1);
     }
 
     #[test]

@@ -32,6 +32,8 @@ pub fn process_options_for(
         dither: conversion.dither,
         depth: output_depth(device, conversion),
         turn: sideways && !conversion.pictures(),
+        zoom: conversion.zoom_clamped(),
+        zoom_mode: conversion.zoom_mode,
     }
 }
 
@@ -86,6 +88,18 @@ mod tests {
         s.conversion.orientation = library::Orientation::Portrait;
         let o = process_options(&s);
         assert_eq!((o.width, o.height, o.turn), (480, 800, false));
+    }
+
+    #[test]
+    fn the_zoom_reaches_the_converter_held_to_its_limits() {
+        let mut s = Settings::default();
+        assert_eq!((process_options(&s).zoom, process_options(&s).zoom_mode), (100, converter::process::ZoomMode::Tile));
+        s.conversion.zoom = 180;
+        s.conversion.zoom_mode = converter::process::ZoomMode::Crop;
+        let o = process_options(&s);
+        assert_eq!((o.zoom, o.zoom_mode), (180, converter::process::ZoomMode::Crop));
+        s.conversion.zoom = 9000;
+        assert_eq!(process_options(&s).zoom, 300);
     }
 
     #[test]

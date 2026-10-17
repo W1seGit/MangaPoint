@@ -1033,6 +1033,27 @@ async fn held_sideways_an_xtc_book_keeps_the_readers_frame_and_a_cbz_has_wide_pi
 }
 
 #[tokio::test]
+async fn zooming_in_makes_more_pages_and_cropping_keeps_the_count() {
+    let (lib, series) = three_chapters("ex-zoom").await;
+    let mut j = job(&lib, &series, Grouping::Single);
+    let fitted = export(&lib, &j).await.unwrap();
+    assert_eq!(fitted.pages, 9);
+
+    // Zoomed to 200%, each page is cut into screens: nothing cached for Fit is reused.
+    j.series.settings.zoom = 200;
+    let tiled = export(&lib, &j).await.unwrap();
+    assert_eq!(tiled.cached_chapters, 0);
+    assert!(tiled.pages >= 9 * 2, "{} pages", tiled.pages);
+    assert_eq!(export(&lib, &j).await.unwrap().cached_chapters, 3);
+
+    // Cropping keeps one page per image, and is its own conversion.
+    j.series.settings.zoom_mode = converter::process::ZoomMode::Crop;
+    let cropped = export(&lib, &j).await.unwrap();
+    assert_eq!((cropped.cached_chapters, cropped.pages), (0, 9));
+    let _ = fs::remove_dir_all(lib.root);
+}
+
+#[tokio::test]
 async fn a_double_page_spread_is_exported_as_two_pages() {
     let lib = library("ex-spread");
     let c = FakeCatalog::new();
