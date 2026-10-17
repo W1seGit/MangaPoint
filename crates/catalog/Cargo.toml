@@ -14,7 +14,7 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 flate2 = "1"
 tar = "0.4"
 futures-util = "0.3"
-getrandom = "0.3"
+getrandom = "0.4"
 async-trait = "0.1"
 
 [features]
