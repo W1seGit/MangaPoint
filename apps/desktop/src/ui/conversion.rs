@@ -213,6 +213,12 @@ pub fn ConversionControls(
                 Orientation::Landscape
             } else {
                 Orientation::Portrait
+            };
+            // A wide page already fits a sideways screen, so cutting a
+            // spread in two is rarely wanted there. Only the choice made
+            // here; the spread setting can still be changed afterwards.
+            if s.orientation == Orientation::Landscape && s.spread == SpreadMode::Split {
+                s.spread = SpreadMode::Fit;
             }
         },
         None,

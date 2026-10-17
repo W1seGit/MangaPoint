@@ -21,6 +21,9 @@
 .mp-diagram.rotate i:first-child { transform: rotate(90deg); width: 27px; height: 36px; }
 .mp-diagram.rotate i:nth-child(2), .mp-diagram.fit i:nth-child(2) { display: none; }
 .mp-diagram.fit i:first-child { width: 49px; height: 25px; }
+.mp-diagram.portrait i:nth-child(2), .mp-diagram.landscape i:nth-child(2) { display: none; }
+.mp-diagram.portrait i:first-child { width: 22px; height: 34px; }
+.mp-diagram.landscape i:first-child { width: 40px; height: 26px; }
 .mp-diagram.rtl:after, .mp-diagram.ltr:after { position: absolute; bottom: -2px; font-size: 19px; font-weight: 700; background: var(--panel-2); width: 100%; line-height: 17px; }
 .mp-diagram.rtl:after { content: '2 ← 1'; }.mp-diagram.ltr:after { content: '1 → 2'; }
 .mp-diagram.trim i:first-child { outline: 3px solid var(--panel-2); outline-offset: -5px; }
