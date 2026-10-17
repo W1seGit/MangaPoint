@@ -21,7 +21,7 @@ ctrlc = "3"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
-base64 = "0.22"
+base64 = "0.23"
 sha2 = "0.10"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 rfd = "0.17"
