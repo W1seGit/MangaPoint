@@ -64,3 +64,16 @@
 .mp-diagram.cutquiet i, .mp-diagram.cutrepeat i { width: 30px; height: 17px; flex-shrink: 0; display: block; }
 .mp-diagram.cutrepeat { gap: 0; }
 .mp-diagram.cutrepeat i:nth-child(2) { margin-top: -6px; border-top: 6px solid var(--warn); }
+
+/* The controls in four folded groups: one line each while closed. */
+.mp-group { border-top: 1px solid var(--line); }
+.mp-group:first-child { border-top: 0; }
+.mp-group-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 2px; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.mp-group-head:hover .mp-group-title { color: var(--accent-hover, var(--text)); }
+.mp-group-head .icon { flex: none; color: var(--muted); transition: transform 0.2s ease; transform: rotate(-90deg); }
+.mp-group.open .mp-group-head .icon { transform: none; }
+.mp-group-title { flex: none; font-size: .95rem; font-weight: 600; }
+.mp-group-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .78rem; text-align: right; }
+.mp-group-body { padding: 0 2px 14px; }
+.mp-group-body > .mp-control-heading:first-child { margin-top: 2px; }
+.mp-manual-crop { margin: 0 0 12px; }

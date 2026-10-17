@@ -454,8 +454,8 @@ fn EditPanel() -> Element {
 
     rsx! {
         Panel { title: "Edit", icon: "sliders-horizontal", id: "edit",
-            CropSection { identity: "{chapter}/{key}", draft, crop_key: key.clone(), saved }
             ConversionControls {
+                crop_section: rsx! { CropSection { identity: "{chapter}/{key}", draft, crop_key: key.clone(), saved } },
                 value: series.settings.clone(),
                 compact: true,
                 shading_samples: p.shading_samples.clone(),
