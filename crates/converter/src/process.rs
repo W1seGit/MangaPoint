@@ -520,14 +520,14 @@ pub(crate) fn finish_guided(
 }
 
 /// Draw a guide arrow in the bottom corner the next page lies toward (the
-/// middle for "down"), a tenth of the screen across, with a white edge.
+/// middle for "down"), small and close to the edge, with a thin white edge.
 fn draw_arrow(screen: &mut GrayImage, arrow: Arrow) {
-    let unit = (screen.width.min(screen.height) / 10).max(12);
+    let unit = (screen.width.min(screen.height) / 24).max(8);
     let (w, h) = match arrow {
         Arrow::Down => (unit, unit * 8 / 5),
         _ => (unit * 8 / 5, unit),
     };
-    let margin = (unit / 3).max(4);
+    let margin = (unit / 5).max(3);
     let x0 = match arrow {
         Arrow::Left => margin,
         Arrow::Right => screen.width.saturating_sub(w + margin),
@@ -549,7 +549,7 @@ fn draw_arrow(screen: &mut GrayImage, arrow: Arrow) {
         let head = along >= 0.45 && across.abs() <= (1.0 - along) / 0.55;
         shaft || head
     };
-    let edge = (unit / 12).max(2) as i64;
+    let edge = (unit / 10).max(1) as i64;
     let put = |screen: &mut GrayImage, x: i64, y: i64, value: u8| {
         let (sx, sy) = (x0 as i64 + x, y0 as i64 + y);
         if sx >= 0 && sy >= 0 && (sx as u32) < screen.width && (sy as u32) < screen.height {
