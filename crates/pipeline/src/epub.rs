@@ -416,7 +416,7 @@ mod tests {
         let mut zip = zip::ZipArchive::new(File::open(&path).unwrap()).unwrap();
         // The type of the book is the first entry, stored as it is.
         let first = zip.by_index(0).unwrap();
-        assert_eq!(first.name(), "mimetype");
+        assert_eq!(first.name().unwrap(), "mimetype");
         assert_eq!(first.compression(), CompressionMethod::Stored);
         drop(first);
         let mut read = |name: &str| {

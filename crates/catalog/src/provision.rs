@@ -121,7 +121,14 @@ async fn download_verified(
 pub fn sha256_file(path: &Path) -> io::Result<String> {
     let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher)?;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let read = io::Read::read(&mut file, &mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
     Ok(hex(&hasher.finalize()))
 }
 
@@ -150,7 +157,7 @@ fn extract_zip<R: io::Read + io::Seek>(reader: R, dest: &Path) -> Result<()> {
             .map_err(|e| CatalogError::Archive(e.to_string()))?;
         // `enclosed_name` is None for absolute paths and `..` traversal.
         let relative = entry.enclosed_name().ok_or_else(|| {
-            CatalogError::Archive(format!("unsafe path in archive: {}", entry.name()))
+            CatalogError::Archive(format!("unsafe path in archive: {}", String::from_utf8_lossy(entry.name_raw())))
         })?;
         debug_assert!(relative
             .components()
