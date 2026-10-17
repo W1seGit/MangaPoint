@@ -1,0 +1,46 @@
+/* Importing books and pictures. */
+.modal.import { max-width: 860px; width: min(860px, 100%); max-height: 90vh; display: flex; flex-direction: column; }
+.import-body { overflow-y: auto; min-height: 0; padding: 4px 2px 2px; display: flex; flex-direction: column; gap: 12px; }
+.import-wait { padding: 30px 0; }
+.import-failures { margin: 0; }
+.import-combine { margin: 0 0 2px; color: var(--muted); }
+.import-book { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.import-book.off { opacity: 0.55; }
+.import-cover { width: 92px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); }
+.import-cover img, .import-cover .cover, .import-cover .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.import-main { min-width: 0; }
+.import-title-row { display: flex; align-items: center; gap: 10px; }
+.import-title { flex: 1; min-width: 0; font-weight: 600; }
+.import-title-fixed { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-count { margin: 6px 0 0; }
+.import-warning { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--warn); }
+.import-toggles { display: flex; gap: 6px; margin-top: 8px; }
+.import-chapters { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 260px; overflow-y: auto; padding-right: 4px; }
+.import-chapter { display: grid; grid-template-columns: auto 74px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.import-chapter.off .import-name, .import-chapter.off .import-number { opacity: 0.5; }
+.import-chapter .import-place { grid-column: 1; max-width: 190px; }
+.import-number { width: 74px; text-align: center; }
+.import-name { min-width: 0; }
+.import-pages { white-space: nowrap; min-width: 62px; text-align: right; }
+.import-progress { padding: 10px 0 4px; }
+.import-done { display: flex; gap: 10px; align-items: flex-start; padding: 8px 2px; color: var(--ok); }
+.import-done > div { color: var(--text); }
+.import-done strong { color: var(--text); }
+
+/* The fields of a series' details, in the import dialog and on the edit page. */
+.info-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin-top: 12px; }
+.info-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.info-field > span:first-child { color: var(--muted); font-size: 0.8rem; font-weight: 600; }
+.info-field.wide { grid-column: 1 / -1; }
+.info-field input[type="text"], .info-field select, .info-field textarea { width: 100%; }
+.info-field textarea { resize: vertical; min-height: 84px; font: inherit; }
+.info-cover-row { display: flex; gap: 14px; align-items: flex-end; }
+.info-cover-art { width: 84px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); flex: none; }
+.info-cover-art img, .info-cover-art .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.info-cover-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.edit-info { margin-top: 4px; }
+.edit-info .info-fields { margin-top: 0; }
+.edit-info-actions { display: flex; gap: 10px; margin-top: 16px; }
+.chapter-edit { width: 100%; padding: 5px 8px; }
+.chapter-edit.num { width: 64px; text-align: center; }
+.import-anchor { display: inline-block; }

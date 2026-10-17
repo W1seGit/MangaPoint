@@ -36,11 +36,13 @@ use tracing::{info, warn};
 mod delete;
 mod download;
 mod export;
+mod import;
 mod open;
 mod preview;
 
 pub use delete::*;
 pub use download::*;
 pub use export::*;
+pub use import::*;
 pub use open::*;
 pub use preview::*;

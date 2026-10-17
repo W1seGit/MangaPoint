@@ -831,14 +831,17 @@ pub enum LibraryView {
     Exported,
     /// Series put in the library but not downloaded yet.
     Saved,
+    /// Series made by importing files.
+    Imported,
 }
 
 impl LibraryView {
-    pub const ALL: [LibraryView; 4] = [
+    pub const ALL: [LibraryView; 5] = [
         LibraryView::All,
         LibraryView::Downloaded,
         LibraryView::Exported,
         LibraryView::Saved,
+        LibraryView::Imported,
     ];
 
     pub fn label(self) -> &'static str {
@@ -847,15 +850,17 @@ impl LibraryView {
             LibraryView::Downloaded => "Downloaded",
             LibraryView::Exported => "Exported",
             LibraryView::Saved => "Saved for later",
+            LibraryView::Imported => "Imported",
         }
     }
 
     pub fn includes(self, series: &library::DownloadedSeries, exported: bool) -> bool {
         match self {
             LibraryView::All => true,
-            LibraryView::Downloaded => !series.chapters.is_empty(),
+            LibraryView::Downloaded => !series.chapters.is_empty() && !series.is_imported(),
             LibraryView::Exported => exported,
-            LibraryView::Saved => series.chapters.is_empty(),
+            LibraryView::Saved => series.chapters.is_empty() && !series.is_imported(),
+            LibraryView::Imported => series.is_imported(),
         }
     }
 }
@@ -1581,6 +1586,7 @@ mod library_view_tests {
             [0]
         );
         assert_eq!(order(LibraryView::Downloaded), [0, 2]);
+        assert!(order(LibraryView::Imported).is_empty());
         assert_eq!(order(LibraryView::Saved), [1, 3]);
     }
 
