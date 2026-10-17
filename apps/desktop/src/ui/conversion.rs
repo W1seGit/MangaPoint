@@ -7,7 +7,7 @@ use converter::process::{CropMode, Layout, Margins, SpreadMode, StripCut};
 use converter::xtc::ReadDirection;
 use converter::Dither;
 use dioxus::prelude::*;
-use library::ConversionSettings;
+use library::{ConversionSettings, Orientation};
 use std::rc::Rc;
 
 type Edit = fn(&mut ConversionSettings, String);
@@ -193,6 +193,30 @@ pub fn ConversionControls(
         },
         None,
     );
+    let orientation_tiles = choices(
+        vec![
+            (
+                "Portrait",
+                "Reader held upright",
+                "portrait",
+                c.orientation == Orientation::Portrait,
+            ),
+            (
+                "Landscape",
+                "Reader held sideways",
+                "landscape",
+                c.orientation == Orientation::Landscape,
+            ),
+        ],
+        |s, v| {
+            s.orientation = if v == "landscape" {
+                Orientation::Landscape
+            } else {
+                Orientation::Portrait
+            }
+        },
+        None,
+    );
     let shade_tiles = choices(
         vec![
             (
@@ -238,6 +262,15 @@ pub fn ConversionControls(
         div { class: "{class} mp-conversion",
             h3 { class: "group", "Layout" }
             div { class: "mp-choice-grid", role: "group", aria_label: "Page layout", {layout_tiles.into_iter()} }
+            h4 { class: "mp-control-heading",
+                "Orientation"
+                Help { text: if c.orientation == Orientation::Landscape {
+                    "Pages are made wide, for a reader held sideways. For XTC and XTCH, turn the reader counter-clockwise so the top of the page is on its right. An EPUB or CBZ has wide pictures, and the reader's own rotation shows them."
+                } else {
+                    "Pages are made tall, for a reader held upright."
+                } }
+            }
+            div { class: "mp-choice-grid two", role: "group", aria_label: "Orientation", {orientation_tiles.into_iter()} }
             h4 { class: "mp-control-heading", "Reading direction" }
             div { class: "mp-choice-grid two", role: "group", aria_label: "Reading direction", {direction_tiles.into_iter()} }
             h4 { class: "mp-control-heading", "Double-page spreads" }

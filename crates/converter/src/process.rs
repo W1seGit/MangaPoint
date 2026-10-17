@@ -107,9 +107,24 @@ pub struct ProcessOptions {
     pub overlap_percent: u8,
     pub dither: Dither,
     pub depth: Depth,
+    /// The pages are laid out `width` by `height` (a sideways screen) and
+    /// then turned a quarter turn clockwise, so a reader that always shows
+    /// its native portrait frame displays them upright when it is held
+    /// turned counter-clockwise. The pages come out `height` by `width`.
+    pub turn: bool,
 }
 
 impl ProcessOptions {
+    /// The size of the pages that come out: `width` by `height`, or the
+    /// other way round when they are turned.
+    pub fn output_size(&self) -> (u32, u32) {
+        if self.turn {
+            (self.height, self.width)
+        } else {
+            (self.width, self.height)
+        }
+    }
+
     /// The defaults from the plan: manga, smart crop, right-to-left,
     /// contrast 55, 8% overlap, Floyd-Steinberg.
     pub fn manga_default(width: u32, height: u32, depth: Depth) -> Self {
@@ -129,6 +144,7 @@ impl ProcessOptions {
             overlap_percent: 8,
             dither: Dither::FloydSteinberg,
             depth,
+            turn: false,
         }
     }
 }
@@ -245,7 +261,12 @@ pub(crate) fn finish(mut screen: GrayImage, opts: &ProcessOptions) -> LevelImage
         stretch_levels(&mut screen);
     }
     apply_contrast(&mut screen, opts.contrast);
-    quantize(&screen, opts.depth, opts.dither)
+    let levels = quantize(&screen, opts.depth, opts.dither);
+    if opts.turn {
+        levels.rotated_cw()
+    } else {
+        levels
+    }
 }
 
 // ---- Margins ---------------------------------------------------------------
@@ -506,6 +527,44 @@ mod tests {
 
     fn opts() -> ProcessOptions {
         ProcessOptions::manga_default(480, 800, Depth::Two)
+    }
+
+    #[test]
+    fn a_turned_page_is_a_sideways_layout_in_the_readers_own_frame() {
+        // A wide page, black along its top edge, laid out on the sideways
+        // screen (800 wide, 480 tall) and then turned clockwise.
+        let mut o = ProcessOptions::manga_default(800, 480, Depth::Two);
+        o.crop = CropMode::Full;
+        o.auto_levels = false;
+        o.contrast = 50;
+        o.dither = Dither::Threshold;
+        o.spread = SpreadMode::Fit;
+        o.turn = true;
+        assert_eq!(o.output_size(), (480, 800));
+        let source = GrayImage::from_fn(800, 480, |_, y| if y < 40 { 0 } else { 255 }).unwrap();
+        let pages = process_page(&source, &o);
+        assert_eq!(pages.len(), 1);
+        let page = &pages[0];
+        assert_eq!((page.width, page.height), (480, 800));
+        // The top edge of the picture is the right edge of the frame.
+        assert_eq!(page.get(479, 400), 0);
+        assert_eq!(page.get(440, 400), 0);
+        assert_eq!(page.get(0, 400), Depth::Two.max_level());
+    }
+
+    #[test]
+    fn turning_levels_moves_each_one_a_quarter_turn_clockwise() {
+        let image = LevelImage {
+            width: 3,
+            height: 2,
+            depth: Depth::Eight,
+            levels: vec![1, 2, 3, 4, 5, 6],
+        };
+        let turned = image.rotated_cw();
+        assert_eq!((turned.width, turned.height), (2, 3));
+        // Row 0 (1 2 3) becomes the right column, read downwards.
+        assert_eq!(turned.levels, vec![4, 1, 5, 2, 6, 3]);
+        assert_eq!(turned.rotated_cw().rotated_cw().rotated_cw(), image);
     }
 
     #[test]

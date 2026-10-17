@@ -1003,6 +1003,36 @@ async fn the_preview_shows_exactly_the_pixels_the_export_writes() {
 }
 
 #[tokio::test]
+async fn held_sideways_an_xtc_book_keeps_the_readers_frame_and_a_cbz_has_wide_pictures() {
+    let (lib, series) = three_chapters("ex-landscape").await;
+    let mut j = job(&lib, &series, Grouping::Single);
+    assert_eq!(export(&lib, &j).await.unwrap().cached_chapters, 0);
+    assert_eq!(export(&lib, &j).await.unwrap().cached_chapters, 3);
+
+    // Sideways is its own conversion: nothing cached for upright is reused.
+    j.series.settings.orientation = library::Orientation::Landscape;
+    let sideways = export(&lib, &j).await.unwrap();
+    assert_eq!(sideways.cached_chapters, 0);
+    let bytes = fs::read(&sideways.files[0].location).unwrap();
+    let image = XtcFile::parse(&bytes).unwrap().decode_page(0).unwrap().image;
+    assert_eq!((image.width, image.height), (480, 800), "the file holds the reader's own frame");
+    assert_eq!(export(&lib, &j).await.unwrap().cached_chapters, 3);
+
+    // A CBZ made for a sideways reader has pictures the shape of its screen.
+    j.series.settings.set_output(library::OutputFormat::Cbz);
+    let out = export(&lib, &j).await.unwrap();
+    let xml = epub_text(&out.files[0].location, "ComicInfo.xml");
+    assert!(xml.contains("ImageWidth=\"800\" ImageHeight=\"480\""), "{xml}");
+
+    // Back upright, the pages are made again (a chapter keeps one conversion)
+    // and then reused.
+    j.series.settings = ConversionSettings::default();
+    assert_eq!(export(&lib, &j).await.unwrap().cached_chapters, 0);
+    assert_eq!(export(&lib, &j).await.unwrap().cached_chapters, 3);
+    let _ = fs::remove_dir_all(lib.root);
+}
+
+#[tokio::test]
 async fn a_double_page_spread_is_exported_as_two_pages() {
     let lib = library("ex-spread");
     let c = FakeCatalog::new();

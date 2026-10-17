@@ -55,6 +55,26 @@ impl OutputFormat {
     }
 }
 
+/// How the reader is held.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Orientation {
+    /// Upright: pages are as tall as the screen is.
+    #[default]
+    Portrait,
+    /// Sideways: pages are as wide as the screen is tall, for a reader held
+    /// turned. An XTC or XTCH book has its pages turned into the reader's
+    /// own frame (hold the reader turned counter-clockwise); an EPUB or CBZ
+    /// has pictures the shape of the sideways screen, and the reader's own
+    /// rotation shows them.
+    Landscape,
+}
+
+impl Orientation {
+    pub fn is_portrait(&self) -> bool {
+        *self == Orientation::Portrait
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ConversionSettings {
@@ -83,6 +103,10 @@ pub struct ConversionSettings {
     /// With the older cut, how much of a page repeats on the next.
     pub overlap_percent: u8,
     pub dither: Dither,
+    /// Left out of the saved file while upright, so books converted before
+    /// this setting existed keep their cached pages.
+    #[serde(skip_serializing_if = "Orientation::is_portrait")]
+    pub orientation: Orientation,
 }
 
 impl Default for ConversionSettings {
@@ -107,6 +131,7 @@ impl Default for ConversionSettings {
             strip_cut: StripCut::Overlap,
             overlap_percent: 8,
             dither: Dither::FloydSteinberg,
+            orientation: Orientation::Portrait,
         }
     }
 }
@@ -128,10 +153,11 @@ pub enum ConversionField {
     StripCut,
     OverlapPercent,
     Dither,
+    Orientation,
 }
 
 impl ConversionField {
-    pub const ALL: [ConversionField; 13] = [
+    pub const ALL: [ConversionField; 14] = [
         ConversionField::Format,
         ConversionField::Direction,
         ConversionField::Layout,
@@ -145,6 +171,7 @@ impl ConversionField {
         ConversionField::StripCut,
         ConversionField::OverlapPercent,
         ConversionField::Dither,
+        ConversionField::Orientation,
     ];
 }
 
@@ -208,6 +235,7 @@ impl ConversionSettings {
             ConversionField::StripCut => self.strip_cut = from.strip_cut,
             ConversionField::OverlapPercent => self.overlap_percent = from.overlap_percent,
             ConversionField::Dither => self.dither = from.dither,
+            ConversionField::Orientation => self.orientation = from.orientation,
         }
     }
 }
@@ -601,6 +629,31 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upright_is_not_saved_so_cached_pages_stay_valid_and_sideways_is() {
+        let mut c = ConversionSettings::default();
+        assert!(!serde_json::to_string(&c).unwrap().contains("orientation"));
+        c.orientation = Orientation::Landscape;
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(saved.contains("\"orientation\":\"Landscape\""));
+        let back: ConversionSettings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(back.orientation, Orientation::Landscape);
+        // A settings file from before the setting existed is upright.
+        let old: ConversionSettings = serde_json::from_str("{\"contrast\":60}").unwrap();
+        assert_eq!(old.orientation, Orientation::Portrait);
+    }
+
+    #[test]
+    fn a_series_remembers_when_its_orientation_differs_from_the_preset() {
+        let base = ConversionSettings::default();
+        let mut sideways = base.clone();
+        sideways.orientation = Orientation::Landscape;
+        assert_eq!(sideways.differing(&base), vec![ConversionField::Orientation]);
+        let mut copy = base.clone();
+        copy.copy_field(&sideways, ConversionField::Orientation);
+        assert_eq!(copy.orientation, Orientation::Landscape);
+    }
 
     #[test]
     fn the_output_is_xtc_xtch_or_epub() {

@@ -2,7 +2,7 @@
 
 use converter::{Depth, ProcessOptions};
 use device_profiles::DeviceProfile;
-use library::{ConversionSettings, Settings};
+use library::{ConversionSettings, Orientation, Settings};
 
 /// Everything the converter needs for pages shown on `device`, converted the
 /// way `conversion` says. Previews and exports both call this, so what you
@@ -11,9 +11,13 @@ pub fn process_options_for(
     device: &DeviceProfile,
     conversion: &ConversionSettings,
 ) -> ProcessOptions {
+    // Held sideways, the pages are laid out on the sideways screen. Pictures
+    // (EPUB, CBZ) stay that shape and the reader rotates them; an XTC or XTCH
+    // page is always the reader's own frame, so it is turned into it.
+    let sideways = conversion.orientation == Orientation::Landscape;
     ProcessOptions {
-        width: device.width,
-        height: device.height,
+        width: if sideways { device.height } else { device.width },
+        height: if sideways { device.width } else { device.height },
         layout: conversion.layout,
         crop: conversion.crop,
         margins: conversion.margins,
@@ -27,6 +31,7 @@ pub fn process_options_for(
         overlap_percent: conversion.overlap_percent,
         dither: conversion.dither,
         depth: output_depth(device, conversion),
+        turn: sideways && !conversion.pictures(),
     }
 }
 
@@ -67,6 +72,32 @@ mod tests {
 
         s.conversion.format = Format::Xtch;
         assert_eq!(process_options(&s).depth, Depth::Two);
+    }
+
+    #[test]
+    fn held_sideways_an_xtc_page_is_laid_out_wide_and_turned_into_the_readers_frame() {
+        let mut s = Settings::default();
+        s.conversion.orientation = library::Orientation::Landscape;
+        let o = process_options(&s);
+        assert_eq!((o.width, o.height), (800, 480));
+        assert!(o.turn);
+        assert_eq!(o.output_size(), (480, 800), "the file still holds the reader's own frame");
+
+        s.conversion.orientation = library::Orientation::Portrait;
+        let o = process_options(&s);
+        assert_eq!((o.width, o.height, o.turn), (480, 800, false));
+    }
+
+    #[test]
+    fn held_sideways_pictures_are_wide_and_not_turned() {
+        for output in [library::OutputFormat::Epub, library::OutputFormat::Cbz] {
+            let mut c = ConversionSettings::default();
+            c.set_output(output);
+            c.orientation = library::Orientation::Landscape;
+            let o = process_options_for(&Settings::default().device_profile(), &c);
+            assert_eq!((o.width, o.height, o.turn), (800, 480, false), "{output:?}");
+            assert_eq!(o.output_size(), (800, 480));
+        }
     }
 
     #[test]
