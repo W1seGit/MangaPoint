@@ -1003,6 +1003,99 @@ pub fn page_source(prepared: &Prepared, page: &PlannedPage, _opts: &ProcessOptio
     }
 }
 
+/// The downloaded picture a page comes from, whole: for a split double page
+/// both halves, for a zoomed page all of it. A strip page has no picture of
+/// its own, so it is its rows, as in [`page_source`].
+pub fn whole_source(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) -> GrayImage {
+    match (&prepared.kind, page.source) {
+        (Kind::Paged(images), Source::Image { index, .. }) => images[index].clone(),
+        _ => page_source(prepared, page, opts),
+    }
+}
+
+/// Where a page lies on [`whole_source`], as fractions `[left, top, width,
+/// height]` of the picture.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceRegion {
+    /// What the page shows of the picture: the half of a split double page,
+    /// the piece of a zoomed page, the middle that a crop keeps. All of it
+    /// (`[0, 0, 1, 1]`) when the page is the whole picture.
+    pub page: [f32; 4],
+    /// The part of the picture a manual crop is measured on: the half of a
+    /// split double page, else the whole picture (a zoom piece is cropped
+    /// before it is zoomed).
+    pub piece: [f32; 4],
+}
+
+impl SourceRegion {
+    /// The page is the whole picture.
+    pub fn is_whole(&self) -> bool {
+        self.page[0] <= 0.0005
+            && self.page[1] <= 0.0005
+            && self.page[2] >= 0.999
+            && self.page[3] >= 0.999
+    }
+}
+
+/// Where this page lies on [`whole_source`]. `None` for a turned page (its
+/// region would not be a rectangle on the upright picture) and for strip rows.
+pub fn source_region(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+) -> Option<SourceRegion> {
+    let (Kind::Paged(images), Source::Image { index, part }) = (&prepared.kind, page.source) else {
+        return None;
+    };
+    let img = &images[index];
+    let (of, tile_at) = match part {
+        Part::Whole => (Piece::Whole, None),
+        Part::Rotated => return None,
+        Part::Half(n) => (Piece::Half(n), None),
+        Part::Tile { of, col, row } => (of, Some((col as u32, row as u32))),
+    };
+    let (w, h) = (img.width as f64, img.height as f64);
+    let (px, pw) = match of {
+        Piece::Rotated => return None,
+        Piece::Whole => (0.0, w),
+        Piece::Half(n) => {
+            let mid = spine(img) as f64;
+            if n == 1 {
+                (mid, w - mid)
+            } else {
+                (0.0, mid)
+            }
+        }
+    };
+    // Where the page lies inside its piece, as fractions of the piece.
+    let (mut fx, mut fy, mut fw, mut fh) = (0.0, 0.0, 1.0, 1.0);
+    if let Some((col, row)) = tile_at {
+        let grid = zoom_grid(pw as u32, h as u32, opts);
+        let (col, row) = (col.min(grid.cols - 1), row.min(grid.rows - 1));
+        let (gw, gh) = (grid.width as f64, grid.height as f64);
+        fx = (grid.width * col / grid.cols) as f64 / gw;
+        fw = (grid.width * (col + 1) / grid.cols) as f64 / gw - fx;
+        fy = (grid.height * row / grid.rows) as f64 / gh;
+        fh = (grid.height * (row + 1) / grid.rows) as f64 / gh - fy;
+    } else if !opts.zoom.is_fit() && opts.zoom_mode == ZoomMode::Crop {
+        let grid = zoom_grid(pw as u32, h as u32, opts);
+        let (sw, sh) = (grid.width.min(opts.width), grid.height.min(opts.height));
+        fw = sw as f64 / grid.width as f64;
+        fh = sh as f64 / grid.height as f64;
+        fx = ((grid.width - sw) / 2) as f64 / grid.width as f64;
+        fy = ((grid.height - sh) / 2) as f64 / grid.height as f64;
+    }
+    Some(SourceRegion {
+        page: [
+            ((px + fx * pw) / w) as f32,
+            fy as f32,
+            (fw * pw / w) as f32,
+            fh as f32,
+        ],
+        piece: [(px / w) as f32, 0.0, (pw / w) as f32, 1.0],
+    })
+}
+
 /// Remove source-edge fractions before fitting and finishing. Zero retains the fast original path.
 pub fn render_page_cropped(
     prepared: &Prepared,
@@ -1230,5 +1323,111 @@ mod zoom_tests {
         let plan = plan(&prepared, &o);
         let shown = render_page_cropped(&prepared, &plan.pages[0], &o, [0.0, 0.0, 0.25, 0.25]);
         assert_eq!((shown.width, shown.height), (480, 800));
+    }
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+    use crate::process::PageZoom;
+    use crate::{Depth, Dither};
+
+    fn opts() -> ProcessOptions {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
+        o.layout = Layout::Manga;
+        o.crop = CropMode::Full;
+        o.dither = Dither::Threshold;
+        o.spread = SpreadMode::Split;
+        o.direction = ReadDirection::RightToLeft;
+        o
+    }
+
+    /// A double page 1600 x 1000: art on both sides of a blank fold in the middle.
+    fn spread() -> GrayImage {
+        GrayImage::from_fn(1600, 1000, |x, _| {
+            if (100..700).contains(&x) || (900..1500).contains(&x) {
+                0
+            } else {
+                255
+            }
+        })
+        .unwrap()
+    }
+
+    fn near(a: [f32; 4], b: [f32; 4]) {
+        for (x, y) in a.iter().zip(b) {
+            assert!((x - y).abs() < 0.01, "{a:?} is not {b:?}");
+        }
+    }
+
+    #[test]
+    fn a_split_spread_shows_both_halves_on_the_one_picture() {
+        let o = opts();
+        let prepared = prepare(&[spread()], &o);
+        let pages = plan(&prepared, &o).pages;
+        assert_eq!(pages.len(), 2);
+        // Right to left: the right half comes first.
+        let first = source_region(&prepared, &pages[0], &o).unwrap();
+        near(first.page, [0.5, 0.0, 0.5, 1.0]);
+        near(first.piece, [0.5, 0.0, 0.5, 1.0]);
+        near(
+            source_region(&prepared, &pages[1], &o).unwrap().page,
+            [0.0, 0.0, 0.5, 1.0],
+        );
+        for page in &pages {
+            let whole = whole_source(&prepared, page, &o);
+            assert_eq!(
+                (whole.width, whole.height),
+                (1600, 1000),
+                "the picture is never cut"
+            );
+        }
+    }
+
+    #[test]
+    fn fit_and_rotate_leave_the_whole_picture() {
+        for mode in [SpreadMode::Fit, SpreadMode::Rotate] {
+            let mut o = opts();
+            o.spread = mode;
+            let prepared = prepare(&[spread()], &o);
+            let pages = plan(&prepared, &o).pages;
+            assert_eq!(pages.len(), 1);
+            let region = source_region(&prepared, &pages[0], &o);
+            if mode == SpreadMode::Rotate {
+                assert_eq!(
+                    region, None,
+                    "a turned page is not a rectangle on the picture"
+                );
+            } else {
+                assert!(region.unwrap().is_whole());
+            }
+        }
+    }
+
+    #[test]
+    fn zoomed_pieces_and_crops_mark_their_part_of_the_picture() {
+        let mut o = opts();
+        o.spread = SpreadMode::Fit;
+        o.zoom = PageZoom::Percent(200);
+        let page = GrayImage::new(480, 800, 255).unwrap();
+        let prepared = prepare(std::slice::from_ref(&page), &o);
+        let pages = plan(&prepared, &o).pages;
+        assert_eq!(pages.len(), 4);
+        // Right to left: the top right quarter first.
+        near(
+            source_region(&prepared, &pages[0], &o).unwrap().page,
+            [0.5, 0.0, 0.5, 0.5],
+        );
+        near(
+            source_region(&prepared, &pages[3], &o).unwrap().page,
+            [0.0, 0.5, 0.5, 0.5],
+        );
+        o.zoom_mode = ZoomMode::Crop;
+        let pages = plan(&prepared, &o).pages;
+        assert_eq!(pages.len(), 1);
+        near(
+            source_region(&prepared, &pages[0], &o).unwrap().page,
+            [0.25, 0.25, 0.5, 0.5],
+        );
     }
 }

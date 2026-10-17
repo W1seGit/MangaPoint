@@ -382,8 +382,16 @@ pub struct PreviewPage {
     /// The page as it will appear on the reader; `None` until it is drawn.
     pub shot: Option<Shot>,
     pub thumbnail: Option<Shot>,
-    /// The exact source section: whole image, physical spread half, or joined strip rows.
+    /// The picture the page comes from, whole and as downloaded: a double
+    /// page is one wide picture whatever the spread setting. Joined strip rows
+    /// for a strip chapter.
     pub original: Option<Shot>,
+    /// Where on `original` this page lies; `None` for a turned page and for
+    /// strip rows.
+    pub region: Option<converter::plan::SourceRegion>,
+    /// Only while cropping: the part of `original` that is cropped (a half, a
+    /// turned page, a piece), as the crop is measured on it.
+    pub piece: Option<Shot>,
     /// The part of the original the conversion keeps (left, top, width,
     /// height as fractions); paged chapters only.
     pub kept: Option<[f32; 4]>,

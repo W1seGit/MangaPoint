@@ -336,15 +336,17 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                     // Keep the previous drawing of this page until it is
                     // redrawn, but only near the screen: the full-size
                     // drawings of a long chapter would fill the memory.
-                    let (shot, thumbnail, original, kept, rendered_for) = old
+                    let (shot, thumbnail, original, region, piece, kept, rendered_for) = old
                         .iter()
                         .find(|o| o.crop_key == pipeline::crop_page_key(page))
-                        .map_or((None, None, None, None, 0), |o| {
+                        .map_or((None, None, None, None, None, None, 0), |o| {
                             let close = (near.0..=near.1).contains(&position);
                             (
                                 o.shot.clone().filter(|_| close),
                                 o.thumbnail.clone(),
                                 o.original.clone().filter(|_| close),
+                                o.region,
+                                o.piece.clone().filter(|_| close),
                                 o.kept,
                                 o.rendered_for,
                             )
@@ -357,6 +359,8 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                         shot,
                         thumbnail,
                         original,
+                        region,
+                        piece,
                         kept,
                         image,
                         crop_key: pipeline::crop_page_key(page),
@@ -440,7 +444,16 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                         let converted =
                             is_full.then(|| pipeline::levels_to_previews(&[levels]).remove(0));
                         let original = (is_full && (want_source || is_selected))
-                            .then(|| pipeline::render_source_preview(&prepared, &page, &opts));
+                            .then(|| pipeline::render_source_whole(&prepared, &page, &opts));
+                        // The crop is measured on the part of the picture the
+                        // page shows, so that part is drawn for the page in hand.
+                        let piece = (is_selected
+                            && matches!(
+                                page.source,
+                                converter::Source::Image { part, .. }
+                                    if part != converter::plan::Part::Whole
+                            ))
+                        .then(|| pipeline::render_source_preview(&prepared, &page, &opts));
                         let samples = if is_selected {
                             let source = converter::plan::page_source(&prepared, &page, &opts);
                             [
@@ -470,7 +483,7 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                         } else {
                             Vec::new()
                         };
-                        (converted, thumbnail, original, samples)
+                        (converted, thumbnail, original, piece, samples)
                     })
                     .await;
                     (index, result)
@@ -483,7 +496,7 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                 return;
             }
             match result {
-                Ok((converted, thumbnail, original, samples)) => {
+                Ok((converted, thumbnail, original, piece, samples)) => {
                     let mut p = state.preview;
                     let mut w = p.write();
                     if let Some(slot) = w.pages.get_mut(index) {
@@ -492,9 +505,11 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                             next.shot = Some(shot(&converted));
                         }
                         next.thumbnail = Some(shot(&thumbnail));
-                        if let Some(original) = original {
+                        if let Some((original, region)) = original {
                             next.original = Some(shot(&original));
+                            next.region = region;
                         }
+                        next.piece = piece.map(|piece| shot(&piece));
                         next.generation = generation;
                         next.rendered_for = signature;
                         *slot = Rc::new(next);

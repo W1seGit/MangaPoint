@@ -59,6 +59,11 @@ pub fn SourceCanvas(
     crop_key: String,
     editing: bool,
     guide: bool,
+    /// Where on the picture the crop is measured, as fractions `[left, top,
+    /// width, height]`: all of it, or the half of a split double page.
+    frame: [f32; 4],
+    /// The parts of the picture that reader pages show.
+    marks: Vec<(usize, [f32; 4], bool)>,
 ) -> Element {
     let state = use_context::<AppState>();
     let c = draft.read().normalized();
@@ -68,12 +73,13 @@ pub fn SourceCanvas(
         source.height,
         source.width as f64 / source.height.max(1) as f64
     );
+    let [fx, fy, fw, fh] = frame;
     let box_style = format!(
         "left:{}%;top:{}%;width:{}%;height:{}%;",
-        c.left * 100.0,
-        c.top * 100.0,
-        (1.0 - c.left - c.right) * 100.0,
-        (1.0 - c.top - c.bottom) * 100.0
+        (fx + c.left * fw) * 100.0,
+        (fy + c.top * fh) * 100.0,
+        (1.0 - c.left - c.right) * fw * 100.0,
+        (1.0 - c.top - c.bottom) * fh * 100.0
     );
     let class = if editing {
         "editor-source-art is-editing"
@@ -86,6 +92,7 @@ pub fn SourceCanvas(
             div { id: "editor-source-art", class, style: "{image_style}",
                 onmounted: move |_| { spawn(async move { let _ = document::eval(DRAG_SCRIPT).await; }); },
                 img { src: source.url.clone(), alt: "Source artwork before manual crop and reader shading", draggable: "false" }
+                super::preview::SourceMarks { marks }
                 if guide || editing {
                     div { class: "editor-crop-box", style: "{box_style}", "data-crop-handle": "move",
                         if editing {

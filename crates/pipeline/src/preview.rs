@@ -583,7 +583,24 @@ pub fn render_source_preview(
     page: &PlannedPage,
     opts: &ProcessOptions,
 ) -> PreviewImage {
-    let raw = converter::plan::page_source(prepared, page, opts);
+    shrunk_png(converter::plan::page_source(prepared, page, opts))
+}
+
+/// The downloaded picture a page comes from, whole and as it was (a double
+/// page stays one wide picture whatever the spread setting), and where on it
+/// this page lies (`None` for a turned page).
+pub fn render_source_whole(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+) -> (PreviewImage, Option<converter::plan::SourceRegion>) {
+    (
+        shrunk_png(converter::plan::whole_source(prepared, page, opts)),
+        converter::plan::source_region(prepared, page, opts),
+    )
+}
+
+fn shrunk_png(raw: GrayImage) -> PreviewImage {
     let scale = (ORIGINAL_MAX_WIDTH as f64 / raw.width as f64)
         .min(ORIGINAL_MAX_HEIGHT as f64 / raw.height as f64)
         .min(1.0);

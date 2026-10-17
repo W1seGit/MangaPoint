@@ -26,7 +26,6 @@
 .editor-row-label { text-align: center; color: var(--muted); font-size: 0.78rem; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
 .editor-row.selected .editor-row-label { color: var(--text); }
 .editor-row-panes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-items: start; }
-.editor-row-panes.comparing { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .row-pane { min-width: 0; display: flex; justify-content: center; align-items: flex-start; }
 .editor-reader-frame { flex: none; margin: 0 auto; max-width: 100%; background: #fff; border: 1px solid var(--line-strong); }
 .editor-row.selected .editor-reader-frame, .editor-row.selected .editor-source-art { border-color: var(--accent); }
@@ -75,9 +74,9 @@
 /* a narrower window: one pane at a time, and a slimmer inspector */
 @media (max-width: 1100px) {
   .editor-body { grid-template-columns: 72px minmax(0, 1fr) 270px; }
-  .editor-row-panes.comparing, .editor-columns.comparing { grid-template-columns: minmax(0, 1fr); }
-  .editor-row .source-pane, .editor-columns .source-pane { display: none; }
-  .source-focused .editor-row .source-pane { display: flex; }
+  .editor-columns.comparing, .editor-group.comparing { grid-template-columns: minmax(0, 1fr); }
+  .editor-group .source-cell, .editor-columns .source-pane { display: none; }
+  .source-focused .editor-group .source-cell { display: block; grid-row: auto !important; }
   .source-focused .editor-columns .source-pane { display: block; }
   .source-focused .editor-row .result-pane, .source-focused .editor-columns .result-pane { display: none; }
   .editor-mobile-switch { display: flex; gap: 4px; padding: 6px 14px; border-bottom: 1px solid var(--line); background: var(--panel); }
@@ -125,3 +124,15 @@
 .zoom-list { left: 0; right: auto; min-width: 150px; max-height: 70vh; overflow-y: auto; }
 .zoom-list .menu-item.on { background: var(--panel-3); }
 .menu-sep { height: 1px; margin: 5px 6px; background: var(--line); }
+
+/* A source page that makes several reader pages (a split double page, a zoomed page) stays beside all of them. */
+.editor-group.comparing { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 22px; align-items: start; }
+.editor-group.comparing > .editor-row { grid-column: 2; }
+.editor-row-label { height: 20px; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.source-cell { grid-column: 1; min-width: 0; align-self: stretch; padding-top: 40px; }
+.source-sticky { position: sticky; top: 52px; }
+.source-loading { min-height: 160px; }
+.source-region { position: absolute; border: 1px dashed rgba(255, 255, 255, 0.7); pointer-events: none; }
+.source-region span { position: absolute; top: 4px; left: 4px; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.75); color: var(--text); font-size: 0.72rem; line-height: 1.5; text-align: center; }
+.source-region.on { border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); z-index: 1; transition: left 0.18s ease, width 0.18s ease; }
+.source-region.on span { background: var(--accent); color: var(--accent-text); }
