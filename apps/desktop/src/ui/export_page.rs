@@ -320,6 +320,20 @@ fn PresetItem(
     }
 }
 
+/// Whether the series is going by how it was last exported. That is so when it
+/// is exactly as exported; and when it was changed since, so long as no preset
+/// was picked in the meantime (a preset it follows shows "edited" instead). So
+/// changes made and not exported are shown as edits to the last export, which
+/// stays what the last real export was.
+fn last_export_in_use(
+    exported_preset: Option<&str>,
+    exported: Option<&ConversionSettings>,
+    series_preset: Option<&str>,
+    series: &ConversionSettings,
+) -> bool {
+    exported.is_some() && exported_preset == series_preset && (exported == Some(series) || series_preset.is_none())
+}
+
 #[component]
 fn PresetsPanel() -> Element {
     let state = use_context::<AppState>();
@@ -336,10 +350,13 @@ fn PresetsPanel() -> Element {
         .rev()
         .find(|r| r.series_id == series.id && r.settings.is_some())
         .cloned();
-    // The last export is the one chosen while the series is as it was exported
-    // (and no other preset has been picked since).
     let last_on = last.as_ref().is_some_and(|r| {
-        r.settings.as_ref() == Some(&series.settings) && r.preset_id == series.preset_id
+        last_export_in_use(
+            r.preset_id.as_deref(),
+            r.settings.as_ref(),
+            series.preset_id.as_deref(),
+            &series.settings,
+        )
     });
     let series_id = series.id.clone();
     let settings_now = series.settings.clone();
@@ -371,7 +388,10 @@ fn PresetsPanel() -> Element {
                         kind: PresetKind::Last,
                         preset_id: record.preset_id.clone(),
                         name: "Last export",
-                        description: "The settings this series was last exported with, so the next part matches the first.",
+                        description: format!(
+                            "The settings this series was last exported with ({}), so the next part matches the first. Only an export changes it.",
+                            logic::ago(crate::state::now_secs(), record.at)
+                        ),
                         settings: record.settings.clone().unwrap_or_default(),
                         on: last_on,
                         series_id: series_id.clone(),
@@ -1219,6 +1239,23 @@ mod tests {
             total_bytes: 8,
             available_bytes: 4,
         }
+    }
+
+    #[test]
+    fn changes_not_exported_show_as_edits_to_the_last_export_and_never_replace_it() {
+        let exported = ConversionSettings::default();
+        let mut edited = exported.clone();
+        edited.contrast = 70;
+        // As exported: in use. Changed since, with no preset picked: still the
+        // last export, now edited.
+        assert!(last_export_in_use(None, Some(&exported), None, &exported));
+        assert!(last_export_in_use(None, Some(&exported), None, &edited));
+        // A preset the series follows takes the place when it is not exact.
+        assert!(last_export_in_use(Some("manga"), Some(&exported), Some("manga"), &exported));
+        assert!(!last_export_in_use(Some("manga"), Some(&exported), Some("manga"), &edited));
+        // Another preset picked, or nothing exported yet.
+        assert!(!last_export_in_use(Some("manga"), Some(&exported), Some("manhwa"), &exported));
+        assert!(!last_export_in_use(None, None, None, &exported));
     }
 
     #[test]
