@@ -35,7 +35,7 @@ if (!window.__mpScrub) {
     if (!handle || e.button !== 0) return;
     const input = handle.closest('.zoom-field').querySelector('input');
     const min = Number(handle.dataset.min) || 25, max = Number(handle.dataset.max) || 400;
-    drag = { handle, input, min, max, value: read(input, min), before: input.value, moved: false, last: e.clientX, locked: false, sent: '', at: 0 };
+    drag = { handle, input, min, max, value: read(input, min), before: input.value, moved: false, travel: 0, skip: 0, last: e.clientX, locked: false, sent: '', at: 0 };
     handle.classList.add('active');
     document.body.classList.add('is-scrubbing');
     e.preventDefault();
@@ -43,15 +43,24 @@ if (!window.__mpScrub) {
   });
   document.addEventListener('pointerlockchange', () => {
     if (!drag) return;
-    if (document.pointerLockElement === drag.handle) drag.locked = true;
+    if (document.pointerLockElement === drag.handle) { drag.locked = true; drag.skip = 3; }
     else if (drag.locked) finish(true);
   });
   document.addEventListener('pointermove', e => {
     if (!drag) return;
+    // The first reports after the lock are the pointer settling, not the hand.
+    if (drag.skip > 0) { drag.skip--; return; }
     const step = e.shiftKey ? 0.25 : e.altKey ? 5 : 1;
     const dx = drag.locked || e.movementX ? e.movementX : e.clientX - drag.last;
     drag.last = e.clientX;
     if (!dx) return;
+    // The first report after the pointer is locked can be a huge jump (the
+    // pointer being moved to where it is held), and a click can wobble: nothing
+    // changes until the hand has really moved a few pixels, and one report of
+    // more than a hand can move in a moment is thrown away.
+    if (Math.abs(dx) > 150) return;
+    drag.travel += Math.abs(dx);
+    if (!drag.moved && drag.travel < 4) return;
     drag.value = Math.min(drag.max, Math.max(drag.min, drag.value + dx * step));
     drag.moved = true;
     drag.input.value = Math.round(drag.value) + '%';
