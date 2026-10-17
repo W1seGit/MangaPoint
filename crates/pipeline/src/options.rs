@@ -32,7 +32,7 @@ pub fn process_options_for(
         dither: conversion.dither,
         depth: output_depth(device, conversion),
         turn: sideways && !conversion.pictures(),
-        zoom: conversion.zoom_clamped(),
+        zoom: conversion.zoom.clamped(),
         zoom_mode: conversion.zoom_mode,
     }
 }
@@ -92,14 +92,17 @@ mod tests {
 
     #[test]
     fn the_zoom_reaches_the_converter_held_to_its_limits() {
+        use converter::process::{PageZoom, ZoomMode};
         let mut s = Settings::default();
-        assert_eq!((process_options(&s).zoom, process_options(&s).zoom_mode), (100, converter::process::ZoomMode::Tile));
-        s.conversion.zoom = 180;
-        s.conversion.zoom_mode = converter::process::ZoomMode::Crop;
+        assert_eq!((process_options(&s).zoom, process_options(&s).zoom_mode), (PageZoom::Fit, ZoomMode::Tile));
+        s.conversion.zoom = PageZoom::Percent(180);
+        s.conversion.zoom_mode = ZoomMode::Crop;
         let o = process_options(&s);
-        assert_eq!((o.zoom, o.zoom_mode), (180, converter::process::ZoomMode::Crop));
-        s.conversion.zoom = 9000;
-        assert_eq!(process_options(&s).zoom, 300);
+        assert_eq!((o.zoom, o.zoom_mode), (PageZoom::Percent(180), ZoomMode::Crop));
+        s.conversion.zoom = PageZoom::Percent(9000);
+        assert_eq!(process_options(&s).zoom, PageZoom::Percent(300));
+        s.conversion.zoom = PageZoom::Width;
+        assert_eq!(process_options(&s).zoom, PageZoom::Width);
     }
 
     #[test]

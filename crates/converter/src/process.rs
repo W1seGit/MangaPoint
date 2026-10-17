@@ -85,9 +85,44 @@ impl ZoomMode {
     }
 }
 
+/// How far a paged image is scaled up from Fit.
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PageZoom {
+    /// The whole page visible, as large as it can be.
+    #[default]
+    Fit,
+    /// As wide as the screen; a page taller than the screen takes several.
+    Width,
+    /// A percentage of Fit: 100 is Fit, [`ZOOM_MAX`] the most.
+    Percent(u16),
+}
+
 /// Zoom of 100 is Fit: the whole page visible. Past it the page is scaled up.
 pub const ZOOM_FIT: u16 = 100;
 pub const ZOOM_MAX: u16 = 300;
+
+impl PageZoom {
+    /// Whether this shows the whole page on one screen.
+    pub fn is_fit(&self) -> bool {
+        match self {
+            PageZoom::Fit => true,
+            PageZoom::Width => false,
+            PageZoom::Percent(p) => *p <= ZOOM_FIT,
+        }
+    }
+
+    /// Held to what the converter allows; 100% is Fit.
+    pub fn clamped(self) -> PageZoom {
+        match self {
+            PageZoom::Percent(p) => match p.clamp(ZOOM_FIT, ZOOM_MAX) {
+                ZOOM_FIT => PageZoom::Fit,
+                p => PageZoom::Percent(p),
+            },
+            other => other,
+        }
+    }
+}
 
 /// How a long strip is cut into screen-sized pages where there is no blank
 /// gap to cut in.
@@ -135,9 +170,9 @@ pub struct ProcessOptions {
     /// its native portrait frame displays them upright when it is held
     /// turned counter-clockwise. The pages come out `height` by `width`.
     pub turn: bool,
-    /// How far a paged image is scaled up from Fit, in percent: 100 is Fit,
-    /// 300 the most. Long strips are always fitted to the screen width.
-    pub zoom: u16,
+    /// How far a paged image is scaled up from Fit. Long strips are always
+    /// fitted to the screen width.
+    pub zoom: PageZoom,
     pub zoom_mode: ZoomMode,
 }
 
@@ -172,7 +207,7 @@ impl ProcessOptions {
             dither: Dither::FloydSteinberg,
             depth,
             turn: false,
-            zoom: ZOOM_FIT,
+            zoom: PageZoom::Fit,
             zoom_mode: ZoomMode::Tile,
         }
     }
@@ -271,9 +306,13 @@ pub(crate) struct Grid {
 /// The zoom of a `w` x `h` page. At Fit the page is one screen; past it, the
 /// scaled page is as many screens wide and tall as it needs.
 pub(crate) fn zoom_grid(w: u32, h: u32, opts: &ProcessOptions) -> Grid {
-    let fit_scale = (opts.width as f64 / w.max(1) as f64).min(opts.height as f64 / h.max(1) as f64);
-    let zoom = opts.zoom.clamp(ZOOM_FIT, ZOOM_MAX);
-    let scale = fit_scale * zoom as f64 / ZOOM_FIT as f64;
+    let wide = opts.width as f64 / w.max(1) as f64;
+    let fit_scale = wide.min(opts.height as f64 / h.max(1) as f64);
+    let scale = match opts.zoom.clamped() {
+        PageZoom::Fit => fit_scale,
+        PageZoom::Width => wide.max(fit_scale),
+        PageZoom::Percent(p) => fit_scale * p as f64 / ZOOM_FIT as f64,
+    };
     let width = ((w as f64 * scale).round() as u32).max(1);
     let height = ((h as f64 * scale).round() as u32).max(1);
     Grid {
@@ -305,7 +344,7 @@ pub(crate) fn tile_order(cols: u32, rows: u32, direction: ReadDirection) -> Vec<
 /// Every screen a page makes: one at Fit or when cropping, and in tiling
 /// mode as many as the zoomed page takes.
 pub(crate) fn screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
-    if opts.zoom <= ZOOM_FIT || opts.zoom_mode != ZoomMode::Tile {
+    if opts.zoom.is_fit() || opts.zoom_mode != ZoomMode::Tile {
         return vec![show(img, opts)];
     }
     let grid = zoom_grid(img.width, img.height, opts);
@@ -320,7 +359,7 @@ pub(crate) fn screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> 
 
 /// A page on one screen: fitted, or at its zoom with the middle kept.
 pub(crate) fn show(img: &GrayImage, opts: &ProcessOptions) -> GrayImage {
-    if opts.zoom > ZOOM_FIT && opts.zoom_mode == ZoomMode::Crop {
+    if !opts.zoom.is_fit() && opts.zoom_mode == ZoomMode::Crop {
         centre(img, opts)
     } else {
         fit(img, opts.width, opts.height)
@@ -699,7 +738,7 @@ mod tests {
         o.contrast = 50;
         o.dither = Dither::Threshold;
         let page = GrayImage::from_fn(480, 800, |x, _| if x < 240 { 0 } else { 255 }).unwrap();
-        o.zoom = 200;
+        o.zoom = PageZoom::Percent(200);
         // Right to left: the right half first.
         let pages = process_page(&page, &o);
         assert_eq!(pages.len(), 4);

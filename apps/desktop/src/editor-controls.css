@@ -21,9 +21,13 @@
 .mp-diagram.rotate i:first-child { transform: rotate(90deg); width: 27px; height: 36px; }
 .mp-diagram.rotate i:nth-child(2), .mp-diagram.fit i:nth-child(2) { display: none; }
 .mp-diagram.fit i:first-child { width: 49px; height: 25px; }
-.mp-zoom { display: flex; align-items: center; gap: 8px; }
-.mp-zoom-box { width: 84px; flex: none; text-align: center; }
-.mp-zoom .seg { flex: 1; }
+.mp-zoom { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.mp-zoom .zoom-field input, .mp-zoom .zoom-field input:focus { flex: 1; width: auto; min-width: 0; }
+/* The list opens in the panel, pushing what follows down, so the panel never clips it. */
+.mp-zoom .zoom-list { position: relative; top: auto; right: auto; margin-top: 2px; min-width: 0; max-height: none; box-shadow: none; }
+.mp-zoom .zoom-list .menu-item { padding: 6px 12px; }
+.mp-zoom .zoom-list .menu-sep { margin: 2px 6px; }
+.mp-zoom .seg { width: 100%; }
 .mp-zoom .seg button { flex: 1; }
 .mp-diagram.portrait i:nth-child(2), .mp-diagram.landscape i:nth-child(2) { display: none; }
 .mp-diagram.portrait i:first-child { width: 22px; height: 34px; }

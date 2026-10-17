@@ -2,8 +2,10 @@
 //! starting defaults) and the Preview tab (this one series).
 
 use crate::state::AppState;
-use crate::ui::widgets::Help;
-use converter::process::{CropMode, Layout, Margins, SpreadMode, StripCut, ZoomMode, ZOOM_FIT, ZOOM_MAX};
+use crate::ui::widgets::{Help, ZoomDropdown, ZoomPick};
+use converter::process::{
+    CropMode, Layout, Margins, PageZoom, SpreadMode, StripCut, ZoomMode, ZOOM_FIT, ZOOM_MAX,
+};
 use converter::xtc::ReadDirection;
 use converter::Dither;
 use dioxus::prelude::*;
@@ -20,32 +22,29 @@ fn percent(raw: &str) -> u8 {
         .min(Margins::MAX_PERCENT)
 }
 
-/// What the zoom box holds: "Fit" or a percentage.
-fn zoom_text(zoom: u16) -> String {
-    if zoom <= ZOOM_FIT {
-        "Fit".to_string()
-    } else {
-        format!("{zoom}%")
+/// The converter's zoom as the zoom menu shows it, and back.
+fn zoom_pick(zoom: PageZoom) -> ZoomPick {
+    match zoom.clamped() {
+        PageZoom::Fit => ZoomPick::Fit,
+        PageZoom::Width => ZoomPick::Width,
+        PageZoom::Percent(p) => ZoomPick::Percent(p),
     }
 }
 
-/// A zoom typed in the box: "Fit" (or nothing), "150", "150%" or "1.5x", held
-/// to 100 (Fit) through 300. Anything else leaves the zoom as it was.
-fn parse_zoom(raw: &str, current: u16) -> u16 {
-    let t = raw.trim().to_lowercase();
-    if t.is_empty() || t == "fit" {
-        return ZOOM_FIT;
+/// A zoom choice as the text the change handlers pass around, and back.
+fn zoom_code(pick: ZoomPick) -> String {
+    match pick {
+        ZoomPick::Fit => "fit".to_string(),
+        ZoomPick::Width => "width".to_string(),
+        ZoomPick::Percent(p) => p.to_string(),
     }
-    let (digits, times) = match t.strip_suffix('x') {
-        Some(d) => (d.trim(), true),
-        None => (t.trim_end_matches('%').trim(), false),
-    };
-    match digits.parse::<f64>() {
-        Ok(v) if v.is_finite() => {
-            let percent = if times { v * 100.0 } else { v };
-            (percent.round().clamp(ZOOM_FIT as f64, ZOOM_MAX as f64)) as u16
-        }
-        _ => current,
+}
+
+fn zoom_from_code(code: &str) -> PageZoom {
+    match code {
+        "fit" => PageZoom::Fit,
+        "width" => PageZoom::Width,
+        percent => PageZoom::Percent(percent.parse().unwrap_or(ZOOM_FIT)).clamped(),
     }
 }
 
@@ -83,7 +82,10 @@ pub fn ConversionControls(
         move |e: Event<FormData>| ch(edit, e.checked().to_string())
     };
 
-    let on_zoom = on(|s, v| s.zoom = parse_zoom(&v, s.zoom));
+    let ch = change.clone();
+    let on_zoom = move |pick: ZoomPick| {
+        ch(|s, code| s.zoom = zoom_from_code(&code), zoom_code(pick))
+    };
     let ch = change.clone();
     let zoom_pieces = move |_| ch(|s, _| s.zoom_mode = ZoomMode::Tile, String::new());
     let ch = change.clone();
@@ -317,10 +319,16 @@ pub fn ConversionControls(
             div { class: "mp-choice-grid", role: "group", aria_label: "Double-page spreads", {spread_tiles.into_iter()} }
             h4 { class: "mp-control-heading",
                 "Zoom"
-                Help { text: "Type Fit to show the whole page, or a percentage from 100 to 300 to zoom in. Cut into pieces shows the zoomed page as several screens in reading order, so nothing is lost. Crop to centre shows one screen from the middle and cuts the edges off. Long strips always fit the screen width." }
+                Help { text: "Fit page shows the whole page. Fit width fills the screen width, so a tall page takes several screens. Or choose or type a percentage from 100 to 300 to zoom in. Cut into pieces shows the zoomed page as several screens in reading order, so nothing is lost. Crop to centre shows one screen from the middle and cuts the edges off. Long strips always fit the screen width." }
             }
             div { class: "mp-zoom",
-                input { class: "mp-zoom-box", aria_label: "Zoom", r#type: "text", placeholder: "Fit", value: "{zoom_text(c.zoom)}", onchange: on_zoom }
+                ZoomDropdown {
+                    selected: zoom_pick(c.zoom),
+                    percents: vec![125u16, 150, 200, 250, 300],
+                    min: ZOOM_FIT,
+                    max: ZOOM_MAX,
+                    onpick: on_zoom,
+                }
                 div { class: "seg", role: "tablist", aria_label: "What zooming does",
                     button { r#type: "button", role: "tab", class: if c.zoom_mode == ZoomMode::Tile { "on" } else { "" }, aria_selected: c.zoom_mode == ZoomMode::Tile, onclick: zoom_pieces, "Cut into pieces" }
                     button { r#type: "button", role: "tab", class: if c.zoom_mode == ZoomMode::Crop { "on" } else { "" }, aria_selected: c.zoom_mode == ZoomMode::Crop, onclick: zoom_crop, "Crop to centre" }
@@ -469,5 +477,21 @@ fn VisualChoice(
             strong { "{label}" }
             span { class: "mp-choice-hint", "{hint}" }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_zoom_menu_and_the_converter_agree_on_every_choice() {
+        for zoom in [PageZoom::Fit, PageZoom::Width, PageZoom::Percent(150)] {
+            assert_eq!(zoom_from_code(&zoom_code(zoom_pick(zoom))), zoom);
+        }
+        // A hundred percent is Fit, and a zoom past the limit is held to it.
+        assert_eq!(zoom_from_code("100"), PageZoom::Fit);
+        assert_eq!(zoom_from_code("900"), PageZoom::Percent(ZOOM_MAX));
+        assert_eq!(zoom_pick(PageZoom::Percent(100)), ZoomPick::Fit);
     }
 }

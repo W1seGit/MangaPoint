@@ -1040,7 +1040,7 @@ async fn zooming_in_makes_more_pages_and_cropping_keeps_the_count() {
     assert_eq!(fitted.pages, 9);
 
     // Zoomed to 200%, each page is cut into screens: nothing cached for Fit is reused.
-    j.series.settings.zoom = 200;
+    j.series.settings.zoom = converter::process::PageZoom::Percent(200);
     let tiled = export(&lib, &j).await.unwrap();
     assert_eq!(tiled.cached_chapters, 0);
     assert!(tiled.pages >= 9 * 2, "{} pages", tiled.pages);

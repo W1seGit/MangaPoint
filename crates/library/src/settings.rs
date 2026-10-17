@@ -1,8 +1,8 @@
 //! User preferences.
 
 use converter::process::{
-    CropMode, Layout, Margins, SpreadMode, StripCut, ZoomMode, DEFAULT_TRIM_PADDING,
-    DEFAULT_TRIM_SENSITIVITY, ZOOM_FIT, ZOOM_MAX,
+    CropMode, Layout, Margins, PageZoom, SpreadMode, StripCut, ZoomMode, DEFAULT_TRIM_PADDING,
+    DEFAULT_TRIM_SENSITIVITY,
 };
 use converter::xtc::{Format, ReadDirection};
 use converter::Dither;
@@ -108,24 +108,13 @@ pub struct ConversionSettings {
     /// this setting existed keep their cached pages.
     #[serde(skip_serializing_if = "Orientation::is_portrait")]
     pub orientation: Orientation,
-    /// How far pages are zoomed in from Fit, in percent (100 is Fit). Left
-    /// out of the saved file at Fit, like `orientation`.
-    #[serde(skip_serializing_if = "is_fit")]
-    pub zoom: u16,
+    /// How far pages are zoomed in from Fit. Left out of the saved file at
+    /// Fit, like `orientation`.
+    #[serde(skip_serializing_if = "PageZoom::is_fit")]
+    pub zoom: PageZoom,
     /// What happens to the part that no longer fits: pieces, or a crop.
     #[serde(skip_serializing_if = "ZoomMode::is_tile")]
     pub zoom_mode: ZoomMode,
-}
-
-fn is_fit(zoom: &u16) -> bool {
-    *zoom == ZOOM_FIT
-}
-
-impl ConversionSettings {
-    /// The zoom held to what the converter allows.
-    pub fn zoom_clamped(&self) -> u16 {
-        self.zoom.clamp(ZOOM_FIT, ZOOM_MAX)
-    }
 }
 
 impl Default for ConversionSettings {
@@ -151,7 +140,7 @@ impl Default for ConversionSettings {
             overlap_percent: 8,
             dither: Dither::FloydSteinberg,
             orientation: Orientation::Portrait,
-            zoom: ZOOM_FIT,
+            zoom: PageZoom::Fit,
             zoom_mode: ZoomMode::Tile,
         }
     }
@@ -675,21 +664,23 @@ mod tests {
     fn fit_is_not_saved_and_a_zoom_is_held_to_what_the_converter_allows() {
         let mut c = ConversionSettings::default();
         assert!(!serde_json::to_string(&c).unwrap().contains("zoom"));
-        c.zoom = 150;
+        c.zoom = PageZoom::Percent(150);
         c.zoom_mode = ZoomMode::Crop;
         let saved = serde_json::to_string(&c).unwrap();
-        assert!(saved.contains("\"zoom\":150") && saved.contains("\"zoom_mode\":\"Crop\""), "{saved}");
+        assert!(saved.contains("\"zoom_mode\":\"Crop\"") && saved.contains("150"), "{saved}");
         let back: ConversionSettings = serde_json::from_str(&saved).unwrap();
-        assert_eq!((back.zoom, back.zoom_mode), (150, ZoomMode::Crop));
-        c.zoom = 5000;
-        assert_eq!(c.zoom_clamped(), 300);
-        c.zoom = 20;
-        assert_eq!(c.zoom_clamped(), 100);
+        assert_eq!((back.zoom, back.zoom_mode), (PageZoom::Percent(150), ZoomMode::Crop));
+        c.zoom = PageZoom::Width;
+        let back: ConversionSettings = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.zoom, PageZoom::Width);
+        assert_eq!(PageZoom::Percent(5000).clamped(), PageZoom::Percent(300));
+        assert_eq!(PageZoom::Percent(20).clamped(), PageZoom::Fit);
+        assert_eq!(PageZoom::Percent(100).clamped(), PageZoom::Fit);
         let old: ConversionSettings = serde_json::from_str("{\"contrast\":60}").unwrap();
-        assert_eq!((old.zoom, old.zoom_mode), (100, ZoomMode::Tile));
+        assert_eq!((old.zoom, old.zoom_mode), (PageZoom::Fit, ZoomMode::Tile));
         let mut other = ConversionSettings::default();
         other.copy_field(&c, ConversionField::Zoom);
-        assert_eq!((other.zoom, other.zoom_mode), (20, ZoomMode::Crop));
+        assert_eq!((other.zoom, other.zoom_mode), (PageZoom::Width, ZoomMode::Crop));
     }
 
     #[test]

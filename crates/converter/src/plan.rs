@@ -43,7 +43,7 @@ pub enum Part {
     Half(u8),
     /// One screen of a zoomed-in piece: its column and row counted from the
     /// left and top of the zoomed piece, whatever the reading direction.
-    Tile { of: Piece, col: u8, row: u8 },
+    Tile { of: Piece, col: u16, row: u16 },
 }
 
 /// The part of an image that a zoom is applied to.
@@ -315,7 +315,7 @@ fn plan_paged(images: &[GrayImage], opts: &ProcessOptions) -> ChapterPlan {
         for &part in parts {
             // Zoomed in past Fit, a piece takes several screens, listed in
             // reading order. A piece that still fits one screen is as before.
-            if opts.zoom > crate::process::ZOOM_FIT && opts.zoom_mode == ZoomMode::Tile {
+            if !opts.zoom.is_fit() && opts.zoom_mode == ZoomMode::Tile {
                 let of = match part {
                     Part::Rotated => Piece::Rotated,
                     Part::Half(n) => Piece::Half(n),
@@ -330,8 +330,8 @@ fn plan_paged(images: &[GrayImage], opts: &ProcessOptions) -> ChapterPlan {
                                 index,
                                 part: Part::Tile {
                                     of,
-                                    col: col as u8,
-                                    row: row as u8,
+                                    col: col as u16,
+                                    row: row as u16,
                                 },
                             },
                             unit_top: 0,
@@ -1060,6 +1060,7 @@ pub fn render_page_cropped(
 #[cfg(test)]
 mod zoom_tests {
     use super::*;
+    use crate::process::PageZoom;
     use crate::{Depth, Dither};
 
     /// A 480 x 800 page of four flat quadrants: top left black, top right
@@ -1076,6 +1077,10 @@ mod zoom_tests {
     }
 
     fn opts(zoom: u16, mode: ZoomMode, direction: ReadDirection) -> ProcessOptions {
+        opts_with(PageZoom::Percent(zoom), mode, direction)
+    }
+
+    fn opts_with(zoom: PageZoom, mode: ZoomMode, direction: ReadDirection) -> ProcessOptions {
         let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
         o.layout = Layout::Manga;
         o.crop = CropMode::Full;
@@ -1144,6 +1149,29 @@ mod zoom_tests {
         );
         let rendered = render_all_cropped(&prepared, &plan.pages, &o, &[]);
         assert_eq!(rendered, convert_chapter(&images, &o));
+    }
+
+    #[test]
+    fn fit_width_makes_a_tall_page_for_a_wide_screen_several_screens_top_to_bottom() {
+        // A sideways screen (800 x 480) and a 480 x 800 page of four quadrants:
+        // at Fit it is a small page in the middle, at Fit width it fills the
+        // width, 1333 rows tall, and takes three screens.
+        let mut o = opts_with(PageZoom::Width, ZoomMode::Tile, ReadDirection::LeftToRight);
+        o.width = 800;
+        o.height = 480;
+        let pages = convert_chapter(&[quadrants()], &o);
+        assert_eq!(pages.len(), 3);
+        for page in &pages {
+            assert_eq!((page.width, page.height), (800, 480));
+        }
+        // Left half of the page is darker than its right half, top to bottom.
+        assert_eq!(pages[0].get(100, 100), 0);
+        assert_eq!(pages[0].get(700, 100), 85);
+        assert_eq!(pages[2].get(100, 400), 170);
+        assert_eq!(pages[2].get(700, 400), 255);
+        // The page already fills a portrait screen's width: Fit width is Fit.
+        let upright = opts_with(PageZoom::Width, ZoomMode::Tile, ReadDirection::LeftToRight);
+        assert_eq!(convert_chapter(&[quadrants()], &upright).len(), 1);
     }
 
     #[test]

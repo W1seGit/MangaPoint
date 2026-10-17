@@ -3,7 +3,7 @@
 use super::crop_editor::SourceCanvas;
 use crate::state::{AppState, Shot, Zoom};
 use crate::ui::cat::CirclingCat;
-use crate::ui::widgets::{EmptyState, Icon};
+use crate::ui::widgets::{EmptyState, Icon, ZoomDropdown, ZoomPick};
 use crate::ui::work::{prepare_preview, schedule_preview, select_preview_page};
 use converter::plan::Source;
 use dioxus::prelude::*;
@@ -227,72 +227,30 @@ fn track_scroll(state: AppState, first: i64, last: i64, current: i64) {
     }
 }
 
-/// The zoom as a small menu, as in a document editor: a box showing the zoom
-/// (type a percentage in it) and a list of the ready-made ones.
+/// The zoom of the page preview, in the shared zoom menu.
 #[component]
 fn ZoomMenu() -> Element {
     let mut state = use_context::<AppState>();
-    let mut open = use_signal(|| false);
-    let zoom = state.preview.read().view.zoom;
-    let label = match zoom {
-        Zoom::Fit => "Fit page".to_string(),
-        Zoom::Width => "Fit width".to_string(),
-        Zoom::Custom(percent) => format!("{percent}%"),
+    let selected = match state.preview.read().view.zoom {
+        Zoom::Fit => ZoomPick::Fit,
+        Zoom::Width => ZoomPick::Width,
+        Zoom::Custom(percent) => ZoomPick::Percent(percent),
     };
-    let mut choose = move |zoom: Zoom| {
-        state.preview.write().view.zoom = zoom;
-        open.set(false);
-    };
-    let class = if open() { "zoom-menu is-open" } else { "zoom-menu" };
     rsx! {
-        div { class: "{class}",
-            div { class: "zoom-field",
-                span { class: "zoom-icon", Icon { name: "zoom-in", size: 15 } }
-                input {
-                    r#type: "text", value: "{label}", "aria-label": "Zoom", spellcheck: "false",
-                    onfocus: move |_| open.set(true),
-                    onchange: move |e| {
-                        if let Some(parsed) = parse_zoom(&e.value()) {
-                            choose(parsed);
-                        }
-                    },
-                }
-                button { class: "zoom-chevron", title: "Zoom choices", onclick: move |_| open.set(!open()),
-                    Icon { name: "chevron-down", size: 15 }
-                }
-            }
-            if open() {
-                div { class: "menu-scrim", onclick: move |_| open.set(false) }
-                div { class: "menu down zoom-list",
-                    button { class: if zoom == Zoom::Fit { "menu-item on" } else { "menu-item" }, onclick: move |_| choose(Zoom::Fit), "Fit page" }
-                    button { class: if zoom == Zoom::Width { "menu-item on" } else { "menu-item" }, onclick: move |_| choose(Zoom::Width), "Fit width" }
-                    div { class: "menu-sep" }
-                    for percent in [50u16, 75, 90, 100, 125, 150, 200] {
-                        button {
-                            key: "{percent}",
-                            class: if zoom == Zoom::Custom(percent) { "menu-item on" } else { "menu-item" },
-                            onclick: move |_| choose(Zoom::Custom(percent)),
-                            "{percent}%"
-                        }
-                    }
-                }
-            }
+        ZoomDropdown {
+            selected,
+            percents: vec![50u16, 75, 90, 100, 125, 150, 200],
+            min: Zoom::MIN_PERCENT,
+            max: Zoom::MAX_PERCENT,
+            onpick: move |pick| {
+                state.preview.write().view.zoom = match pick {
+                    ZoomPick::Fit => Zoom::Fit,
+                    ZoomPick::Width => Zoom::Width,
+                    ZoomPick::Percent(percent) => Zoom::Custom(percent),
+                };
+            },
         }
     }
-}
-
-/// What was typed in the zoom box: "125", "125%", "fit", "fit width".
-fn parse_zoom(text: &str) -> Option<Zoom> {
-    let text = text.trim().to_lowercase();
-    if text.contains("width") {
-        return Some(Zoom::Width);
-    }
-    if text.starts_with("fit") {
-        return Some(Zoom::Fit);
-    }
-    let number: u32 = text.trim_end_matches('%').trim().parse().ok()?;
-    let clamped = number.clamp(u32::from(Zoom::MIN_PERCENT), u32::from(Zoom::MAX_PERCENT));
-    Some(Zoom::Custom(clamped as u16))
 }
 
 #[component]
@@ -543,16 +501,5 @@ mod tests {
             "height:800px;width:480px;aspect-ratio:480/800;"
         );
         assert!(reader_style(Zoom::Width, 480, 800).starts_with("height:auto;width:100%;"));
-    }
-
-    #[test]
-    fn typed_zooms_are_understood() {
-        assert_eq!(parse_zoom("125"), Some(Zoom::Custom(125)));
-        assert_eq!(parse_zoom(" 90 % "), Some(Zoom::Custom(90)));
-        assert_eq!(parse_zoom("Fit page"), Some(Zoom::Fit));
-        assert_eq!(parse_zoom("fit width"), Some(Zoom::Width));
-        assert_eq!(parse_zoom("1"), Some(Zoom::Custom(Zoom::MIN_PERCENT)));
-        assert_eq!(parse_zoom("99999"), Some(Zoom::Custom(Zoom::MAX_PERCENT)));
-        assert_eq!(parse_zoom("big"), None);
     }
 }
