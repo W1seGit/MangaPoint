@@ -22,7 +22,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
 base64 = "0.22"
-sha2 = "0.10"
+sha2 = "0.11"
 sysinfo = { version = "0.37", default-features = false, features = ["system"] }
 rfd = "0.17"
 notify-rust = "4"
