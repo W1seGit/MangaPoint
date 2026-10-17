@@ -877,6 +877,8 @@ table.chapters th.size, table.chapters td.size { width: 90px; text-align: right;
 /* A row with its menu open rises above the rows after it (each row of a page that
    slides in is a layer of its own, and later layers would cover the menu). */
 .rise-in > *:has(.menu-scrim) { position: relative; z-index: 30; }
+/* The Library heading's Import menu opens over the sticky search bar below it. */
+.q-head:has(.menu-scrim) { position: relative; z-index: 30; }
 .path-link:hover:not(:disabled) { color: #fff; }
 .path-link:disabled { color: var(--muted); cursor: default; }
 
