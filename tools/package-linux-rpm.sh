@@ -43,6 +43,7 @@ Xteink, Kindle, Kobo, Boox or other e-ink reader.
 install -D -m 0755 "${binary}" %{buildroot}/usr/bin/mangapoint
 install -D -m 0644 "${root}/apps/desktop/assets/icon.png" %{buildroot}/usr/share/icons/hicolor/256x256/apps/mangapoint.png
 install -D -m 0644 "${root}/LICENSE" %{buildroot}/usr/share/licenses/mangapoint/LICENSE
+install -D -m 0644 "${root}/THIRD-PARTY-LICENSES.md" %{buildroot}/usr/share/licenses/mangapoint/THIRD-PARTY-LICENSES.md
 mkdir -p %{buildroot}/usr/share/applications
 cat > %{buildroot}/usr/share/applications/mangapoint.desktop <<DESKTOP
 [Desktop Entry]
@@ -60,6 +61,7 @@ DESKTOP
 /usr/share/icons/hicolor/256x256/apps/mangapoint.png
 /usr/share/applications/mangapoint.desktop
 %license /usr/share/licenses/mangapoint/LICENSE
+%license /usr/share/licenses/mangapoint/THIRD-PARTY-LICENSES.md
 SPEC
 
 rpmbuild -bb --quiet --define "_topdir $top" "$top/SPECS/mangapoint.spec"

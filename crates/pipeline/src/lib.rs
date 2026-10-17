@@ -16,6 +16,7 @@ pub mod epub;
 pub mod error;
 pub mod export;
 pub mod fetch;
+pub mod import;
 pub mod limiter;
 pub mod options;
 pub mod plan;
