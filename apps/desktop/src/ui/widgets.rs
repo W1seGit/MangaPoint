@@ -334,6 +334,9 @@ impl ZoomPick {
     }
 }
 
+/// The drag handle of a zoom box: moving sideways over it changes the zoom.
+const SCRUB_SCRIPT: &str = include_str!("../js/zoom-scrub.js");
+
 /// A zoom as a small menu, as in a document editor: a box showing the zoom
 /// (type a percentage in it) and a list of the ready-made ones. Used for the
 /// zoom of the page preview and for the zoom pages are converted at.
@@ -355,7 +358,12 @@ pub fn ZoomDropdown(
     rsx! {
         div { class: "{class}",
             div { class: "zoom-field",
-                span { class: "zoom-icon", Icon { name: "zoom-in", size: 15 } }
+                span {
+                    class: "zoom-icon scrub", title: "Drag left or right to change the zoom",
+                    "data-scrub": "1", "data-min": "{min}", "data-max": "{max}",
+                    onmounted: move |_| { spawn(async move { let _ = document::eval(SCRUB_SCRIPT).await; }); },
+                    Icon { name: "move-horizontal", size: 15 }
+                }
                 input {
                     r#type: "text", value: "{label}", "aria-label": "Zoom", spellcheck: "false",
                     onfocus: move |_| open.set(true),
