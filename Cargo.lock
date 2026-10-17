@@ -2891,7 +2891,7 @@ dependencies = [
 name = "mangapoint"
 version = "1.1.0"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "catalog",
  "converter",
  "ctrlc",
