@@ -34,6 +34,7 @@ pub fn process_options_for(
         turn: sideways && !conversion.pictures(),
         zoom: conversion.zoom.clamped(),
         zoom_mode: conversion.zoom_mode,
+        guide_arrows: conversion.guide_arrows,
     }
 }
 
@@ -103,6 +104,14 @@ mod tests {
         assert_eq!(process_options(&s).zoom, PageZoom::Percent(300));
         s.conversion.zoom = PageZoom::Width;
         assert_eq!(process_options(&s).zoom, PageZoom::Width);
+    }
+
+    #[test]
+    fn guide_arrows_reach_the_converter() {
+        let mut s = Settings::default();
+        assert!(!process_options(&s).guide_arrows);
+        s.conversion.guide_arrows = true;
+        assert!(process_options(&s).guide_arrows);
     }
 
     #[test]

@@ -82,7 +82,8 @@ strips cut into screen-sized slices, contrast and dithering are all there, and s
 is **Landscape** for a reader held sideways (turn it counter-clockwise for XTC and
 XTCH; EPUB and CBZ get wide pictures) and a **Zoom** (Fit, or 100–300%) that
 either cuts a zoomed page into screens in reading order or keeps its middle,
-with a live preview that shows the source next to the result. Start from a preset
+and optional **guide arrows** that point from a half page or a zoomed screen to the
+next one, with a live preview that shows the source next to the result. Start from a preset
 (Manga, Manhwa, Manhua) or keep your own.
 
 <div align="center">

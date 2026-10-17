@@ -174,6 +174,10 @@ pub struct ProcessOptions {
     /// fitted to the screen width.
     pub zoom: PageZoom,
     pub zoom_mode: ZoomMode,
+    /// Draw a small arrow in the corner of a page whose next page carries
+    /// on from it (the first half of a split double page, a screen of a
+    /// zoomed page), pointing the way the next one lies.
+    pub guide_arrows: bool,
 }
 
 impl ProcessOptions {
@@ -209,6 +213,7 @@ impl ProcessOptions {
             turn: false,
             zoom: PageZoom::Fit,
             zoom_mode: ZoomMode::Tile,
+            guide_arrows: false,
         }
     }
 }
@@ -259,24 +264,27 @@ pub fn process_page(img: &GrayImage, opts: &ProcessOptions) -> Vec<LevelImage> {
         Layout::Auto => Layout::Manga,
         other => other,
     };
-    let screens: Vec<GrayImage> = match layout {
-        Layout::Webtoon => webtoon_slices(&cropped, opts),
+    let screens: Vec<(GrayImage, Option<Arrow>)> = match layout {
+        Layout::Webtoon => webtoon_slices(&cropped, opts)
+            .into_iter()
+            .map(|screen| (screen, None))
+            .collect(),
         _ => page_screens(&cropped, opts),
     };
     screens
         .into_iter()
-        .map(|screen| finish(screen, opts))
+        .map(|(screen, arrow)| finish_guided(screen, opts, arrow))
         .collect()
 }
 
-fn page_screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
+fn page_screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<(GrayImage, Option<Arrow>)> {
     let landscape = img.width as f32 > img.height as f32 * 1.1;
     if !landscape {
-        return screens(img, opts);
+        return screens(img, opts, false);
     }
     match opts.spread {
-        SpreadMode::Fit => screens(img, opts),
-        SpreadMode::Rotate => screens(&rotate_cw(img), opts),
+        SpreadMode::Fit => screens(img, opts, false),
+        SpreadMode::Rotate => screens(&rotate_cw(img), opts, false),
         SpreadMode::Split => {
             let mid = img.width / 2;
             let left = crop_rect(img, 0, 0, mid, img.height);
@@ -286,8 +294,8 @@ fn page_screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
             } else {
                 (left, right)
             };
-            let mut out = screens(&first, opts);
-            out.extend(screens(&second, opts));
+            let mut out = screens(&first, opts, true);
+            out.extend(screens(&second, opts, false));
             out
         }
     }
@@ -341,19 +349,68 @@ pub(crate) fn tile_order(cols: u32, rows: u32, direction: ReadDirection) -> Vec<
     order
 }
 
+/// Which way the page after this one lies, for a guide arrow.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Arrow {
+    Left,
+    Right,
+    Down,
+}
+
+/// The way the next page is read from this one across a row: against the
+/// direction of the book's pages' reading order.
+pub(crate) fn across(direction: ReadDirection) -> Arrow {
+    if direction == ReadDirection::RightToLeft {
+        Arrow::Left
+    } else {
+        Arrow::Right
+    }
+}
+
+/// The arrow on screen `(col, row)` of a piece shown as `cols` x `rows`
+/// screens. It points to the next screen: along the row, or down when the next
+/// one starts a new row. The last screen of a piece has one only when the next
+/// page is the other half of the same double page (`continues`).
+pub(crate) fn tile_arrow(
+    cols: u32,
+    rows: u32,
+    (col, row): (u32, u32),
+    continues: bool,
+    direction: ReadDirection,
+) -> Option<Arrow> {
+    let order = tile_order(cols, rows, direction);
+    let at = order.iter().position(|&p| p == (col, row))?;
+    match order.get(at + 1) {
+        Some(&(_, next_row)) if next_row > row => Some(Arrow::Down),
+        Some(_) => Some(across(direction)),
+        None => continues.then(|| across(direction)),
+    }
+}
+
 /// Every screen a page makes: one at Fit or when cropping, and in tiling
-/// mode as many as the zoomed page takes.
-pub(crate) fn screens(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
+/// mode as many as the zoomed page takes. With each, the guide arrow it gets
+/// when they are on. `continues`: the next page is more of the same double
+/// page.
+pub(crate) fn screens(
+    img: &GrayImage,
+    opts: &ProcessOptions,
+    continues: bool,
+) -> Vec<(GrayImage, Option<Arrow>)> {
+    let guide = |arrow: Option<Arrow>| arrow.filter(|_| opts.guide_arrows);
+    let single = || guide(continues.then(|| across(opts.direction)));
     if opts.zoom.is_fit() || opts.zoom_mode != ZoomMode::Tile {
-        return vec![show(img, opts)];
+        return vec![(show(img, opts), single())];
     }
     let grid = zoom_grid(img.width, img.height, opts);
     if grid.cols * grid.rows == 1 {
-        return vec![fit(img, opts.width, opts.height)];
+        return vec![(fit(img, opts.width, opts.height), single())];
     }
     tile_order(grid.cols, grid.rows, opts.direction)
         .into_iter()
-        .map(|(col, row)| tile(img, opts, col, row))
+        .map(|(col, row)| {
+            let arrow = tile_arrow(grid.cols, grid.rows, (col, row), continues, opts.direction);
+            (tile(img, opts, col, row), guide(arrow))
+        })
         .collect()
 }
 
@@ -434,16 +491,86 @@ fn webtoon_slices(img: &GrayImage, opts: &ProcessOptions) -> Vec<GrayImage> {
     out
 }
 
-pub(crate) fn finish(mut screen: GrayImage, opts: &ProcessOptions) -> LevelImage {
+#[cfg(test)]
+pub(crate) fn finish(screen: GrayImage, opts: &ProcessOptions) -> LevelImage {
+    finish_guided(screen, opts, None)
+}
+
+/// [`finish`], with a guide arrow drawn on the page once its tones are set:
+/// pure black with a white edge, so it stays plain on any art and in any
+/// number of grays.
+pub(crate) fn finish_guided(
+    mut screen: GrayImage,
+    opts: &ProcessOptions,
+    arrow: Option<Arrow>,
+) -> LevelImage {
     if opts.auto_levels {
         stretch_levels(&mut screen);
     }
     apply_contrast(&mut screen, opts.contrast);
+    if let Some(arrow) = arrow {
+        draw_arrow(&mut screen, arrow);
+    }
     let levels = quantize(&screen, opts.depth, opts.dither);
     if opts.turn {
         levels.rotated_cw()
     } else {
         levels
+    }
+}
+
+/// Draw a guide arrow in the bottom corner the next page lies toward (the
+/// middle for "down"), a tenth of the screen across, with a white edge.
+fn draw_arrow(screen: &mut GrayImage, arrow: Arrow) {
+    let unit = (screen.width.min(screen.height) / 10).max(12);
+    let (w, h) = match arrow {
+        Arrow::Down => (unit, unit * 8 / 5),
+        _ => (unit * 8 / 5, unit),
+    };
+    let margin = (unit / 3).max(4);
+    let x0 = match arrow {
+        Arrow::Left => margin,
+        Arrow::Right => screen.width.saturating_sub(w + margin),
+        Arrow::Down => screen.width.saturating_sub(w) / 2,
+    };
+    let y0 = screen.height.saturating_sub(h + margin);
+    // Along the arrow from tail (0) to tip (1), and across it from -1 to 1.
+    let inside = |x: i64, y: i64| -> bool {
+        if x < 0 || y < 0 || x >= w as i64 || y >= h as i64 {
+            return false;
+        }
+        let (px, py) = (x as f64 + 0.5, y as f64 + 0.5);
+        let (along, across) = match arrow {
+            Arrow::Right => (px / w as f64, (py - h as f64 / 2.0) / (h as f64 / 2.0)),
+            Arrow::Left => (1.0 - px / w as f64, (py - h as f64 / 2.0) / (h as f64 / 2.0)),
+            Arrow::Down => (py / h as f64, (px - w as f64 / 2.0) / (w as f64 / 2.0)),
+        };
+        let shaft = along < 0.55 && across.abs() <= 0.36;
+        let head = along >= 0.45 && across.abs() <= (1.0 - along) / 0.55;
+        shaft || head
+    };
+    let edge = (unit / 12).max(2) as i64;
+    let put = |screen: &mut GrayImage, x: i64, y: i64, value: u8| {
+        let (sx, sy) = (x0 as i64 + x, y0 as i64 + y);
+        if sx >= 0 && sy >= 0 && (sx as u32) < screen.width && (sy as u32) < screen.height {
+            screen.set(sx as u32, sy as u32, value);
+        }
+    };
+    for y in -edge..h as i64 + edge {
+        for x in -edge..w as i64 + edge {
+            let near = (-edge..=edge)
+                .any(|dy| (-edge..=edge).any(|dx| inside(x + dx, y + dy)));
+            if near {
+                put(screen, x, y, 255);
+            }
+        }
+    }
+    for y in 0..h as i64 {
+        for x in 0..w as i64 {
+            if inside(x, y) {
+                put(screen, x, y, 0);
+            }
+        }
     }
 }
 

@@ -93,6 +93,7 @@ pub fn ConversionControls(
     let on_overlap = on(|s, v| s.overlap_percent = number(&v, 8, 30));
     let on_contrast = on(|s, v| s.contrast = number(&v, 55, 100));
     let on_levels = on_check(|s, v| s.auto_levels = v == "true");
+    let on_arrows = on_check(|s, v| s.guide_arrows = v == "true");
     let on_sensitivity = on(|s, v| s.trim_sensitivity = number(&v, 50, 100));
     let on_padding = on(|s, v| s.trim_padding = number(&v, 4, 40));
     let on_top = on(|s, v| s.margins.top = percent(&v));
@@ -333,6 +334,14 @@ pub fn ConversionControls(
                     button { r#type: "button", role: "tab", class: if c.zoom_mode == ZoomMode::Tile { "on" } else { "" }, aria_selected: c.zoom_mode == ZoomMode::Tile, onclick: zoom_pieces, "Cut into pieces" }
                     button { r#type: "button", role: "tab", class: if c.zoom_mode == ZoomMode::Crop { "on" } else { "" }, aria_selected: c.zoom_mode == ZoomMode::Crop, onclick: zoom_crop, "Crop to centre" }
                 }
+            }
+            h4 { class: "mp-control-heading",
+                "Guide arrows"
+                Help { text: "Draws a small arrow in the bottom corner of a page that carries on onto the next one: the first half of a split double page, or a screen of a zoomed page. It points the way the next page lies, so it is clear how the page was cut. The last page of each has none." }
+            }
+            label { class: "check-line",
+                input { r#type: "checkbox", checked: c.guide_arrows, onchange: on_arrows }
+                span { class: "muted", "Arrow to the next part" }
             }
             if strips {
                 h4 { class: "mp-control-heading",

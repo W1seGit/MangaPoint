@@ -115,6 +115,10 @@ pub struct ConversionSettings {
     /// What happens to the part that no longer fits: pieces, or a crop.
     #[serde(skip_serializing_if = "ZoomMode::is_tile")]
     pub zoom_mode: ZoomMode,
+    /// Draw an arrow on a page whose next page carries on from it. Left out
+    /// of the saved file while off, like `orientation`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub guide_arrows: bool,
 }
 
 impl Default for ConversionSettings {
@@ -142,6 +146,7 @@ impl Default for ConversionSettings {
             orientation: Orientation::Portrait,
             zoom: PageZoom::Fit,
             zoom_mode: ZoomMode::Tile,
+            guide_arrows: false,
         }
     }
 }
@@ -165,10 +170,11 @@ pub enum ConversionField {
     Dither,
     Orientation,
     Zoom,
+    GuideArrows,
 }
 
 impl ConversionField {
-    pub const ALL: [ConversionField; 15] = [
+    pub const ALL: [ConversionField; 16] = [
         ConversionField::Format,
         ConversionField::Direction,
         ConversionField::Layout,
@@ -184,6 +190,7 @@ impl ConversionField {
         ConversionField::Dither,
         ConversionField::Orientation,
         ConversionField::Zoom,
+        ConversionField::GuideArrows,
     ];
 }
 
@@ -252,6 +259,7 @@ impl ConversionSettings {
                 self.zoom = from.zoom;
                 self.zoom_mode = from.zoom_mode;
             }
+            ConversionField::GuideArrows => self.guide_arrows = from.guide_arrows,
         }
     }
 }
@@ -681,6 +689,23 @@ mod tests {
         let mut other = ConversionSettings::default();
         other.copy_field(&c, ConversionField::Zoom);
         assert_eq!((other.zoom, other.zoom_mode), (PageZoom::Width, ZoomMode::Crop));
+    }
+
+    #[test]
+    fn guide_arrows_are_off_by_default_unsaved_while_off_and_copied_with_their_field() {
+        let mut c = ConversionSettings::default();
+        assert!(!c.guide_arrows && !serde_json::to_string(&c).unwrap().contains("guide"));
+        c.guide_arrows = true;
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(saved.contains("\"guide_arrows\":true"), "{saved}");
+        let back: ConversionSettings = serde_json::from_str(&saved).unwrap();
+        assert!(back.guide_arrows);
+        let old: ConversionSettings = serde_json::from_str("{\"contrast\":60}").unwrap();
+        assert!(!old.guide_arrows);
+        assert_eq!(c.differing(&ConversionSettings::default()), vec![ConversionField::GuideArrows]);
+        let mut other = ConversionSettings::default();
+        other.copy_field(&c, ConversionField::GuideArrows);
+        assert!(other.guide_arrows);
     }
 
     #[test]

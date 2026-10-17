@@ -20,9 +20,9 @@
 
 use crate::gray::{GrayImage, LevelImage};
 use crate::process::{
-    border_median, crop_bounds, crop_rect, finish, letterbox_top, resize, rotate_cw, show, tile,
-    tile_order, trim_bounds, trim_threshold, zoom_grid, CropMode, Layout, Margins, ProcessOptions,
-    SpreadMode, StripCut, ZoomMode,
+    border_median, crop_bounds, crop_rect, finish_guided, letterbox_top, resize, rotate_cw, show,
+    tile, tile_arrow, tile_order, trim_bounds, trim_threshold, zoom_grid, Arrow, CropMode, Layout,
+    Margins, ProcessOptions, SpreadMode, StripCut, ZoomMode,
 };
 use crate::xtc::ReadDirection;
 
@@ -492,7 +492,31 @@ pub fn render_page(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOption
         }
         _ => unreachable!("a plan is only rendered with the chapter it was made from"),
     };
-    finish(screen, opts)
+    finish_guided(screen, opts, page_arrow(prepared, page, opts))
+}
+
+/// The guide arrow this page gets, when they are on: the first half of a
+/// split double page points to the other half, and a screen of a zoomed page
+/// to the next screen. The last page of a source page has none.
+fn page_arrow(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) -> Option<Arrow> {
+    if !opts.guide_arrows {
+        return None;
+    }
+    let (Kind::Paged(images), Source::Image { index, part }) = (&prepared.kind, page.source) else {
+        return None;
+    };
+    // The half of a double page that is read first.
+    let first_half = |n: u8| (n == 1) == (opts.direction == ReadDirection::RightToLeft);
+    match part {
+        Part::Whole | Part::Rotated => None,
+        Part::Half(n) => first_half(n).then(|| crate::process::across(opts.direction)),
+        Part::Tile { of, col, row } => {
+            let (w, h) = piece_size(&images[index], of);
+            let grid = zoom_grid(w, h, opts);
+            let continues = matches!(of, Piece::Half(n) if first_half(n));
+            tile_arrow(grid.cols, grid.rows, (col as u32, row as u32), continues, opts.direction)
+        }
+    }
 }
 
 fn paged_screen(img: &GrayImage, part: Part, opts: &ProcessOptions) -> GrayImage {
@@ -908,7 +932,7 @@ mod tests {
 #[cfg(test)]
 mod manual_crop_tests {
     use super::*;
-    use crate::process::fit;
+    use crate::process::{finish, fit};
     use crate::{Depth, Dither};
     #[test]
     fn manual_crop_uses_source_before_fit_and_zero_preserves_pixels() {
@@ -1147,7 +1171,7 @@ pub fn render_page_cropped(
     } else {
         show(&cut, opts)
     };
-    finish(screen, opts)
+    finish_guided(screen, opts, page_arrow(prepared, page, opts))
 }
 
 #[cfg(test)]
@@ -1429,5 +1453,114 @@ mod region_tests {
             source_region(&prepared, &pages[0], &o).unwrap().page,
             [0.25, 0.25, 0.5, 0.5],
         );
+    }
+}
+
+#[cfg(test)]
+mod arrow_tests {
+    use super::*;
+    use crate::process::PageZoom;
+    use crate::{Depth, Dither};
+
+    fn opts(direction: ReadDirection) -> ProcessOptions {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
+        o.layout = Layout::Manga;
+        o.crop = CropMode::Full;
+        o.auto_levels = false;
+        o.contrast = 50;
+        o.dither = Dither::Threshold;
+        o.spread = SpreadMode::Split;
+        o.direction = direction;
+        o.guide_arrows = true;
+        o
+    }
+
+    /// Where the black of a page is, on an otherwise white one: the corner
+    /// the arrow sits in.
+    fn arrow_at(page: &LevelImage) -> Option<&'static str> {
+        let dark: Vec<u32> = (0..page.height)
+            .flat_map(|y| (0..page.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| page.get(x, y) == 0)
+            .map(|(x, _)| x)
+            .collect();
+        let mean = dark.iter().map(|&x| x as f64).sum::<f64>() / dark.len().max(1) as f64;
+        match (dark.is_empty(), mean / page.width as f64) {
+            (true, _) => None,
+            (_, m) if m < 0.33 => Some("left"),
+            (_, m) if m > 0.67 => Some("right"),
+            _ => Some("down"),
+        }
+    }
+
+    fn arrows(img: &GrayImage, o: &ProcessOptions) -> Vec<Option<&'static str>> {
+        let prepared = prepare(std::slice::from_ref(img), o);
+        plan(&prepared, o)
+            .pages
+            .iter()
+            .map(|p| arrow_at(&render_page(&prepared, p, o)))
+            .collect()
+    }
+
+    fn white(w: u32, h: u32) -> GrayImage {
+        GrayImage::new(w, h, 255).unwrap()
+    }
+
+    #[test]
+    fn the_first_half_of_a_split_spread_points_to_the_second() {
+        // Right to left: the right half is read first, so the arrow points left.
+        assert_eq!(
+            arrows(&white(1600, 1000), &opts(ReadDirection::RightToLeft)),
+            vec![Some("left"), None]
+        );
+        assert_eq!(
+            arrows(&white(1600, 1000), &opts(ReadDirection::LeftToRight)),
+            vec![Some("right"), None]
+        );
+    }
+
+    #[test]
+    fn arrows_are_off_unless_asked_for_and_never_on_a_whole_page() {
+        let mut o = opts(ReadDirection::RightToLeft);
+        o.guide_arrows = false;
+        assert_eq!(arrows(&white(1600, 1000), &o), vec![None, None]);
+        o.guide_arrows = true;
+        assert_eq!(arrows(&white(480, 800), &o), vec![None]);
+        o.spread = SpreadMode::Fit;
+        assert_eq!(arrows(&white(1600, 1000), &o), vec![None]);
+    }
+
+    #[test]
+    fn a_zoomed_page_points_along_its_row_then_down() {
+        let mut o = opts(ReadDirection::LeftToRight);
+        o.zoom = PageZoom::Percent(200);
+        // Two by two: right, down to the next row, right, and the last has none.
+        assert_eq!(
+            arrows(&white(480, 800), &o),
+            vec![Some("right"), Some("down"), Some("right"), None]
+        );
+        o.direction = ReadDirection::RightToLeft;
+        assert_eq!(
+            arrows(&white(480, 800), &o),
+            vec![Some("left"), Some("down"), Some("left"), None]
+        );
+    }
+
+    #[test]
+    fn the_last_screen_of_the_first_half_points_on_to_the_other_half() {
+        let mut o = opts(ReadDirection::RightToLeft);
+        o.zoom = PageZoom::Percent(200);
+        let all = arrows(&white(1600, 1000), &o);
+        let half = all.len() / 2;
+        assert!(all.len() >= 2 && all.len().is_multiple_of(2), "{all:?}");
+        assert_eq!(all[half - 1], Some("left"), "the first half hands on to the second");
+        assert_eq!(all[all.len() - 1], None, "the book of this page ends here");
+    }
+
+    #[test]
+    fn the_arrow_is_drawn_the_same_by_the_single_page_path() {
+        let o = opts(ReadDirection::RightToLeft);
+        let pages = crate::process::process_page(&white(1600, 1000), &o);
+        let got: Vec<_> = pages.iter().map(arrow_at).collect();
+        assert_eq!(got, vec![Some("left"), None]);
     }
 }
