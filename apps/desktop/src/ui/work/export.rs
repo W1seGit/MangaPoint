@@ -245,7 +245,9 @@ pub fn remove_export_series(state: AppState, index: usize) {
         (p.items.len(), p.active)
     };
     if left == 0 {
-        state.go(Page::Library);
+        // Nothing left to export: the sample pages come back, as when the
+        // screen was first opened, and the screen stays where it is.
+        open_sample(state);
     } else {
         activate_export_series(state, active);
     }
