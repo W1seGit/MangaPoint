@@ -36,10 +36,10 @@ fn load(path: &Path) -> Result<Document> {
 /// A text of the document information: UTF-16 with a mark, else Latin-1.
 fn pdf_text(bytes: &[u8]) -> String {
     if bytes.starts_with(&[0xfe, 0xff]) {
-        let units: Vec<u16> = bytes[2..].chunks_exact(2).map(|p| u16::from_be_bytes([p[0], p[1]])).collect();
+        let units: Vec<u16> = bytes[2..].as_chunks::<2>().0.iter().map(|p| u16::from_be_bytes(*p)).collect();
         String::from_utf16_lossy(&units)
     } else if bytes.starts_with(&[0xff, 0xfe]) {
-        let units: Vec<u16> = bytes[2..].chunks_exact(2).map(|p| u16::from_le_bytes([p[0], p[1]])).collect();
+        let units: Vec<u16> = bytes[2..].as_chunks::<2>().0.iter().map(|p| u16::from_le_bytes(*p)).collect();
         String::from_utf16_lossy(&units)
     } else if let Ok(text) = std::str::from_utf8(bytes) {
         text.to_string()
@@ -181,7 +181,9 @@ fn to_image(
         4 => {
             // CMYK to RGB.
             let rgb: Vec<u8> = samples
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|p| {
                     let k = 255 - u32::from(p[3]);
                     [0, 1, 2].map(|i| ((255 - u32::from(p[i])) * k / 255) as u8)
@@ -210,7 +212,7 @@ fn unpack(data: &[u8], w: usize, h: usize, components: usize, bpc: i64, scale: b
             if data.len() < per_row * h * 2 {
                 return None;
             }
-            out.extend(data[..per_row * h * 2].chunks_exact(2).map(|p| p[0]));
+            out.extend(data[..per_row * h * 2].as_chunks::<2>().0.iter().map(|p| p[0]));
         }
         1 | 2 | 4 => {
             let bits = bpc as usize;

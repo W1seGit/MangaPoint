@@ -63,7 +63,9 @@ pub(crate) fn read_page(path: &Path, index: usize) -> Result<Vec<u8>> {
         }
         ColorType::CMYK(8) | ColorType::CMYK(16) => {
             let rgb: Vec<u8> = bytes
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|p| {
                     let k = 255 - u32::from(p[3]);
                     [0, 1, 2].map(|i| ((255 - u32::from(p[i])) * k / 255) as u8)
