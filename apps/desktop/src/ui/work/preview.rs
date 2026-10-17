@@ -75,6 +75,11 @@ pub(super) fn shape_options(opts: &converter::ProcessOptions) -> converter::Proc
     key.auto_levels = false;
     key.dither = converter::Dither::Threshold;
     key.depth = converter::Depth::One;
+    // How far a page is zoomed, and the arrows on it, change the plan but not
+    // the prepared pictures, so dragging the zoom does not prepare them again.
+    key.zoom = converter::process::PageZoom::Fit;
+    key.zoom_mode = converter::process::ZoomMode::Tile;
+    key.guide_arrows = false;
     key
 }
 
@@ -294,7 +299,18 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                 .map(|(_, _, p)| p.clone())
         });
         let chapter = if let Some(cached) = cached {
-            cached
+            // The prepared pictures are shared; only the plan is made again, as
+            // the zoom may have changed since.
+            let plan_opts = opts.clone();
+            match tokio::task::spawn_blocking(move || pipeline::ChapterPreview {
+                plan: converter::plan::plan(&cached.prepared, &plan_opts),
+                prepared: cached.prepared,
+            })
+            .await
+            {
+                Ok(c) => c,
+                Err(e) => return fail(e.to_string()),
+            }
         } else {
             let (prepare_opts, grays) = (opts.clone(), grays.clone());
             match tokio::task::spawn_blocking(move || {
@@ -314,12 +330,16 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
         if !current(state) {
             return;
         }
+        let mut scroll_to = None;
         {
             let mut p = state.preview;
             let mut w = p.write();
             if w.generation != generation {
                 return;
             }
+            // The source page in view, to stay on when the pages are planned again
+            // (a zoom or a spread setting changes how many there are).
+            let anchor = w.pages.get(w.selected).and_then(|p| p.image);
             let old = std::mem::take(&mut w.pages);
             w.strip = chapter.plan.strip;
             w.images = image_count;
@@ -371,6 +391,24 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                 })
                 .collect();
             w.selected = w.selected.min(w.pages.len().saturating_sub(1));
+            if let Some(image) = anchor {
+                if w.pages.get(w.selected).and_then(|p| p.image) != Some(image) {
+                    if let Some(at) = w.pages.iter().position(|p| p.image == Some(image)) {
+                        w.selected = at;
+                        w.draft_crop = None;
+                        scroll_to = Some(at);
+                    }
+                }
+            }
+        }
+        if let Some(at) = scroll_to {
+            spawn(async move {
+                tokio::time::sleep(Duration::from_millis(60)).await;
+                let js = format!(
+                    "document.querySelector('.editor-row[data-row=\"{at}\"]')?.scrollIntoView({{block:'start'}})"
+                );
+                let _ = document::eval(&js).await;
+            });
         }
 
         let prepared = chapter.prepared.clone();
