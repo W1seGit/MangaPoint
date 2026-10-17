@@ -85,8 +85,7 @@ fn draft_of(book: &ImportBook) -> BookDraft {
             .collect(),
         warnings: book.warnings.clone(),
         include: true,
-        show_details: false,
-        show_chapters: book.chapters.len() <= 6,
+        open: true,
     }
 }
 
@@ -165,8 +164,63 @@ pub fn start_import(state: AppState, target: Option<String>, folder: bool) {
 
 /// Read these files and folders and open the dialog on what they hold.
 pub fn import_paths(state: AppState, target: Option<String>, paths: Vec<std::path::PathBuf>) {
+    read_paths(state, target, paths, false);
+}
+
+/// Choose more files with the system's dialog and add what they hold to what the
+/// dialog already shows.
+pub fn add_to_import(state: AppState, folder: bool) {
+    let target = state.import.peek().as_ref().and_then(|s| s.target.clone());
+    spawn_forever(async move {
+        let paths = if folder {
+            crate::ui::widgets::pick_folder("Choose a folder to import", None)
+                .await
+                .map(|p| vec![p])
+        } else {
+            crate::ui::widgets::pick_files(
+                "Choose more books and pictures to import",
+                None,
+                "Comics, books and pictures",
+                &pipeline::import::IMPORT_EXTENSIONS,
+            )
+            .await
+        };
+        if let Some(paths) = paths.filter(|p| !p.is_empty()) {
+            read_paths(state, target, paths, true);
+        }
+    });
+}
+
+/// Read these files into the dialog that is open, after the books it has.
+pub fn add_paths_to_import(state: AppState, paths: Vec<std::path::PathBuf>) {
+    let target = state.import.peek().as_ref().and_then(|s| s.target.clone());
+    read_paths(state, target, paths, true);
+}
+
+/// Take one book out of the dialog.
+pub fn remove_book(state: AppState, index: usize) {
+    if let Ok(mut books) = IMPORT_BOOKS.lock() {
+        if index < books.len() {
+            books.remove(index);
+        }
+    }
+    edit_session(state, |s| {
+        if index < s.books.len() {
+            s.books.remove(index);
+        }
+    });
+}
+
+/// Read these files; `more` keeps the books the dialog already has and puts the
+/// new ones after them.
+fn read_paths(state: AppState, target: Option<String>, paths: Vec<std::path::PathBuf>, more: bool) {
     let mut session = state.import;
-    session.set(Some(ImportSession {
+    let kept = if more { session.peek().clone() } else { None };
+    if let Some(mut kept) = kept.clone() {
+        kept.stage = ImportStage::Reading;
+        session.set(Some(kept));
+    } else {
+        session.set(Some(ImportSession {
         target: target.clone(),
         stage: ImportStage::Reading,
         books: Vec::new(),
@@ -176,7 +230,8 @@ pub fn import_paths(state: AppState, target: Option<String>, paths: Vec<std::pat
         total_pages: 0,
         finished: Vec::new(),
         errors: Vec::new(),
-    }));
+        }));
+    }
     // What a series being added to already has: its numbers are taken.
     let existing: Vec<library::DownloadedChapter> = target
         .as_deref()
@@ -200,7 +255,11 @@ pub fn import_paths(state: AppState, target: Option<String>, paths: Vec<std::pat
         match read {
             Ok((result, drafts)) => {
                 if let Ok(mut books) = IMPORT_BOOKS.lock() {
-                    *books = result.books;
+                    if more {
+                        books.extend(result.books);
+                    } else {
+                        *books = result.books;
+                    }
                 }
                 let mut failures: Vec<(String, String)> = result
                     .failures
@@ -211,8 +270,13 @@ pub fn import_paths(state: AppState, target: Option<String>, paths: Vec<std::pat
                     failures.push((String::new(), "There is nothing to import there.".into()));
                 }
                 edit_session(state, move |s| {
-                    s.books = drafts;
-                    s.failures = failures;
+                    if more {
+                        s.books.extend(drafts);
+                        s.failures = failures;
+                    } else {
+                        s.books = drafts;
+                        s.failures = failures;
+                    }
                     s.stage = ImportStage::Review;
                 });
             }

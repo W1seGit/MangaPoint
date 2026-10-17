@@ -45,6 +45,7 @@ pub fn EditInfo(series_id: String, on_done: EventHandler<()>) -> Element {
             InfoFields {
                 info: draft.read().clone(),
                 show_title: true,
+            show_cover: true,
                 first_page: Some(series_id.clone()),
                 onchange: move |next: InfoDraft| draft.set(next),
             }

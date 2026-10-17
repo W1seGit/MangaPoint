@@ -546,8 +546,8 @@ pub struct BookDraft {
     pub chapters: Vec<ChapterDraft>,
     pub warnings: Vec<String>,
     pub include: bool,
-    pub show_details: bool,
-    pub show_chapters: bool,
+    /// Whether the book's card is open (a folded card shows only its title bar).
+    pub open: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

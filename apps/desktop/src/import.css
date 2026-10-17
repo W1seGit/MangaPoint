@@ -4,18 +4,28 @@
 .import-wait { padding: 30px 0; }
 .import-failures { margin: 0; }
 .import-combine { margin: 0 0 2px; color: var(--muted); }
-.import-book { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
-.import-book.off { opacity: 0.55; }
-.import-cover { width: 92px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); }
-.import-cover img, .import-cover .cover, .import-cover .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
-.import-main { min-width: 0; }
-.import-title-row { display: flex; align-items: center; gap: 10px; }
+.import-book { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); animation: import-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; transition: opacity 0.2s ease, transform 0.2s ease; flex: none; }
+.import-book.leaving { opacity: 0; transform: translateX(24px) scale(0.98); pointer-events: none; }
+@keyframes import-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.import-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
 .import-title { flex: 1; min-width: 0; font-weight: 600; }
 .import-title-fixed { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.import-count { margin: 6px 0 0; }
+.import-file { flex: 0 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.import-remove { flex: none; }
+/* A card folds by easing its body's height between 0 and its own. */
+.import-fold-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.28s ease; }
+.import-book.open .import-fold-body { grid-template-rows: 1fr; }
+.import-fold-inner { overflow: hidden; min-height: 0; }
+.import-book-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; padding: 4px 12px 12px; }
+.import-book-body:not(:has(.import-cover)) { grid-template-columns: minmax(0, 1fr); }
+.import-cover { position: relative; width: 112px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); align-self: start; }
+.import-cover img, .import-cover .cover, .import-cover .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.import-cover-change { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 0; background: rgba(0, 0, 0, 0.62); color: #fff; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; opacity: 0; transition: opacity 0.16s ease; }
+.import-cover:hover .import-cover-change, .import-cover-change:focus-visible { opacity: 1; }
+.import-main { min-width: 0; }
+.import-count { margin: 2px 0 0; }
 .import-warning { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--warn); }
-.import-toggles { display: flex; gap: 6px; margin-top: 8px; }
-.import-chapters { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; max-height: 260px; overflow-y: auto; padding-right: 4px; }
+.import-chapters { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 220px; overflow-y: auto; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .import-chapter { display: grid; grid-template-columns: auto 74px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .import-chapter.off .import-name, .import-chapter.off .import-number { opacity: 0.5; }
 .import-chapter .import-place { grid-column: 1; max-width: 190px; }

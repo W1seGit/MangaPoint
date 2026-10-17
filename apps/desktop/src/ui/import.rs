@@ -4,8 +4,8 @@
 
 use super::widgets::{pick_files, Busy, Chip, Help, Icon, NoCover, ProgressBar, TagBox};
 use super::work::{
-    cancel_import, close_import, cover_from_file, first_page_cover, import_paths, run_import,
-    start_import,
+    add_paths_to_import, add_to_import, cancel_import, close_import, cover_from_file, first_page_cover, import_paths,
+    remove_book, run_import,
 };
 use crate::logic::plural;
 use crate::state::{
@@ -27,6 +27,7 @@ pub fn InfoFields(
     info: InfoDraft,
     onchange: EventHandler<InfoDraft>,
     show_title: bool,
+    show_cover: bool,
     first_page: Option<String>,
 ) -> Element {
     let edit = {
@@ -99,7 +100,7 @@ pub fn InfoFields(
                     oninput: move |e| on_description(|i, v| i.description = v, e.value()),
                 }
             }
-            div { class: "info-field wide info-cover",
+            if show_cover { div { class: "info-field wide info-cover",
                 span { "Cover" }
                 div { class: "info-cover-row",
                     div { class: "info-cover-art",
@@ -136,6 +137,7 @@ pub fn InfoFields(
                         }
                     }
                 }
+            }
             }
         }
     }
@@ -255,11 +257,13 @@ fn ReviewStage(session: ImportSession) -> Element {
         }
         div { class: "actions",
             button { class: "btn ghost", onclick: move |_| close_import(state), "Cancel" }
-            button { class: "btn", title: "Choose more files to add to this", onclick: {
-                    let target = session.target.clone();
-                    move |_| start_import(state, target.clone(), false)
-                },
-                Icon { name: "file-up", size: 16 } "Choose other files"
+            button { class: "btn", title: "Add more books and pictures to this list",
+                onclick: move |_| add_to_import(state, false),
+                Icon { name: "file-up", size: 16 } "Add more files"
+            }
+            button { class: "btn", title: "Add a folder to this list",
+                onclick: move |_| add_to_import(state, true),
+                Icon { name: "folder-open", size: 16 } "Add a folder"
             }
             button { class: "btn primary", disabled: included == 0 || pages == 0,
                 onclick: move |_| run_import(state),
@@ -272,123 +276,142 @@ fn ReviewStage(session: ImportSession) -> Element {
 #[component]
 fn BookCard(index: usize, book: BookDraft, follower: bool, adding: bool, series: Option<String>) -> Element {
     let state = use_context::<AppState>();
+    let mut leaving = use_signal(|| false);
     let counted: usize = book.chapters.iter().map(|c| c.pages).sum();
-    let chosen = book.chapters.iter().filter(|c| c.include).count();
-    let class = if book.include { "import-book" } else { "import-book off" };
-    let fixed_title = if adding {
-        book.label.clone()
-    } else {
-        format!("{}: added to the first series", book.label)
+    let class = match (leaving(), book.open) {
+        (true, _) => "import-book leaving",
+        (false, true) => "import-book open",
+        (false, false) => "import-book",
     };
-    let toggle_details = book.show_details;
-    let details_icon = if book.show_details { "chevron-down" } else { "chevron-right" };
-    let chapters_icon = if book.show_chapters { "chevron-down" } else { "chevron-right" };
-    let chapters_label = format!("Chapters ({chosen} of {})", book.chapters.len());
-    let toggle_chapters = book.show_chapters;
+    let chevron = if book.open { "chevron-down" } else { "chevron-right" };
+    let fold_title = if book.open { "Fold this up" } else { "Open this" };
+    let fixed_title = if book.info.title.trim().is_empty() { book.label.clone() } else { book.info.title.clone() };
+    let counts = format!("{} · {}", plural(book.chapters.len(), "chapter"), plural(counted, "page"));
+    let show_details = !adding && !follower;
     rsx! {
         div { class: "{class}",
-            div { class: "import-cover",
-                if let Some(url) = &book.info.cover_url { img { src: "{url}", alt: "Cover of {book.info.title}" } } else { NoCover {} }
-            }
-            div { class: "import-main",
-                div { class: "import-title-row",
+            div { class: "import-bar",
+                button {
+                    class: "btn ghost small import-fold", r#type: "button", title: "{fold_title}",
+                    onclick: move |_| edit_book(state, index, |b| b.open = !b.open),
+                    Icon { name: chevron, size: 15 }
+                }
+                if adding || follower {
+                    strong { class: "import-title-fixed", "{fixed_title}" }
+                } else {
                     input {
-                        r#type: "checkbox", checked: book.include, title: "Import this one",
-                        onchange: move |e| edit_book(state, index, |b| b.include = e.checked()),
-                    }
-                    if adding || follower {
-                        strong { class: "import-title-fixed", "{fixed_title}" }
-                    } else {
-                        input {
-                            class: "import-title", r#type: "text", value: "{book.info.title}", spellcheck: "false",
-                            "aria-label": "Title",
-                            oninput: move |e| edit_book(state, index, |b| b.info.title = e.value()),
-                        }
-                    }
-                    Chip { text: book.format.to_string() }
-                }
-                p { class: "muted small import-count",
-                    "{plural(book.chapters.len(), \"chapter\")} · {plural(counted, \"page\")}"
-                    if !adding { " · from {book.label}" }
-                }
-                for w in book.warnings.iter() {
-                    p { class: "import-warning small", key: "{w}", Icon { name: "triangle-alert", size: 13 } " {w}" }
-                }
-                div { class: "import-toggles",
-                    if !adding {
-                        button { class: "btn ghost small", r#type: "button",
-                            onclick: move |_| edit_book(state, index, |b| b.show_details = !b.show_details),
-                            Icon { name: details_icon, size: 13 }
-                            "Details"
-                        }
-                    }
-                    button { class: "btn ghost small", r#type: "button",
-                        onclick: move |_| edit_book(state, index, |b| b.show_chapters = !b.show_chapters),
-                        Icon { name: chapters_icon, size: 13 }
-                        "{chapters_label}"
+                        class: "import-title", r#type: "text", value: "{book.info.title}", spellcheck: "false",
+                        "aria-label": "Title", placeholder: "Title",
+                        oninput: move |e| edit_book(state, index, |b| b.info.title = e.value()),
                     }
                 }
-                if toggle_details && !adding {
-                    InfoFields {
-                        info: book.info.clone(),
-                        show_title: false,
-                        first_page: None,
-                        onchange: move |info: InfoDraft| edit_book(state, index, |b| b.info = info),
-                    }
+                span { class: "import-file muted small", title: "{book.label}", "{book.label}" }
+                Chip { text: book.format.to_string() }
+                button {
+                    class: "btn ghost small import-remove", r#type: "button", title: "Leave this out of the import",
+                    onclick: move |_| {
+                        leaving.set(true);
+                        spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(220)).await;
+                            remove_book(state, index);
+                        });
+                    },
+                    Icon { name: "x", size: 15 }
                 }
-                if toggle_chapters {
-                    div { class: "import-chapters",
-                        for (c, chapter) in book.chapters.iter().enumerate() {
-                            div { class: if chapter.include || chapter.meets.is_some() { "import-chapter" } else { "import-chapter off" }, key: "{c}",
-                                if chapter.meets.is_some() {
-                                    select {
-                                        class: "import-place", "aria-label": "What to do with a chapter you already have",
-                                        value: "{place_key(chapter.place)}",
-                                        onchange: move |e| {
-                                            let place = place_of(&e.value());
-                                            edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) { ch.place = place; });
-                                        },
-                                        option { value: "skip", selected: chapter.place == ChapterPlace::Skip, "Already have it: skip" }
-                                        option { value: "add", selected: chapter.place == ChapterPlace::Add, "Add these pages to it" }
-                                        option { value: "replace", selected: chapter.place == ChapterPlace::Replace, "Replace it" }
-                                        option { value: "both", selected: chapter.place == ChapterPlace::Both, "Keep both" }
-                                    }
-                                } else {
-                                    input {
-                                        r#type: "checkbox", checked: chapter.include, title: "Import this chapter",
-                                        onchange: move |e| edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) { ch.include = e.checked(); }),
-                                    }
-                                }
-                                input {
-                                    class: "import-number", r#type: "text", value: "{chapter.number}", placeholder: "No.",
-                                    "aria-label": "Chapter number", spellcheck: "false",
-                                    oninput: {
-                                        let series = series.clone();
-                                        move |e| {
-                                            let text = e.value();
-                                            let meets = series.as_deref().and_then(|id| chapter_with_number(state, id, &text));
-                                            edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) {
-                                                ch.number = text;
-                                                // A number the series has: ask what to do with it.
-                                                if ch.meets.is_none() && meets.is_some() {
-                                                    ch.place = ChapterPlace::Skip;
+            }
+            div { class: "import-fold-body",
+                div { class: "import-fold-inner",
+                    div { class: "import-book-body",
+                        if !adding {
+                            div { class: "import-cover",
+                                if let Some(url) = &book.info.cover_url { img { src: "{url}", alt: "Cover of {book.info.title}" } } else { NoCover {} }
+                                if show_details {
+                                    button {
+                                        class: "import-cover-change", r#type: "button", title: "Choose a different cover picture",
+                                        onclick: move |_| {
+                                            spawn(async move {
+                                                let picked = pick_files("Choose a cover picture", None, "Pictures", &COVER_EXTENSIONS).await;
+                                                if let Some((bytes, url)) = picked.and_then(|p| p.first().cloned()).and_then(|p| cover_from_file(&p)) {
+                                                    edit_book(state, index, |b| {
+                                                        b.info.cover = Some(bytes);
+                                                        b.info.cover_url = Some(url);
+                                                    });
                                                 }
-                                                ch.meets = meets;
                                             });
-                                        }
-                                    },
+                                        },
+                                        Icon { name: "image", size: 18 } "Change"
+                                    }
                                 }
-                                input {
-                                    class: "import-name", r#type: "text", value: "{chapter.name}", "aria-label": "Chapter name",
-                                    oninput: move |e| edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) { ch.name = e.value(); }),
-                                }
-                                span { class: "muted small import-pages", "{plural(chapter.pages, \"page\")}" }
                             }
                         }
-                        if series.is_none() {
-                            p { class: "muted small", style: "margin: 4px 0 0",
-                                "Leave a number empty to give it the next one. "
-                                Help { text: "A chapter without a number takes the next free number in the series. A chapter whose number the series already has is left out, unless you choose to add its pages, replace it or keep both." }
+                        div { class: "import-main",
+                            p { class: "muted small import-count", "{counts}" }
+                            for w in book.warnings.iter() {
+                                p { class: "import-warning small", key: "{w}", Icon { name: "triangle-alert", size: 13 } " {w}" }
+                            }
+                            if show_details {
+                                InfoFields {
+                                    info: book.info.clone(),
+                                    show_title: false,
+                                    show_cover: false,
+                                    first_page: None,
+                                    onchange: move |info: InfoDraft| edit_book(state, index, |b| b.info = info),
+                                }
+                            }
+                            div { class: "import-chapters",
+                                for (c, chapter) in book.chapters.iter().enumerate() {
+                                    div { class: if chapter.include || chapter.meets.is_some() { "import-chapter" } else { "import-chapter off" }, key: "{c}",
+                                        if chapter.meets.is_some() {
+                                            select {
+                                                class: "import-place", "aria-label": "What to do with a chapter you already have",
+                                                value: "{place_key(chapter.place)}",
+                                                onchange: move |e| {
+                                                    let place = place_of(&e.value());
+                                                    edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) { ch.place = place; });
+                                                },
+                                                option { value: "skip", selected: chapter.place == ChapterPlace::Skip, "Already have it: skip" }
+                                                option { value: "add", selected: chapter.place == ChapterPlace::Add, "Add these pages to it" }
+                                                option { value: "replace", selected: chapter.place == ChapterPlace::Replace, "Replace it" }
+                                                option { value: "both", selected: chapter.place == ChapterPlace::Both, "Keep both" }
+                                            }
+                                        } else {
+                                            input {
+                                                r#type: "checkbox", checked: chapter.include, title: "Import this chapter",
+                                                onchange: move |e| edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) { ch.include = e.checked(); }),
+                                            }
+                                        }
+                                        input {
+                                            class: "import-number", r#type: "text", value: "{chapter.number}", placeholder: "No.",
+                                            "aria-label": "Chapter number", spellcheck: "false",
+                                            oninput: {
+                                                let series = series.clone();
+                                                move |e| {
+                                                    let text = e.value();
+                                                    let meets = series.as_deref().and_then(|id| chapter_with_number(state, id, &text));
+                                                    edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) {
+                                                        ch.number = text;
+                                                        // A number the series has: ask what to do with it.
+                                                        if ch.meets.is_none() && meets.is_some() {
+                                                            ch.place = ChapterPlace::Skip;
+                                                        }
+                                                        ch.meets = meets;
+                                                    });
+                                                }
+                                            },
+                                        }
+                                        input {
+                                            class: "import-name", r#type: "text", value: "{chapter.name}", "aria-label": "Chapter name",
+                                            oninput: move |e| edit_book(state, index, |b| if let Some(ch) = b.chapters.get_mut(c) { ch.name = e.value(); }),
+                                        }
+                                        span { class: "muted small import-pages", "{plural(chapter.pages, \"page\")}" }
+                                    }
+                                }
+                            }
+                            if series.is_none() {
+                                p { class: "muted small", style: "margin: 4px 0 0",
+                                    "Leave a number empty to give it the next one. "
+                                    Help { text: "A chapter without a number takes the next free number in the series. A chapter whose number the series already has is left out, unless you choose to add its pages, replace it or keep both." }
+                                }
                             }
                         }
                     }
@@ -531,10 +554,13 @@ pub fn watch_for_test_imports(state: AppState) {
                 let _ = std::fs::remove_file(&path);
                 let mut target = None;
                 let mut auto = false;
+                let mut more = false;
                 let mut paths = Vec::new();
                 for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
                     if line == "auto" {
                         auto = true;
+                    } else if line == "more" {
+                        more = true;
                     } else if let Some(id) = line.strip_prefix("series:") {
                         target = Some(id.trim().to_string());
                     } else {
@@ -542,7 +568,11 @@ pub fn watch_for_test_imports(state: AppState) {
                     }
                 }
                 if !paths.is_empty() {
-                    import_paths(state, target, paths);
+                    if more {
+                        add_paths_to_import(state, paths);
+                    } else {
+                        import_paths(state, target, paths);
+                    }
                     if auto {
                         // Wait for the reading to finish, then import what it found.
                         while state
