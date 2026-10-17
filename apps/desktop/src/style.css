@@ -1112,6 +1112,9 @@ input.px-name:focus { border-color: var(--accent); background: var(--bg); outlin
 /* ---- the page jump, the zoom icon, the file formats ---- */
 .editor-page-jump input { width: 72px; padding: 7px 8px; text-align: center; }
 .zoom-icon { display: inline-flex; align-items: center; padding-left: 11px; color: var(--muted); }
+.zoom-icon.scrub { align-self: stretch; padding-right: 8px; cursor: ew-resize; touch-action: none; user-select: none; transition: color 0.18s ease, background-color 0.18s ease; }
+.zoom-icon.scrub:hover, .zoom-icon.scrub.active { color: var(--text); background: var(--panel-3); }
+body.is-scrubbing, body.is-scrubbing * { cursor: ew-resize !important; user-select: none !important; }
 .zoom-field input, .zoom-field input:focus { padding-left: 8px; }
 .tags { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); transition: border-color 0.18s ease; }
 .tags.focused { border-color: var(--accent); }

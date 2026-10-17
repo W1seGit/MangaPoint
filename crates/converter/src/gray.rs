@@ -140,4 +140,23 @@ impl LevelImage {
     pub fn get(&self, x: u32, y: u32) -> u8 {
         self.levels[y as usize * self.width as usize + x as usize]
     }
+
+    /// The image turned a quarter turn clockwise: its top edge becomes the
+    /// right edge. Levels are moved, never recomputed.
+    pub fn rotated_cw(&self) -> LevelImage {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let mut levels = vec![0u8; w * h];
+        for y in 0..h {
+            for x in 0..w {
+                // (x, y) lands at (h - 1 - y, x) in an image h wide and w tall.
+                levels[x * h + (h - 1 - y)] = self.levels[y * w + x];
+            }
+        }
+        LevelImage {
+            width: self.height,
+            height: self.width,
+            depth: self.depth,
+            levels,
+        }
+    }
 }

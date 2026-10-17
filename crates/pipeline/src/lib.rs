@@ -35,6 +35,7 @@ pub use plan::{
 };
 pub use preview::{
     crop_page_key, levels_to_thumbnail, render_planned_with_crop, render_source_preview,
+    render_source_whole,
 };
 pub use preview::{
     decode_page, levels_to_previews, prepare_chapter, render_gray, render_levels, render_original,

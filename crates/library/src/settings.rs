@@ -1,7 +1,8 @@
 //! User preferences.
 
 use converter::process::{
-    CropMode, Layout, Margins, SpreadMode, StripCut, DEFAULT_TRIM_PADDING, DEFAULT_TRIM_SENSITIVITY,
+    CropMode, Layout, Margins, PageZoom, SpreadMode, StripCut, ZoomMode, DEFAULT_TRIM_PADDING,
+    DEFAULT_TRIM_SENSITIVITY,
 };
 use converter::xtc::{Format, ReadDirection};
 use converter::Dither;
@@ -55,6 +56,26 @@ impl OutputFormat {
     }
 }
 
+/// How the reader is held.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Orientation {
+    /// Upright: pages are as tall as the screen is.
+    #[default]
+    Portrait,
+    /// Sideways: pages are as wide as the screen is tall, for a reader held
+    /// turned. An XTC or XTCH book has its pages turned into the reader's
+    /// own frame (hold the reader turned counter-clockwise); an EPUB or CBZ
+    /// has pictures the shape of the sideways screen, and the reader's own
+    /// rotation shows them.
+    Landscape,
+}
+
+impl Orientation {
+    pub fn is_portrait(&self) -> bool {
+        *self == Orientation::Portrait
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ConversionSettings {
@@ -83,6 +104,21 @@ pub struct ConversionSettings {
     /// With the older cut, how much of a page repeats on the next.
     pub overlap_percent: u8,
     pub dither: Dither,
+    /// Left out of the saved file while upright, so books converted before
+    /// this setting existed keep their cached pages.
+    #[serde(skip_serializing_if = "Orientation::is_portrait")]
+    pub orientation: Orientation,
+    /// How far pages are zoomed in from Fit. Left out of the saved file at
+    /// Fit, like `orientation`.
+    #[serde(skip_serializing_if = "PageZoom::is_fit")]
+    pub zoom: PageZoom,
+    /// What happens to the part that no longer fits: pieces, or a crop.
+    #[serde(skip_serializing_if = "ZoomMode::is_tile")]
+    pub zoom_mode: ZoomMode,
+    /// Draw an arrow on a page whose next page carries on from it. Left out
+    /// of the saved file while off, like `orientation`.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub guide_arrows: bool,
 }
 
 impl Default for ConversionSettings {
@@ -107,6 +143,10 @@ impl Default for ConversionSettings {
             strip_cut: StripCut::Overlap,
             overlap_percent: 8,
             dither: Dither::FloydSteinberg,
+            orientation: Orientation::Portrait,
+            zoom: PageZoom::Fit,
+            zoom_mode: ZoomMode::Tile,
+            guide_arrows: false,
         }
     }
 }
@@ -128,10 +168,13 @@ pub enum ConversionField {
     StripCut,
     OverlapPercent,
     Dither,
+    Orientation,
+    Zoom,
+    GuideArrows,
 }
 
 impl ConversionField {
-    pub const ALL: [ConversionField; 13] = [
+    pub const ALL: [ConversionField; 16] = [
         ConversionField::Format,
         ConversionField::Direction,
         ConversionField::Layout,
@@ -145,6 +188,9 @@ impl ConversionField {
         ConversionField::StripCut,
         ConversionField::OverlapPercent,
         ConversionField::Dither,
+        ConversionField::Orientation,
+        ConversionField::Zoom,
+        ConversionField::GuideArrows,
     ];
 }
 
@@ -208,6 +254,12 @@ impl ConversionSettings {
             ConversionField::StripCut => self.strip_cut = from.strip_cut,
             ConversionField::OverlapPercent => self.overlap_percent = from.overlap_percent,
             ConversionField::Dither => self.dither = from.dither,
+            ConversionField::Orientation => self.orientation = from.orientation,
+            ConversionField::Zoom => {
+                self.zoom = from.zoom;
+                self.zoom_mode = from.zoom_mode;
+            }
+            ConversionField::GuideArrows => self.guide_arrows = from.guide_arrows,
         }
     }
 }
@@ -601,6 +653,71 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upright_is_not_saved_so_cached_pages_stay_valid_and_sideways_is() {
+        let mut c = ConversionSettings::default();
+        assert!(!serde_json::to_string(&c).unwrap().contains("orientation"));
+        c.orientation = Orientation::Landscape;
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(saved.contains("\"orientation\":\"Landscape\""));
+        let back: ConversionSettings = serde_json::from_str(&saved).unwrap();
+        assert_eq!(back.orientation, Orientation::Landscape);
+        // A settings file from before the setting existed is upright.
+        let old: ConversionSettings = serde_json::from_str("{\"contrast\":60}").unwrap();
+        assert_eq!(old.orientation, Orientation::Portrait);
+    }
+
+    #[test]
+    fn fit_is_not_saved_and_a_zoom_is_held_to_what_the_converter_allows() {
+        let mut c = ConversionSettings::default();
+        assert!(!serde_json::to_string(&c).unwrap().contains("zoom"));
+        c.zoom = PageZoom::Percent(150);
+        c.zoom_mode = ZoomMode::Crop;
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(saved.contains("\"zoom_mode\":\"Crop\"") && saved.contains("150"), "{saved}");
+        let back: ConversionSettings = serde_json::from_str(&saved).unwrap();
+        assert_eq!((back.zoom, back.zoom_mode), (PageZoom::Percent(150), ZoomMode::Crop));
+        c.zoom = PageZoom::Width;
+        let back: ConversionSettings = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back.zoom, PageZoom::Width);
+        assert_eq!(PageZoom::Percent(5000).clamped(), PageZoom::Percent(300));
+        assert_eq!(PageZoom::Percent(20).clamped(), PageZoom::Fit);
+        assert_eq!(PageZoom::Percent(100).clamped(), PageZoom::Fit);
+        let old: ConversionSettings = serde_json::from_str("{\"contrast\":60}").unwrap();
+        assert_eq!((old.zoom, old.zoom_mode), (PageZoom::Fit, ZoomMode::Tile));
+        let mut other = ConversionSettings::default();
+        other.copy_field(&c, ConversionField::Zoom);
+        assert_eq!((other.zoom, other.zoom_mode), (PageZoom::Width, ZoomMode::Crop));
+    }
+
+    #[test]
+    fn guide_arrows_are_off_by_default_unsaved_while_off_and_copied_with_their_field() {
+        let mut c = ConversionSettings::default();
+        assert!(!c.guide_arrows && !serde_json::to_string(&c).unwrap().contains("guide"));
+        c.guide_arrows = true;
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(saved.contains("\"guide_arrows\":true"), "{saved}");
+        let back: ConversionSettings = serde_json::from_str(&saved).unwrap();
+        assert!(back.guide_arrows);
+        let old: ConversionSettings = serde_json::from_str("{\"contrast\":60}").unwrap();
+        assert!(!old.guide_arrows);
+        assert_eq!(c.differing(&ConversionSettings::default()), vec![ConversionField::GuideArrows]);
+        let mut other = ConversionSettings::default();
+        other.copy_field(&c, ConversionField::GuideArrows);
+        assert!(other.guide_arrows);
+    }
+
+    #[test]
+    fn a_series_remembers_when_its_orientation_differs_from_the_preset() {
+        let base = ConversionSettings::default();
+        let mut sideways = base.clone();
+        sideways.orientation = Orientation::Landscape;
+        assert_eq!(sideways.differing(&base), vec![ConversionField::Orientation]);
+        let mut copy = base.clone();
+        copy.copy_field(&sideways, ConversionField::Orientation);
+        assert_eq!(copy.orientation, Orientation::Landscape);
+    }
 
     #[test]
     fn the_output_is_xtc_xtch_or_epub() {

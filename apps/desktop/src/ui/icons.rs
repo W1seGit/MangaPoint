@@ -80,6 +80,9 @@ pub fn body(name: &str) -> Option<&'static str> {
         "zoom-in" => Some(
             r#"<circle cx="11" cy="11" r="8" /> <line x1="21" x2="16.65" y1="21" y2="16.65" /> <line x1="11" x2="11" y1="8" y2="14" /> <line x1="8" x2="14" y1="11" y2="11" />"#,
         ),
+        "move-horizontal" => {
+            Some(r#"<path d="m18 8 4 4-4 4" /> <path d="M2 12h20" /> <path d="m6 8-4 4 4 4" />"#)
+        }
         "external-link" => Some(
             r#"<path d="M15 3h6v6" /> <path d="M10 14 21 3" /> <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />"#,
         ),

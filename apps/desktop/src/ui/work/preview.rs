@@ -75,6 +75,11 @@ pub(super) fn shape_options(opts: &converter::ProcessOptions) -> converter::Proc
     key.auto_levels = false;
     key.dither = converter::Dither::Threshold;
     key.depth = converter::Depth::One;
+    // How far a page is zoomed, and the arrows on it, change the plan but not
+    // the prepared pictures, so dragging the zoom does not prepare them again.
+    key.zoom = converter::process::PageZoom::Fit;
+    key.zoom_mode = converter::process::ZoomMode::Tile;
+    key.guide_arrows = false;
     key
 }
 
@@ -294,7 +299,18 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                 .map(|(_, _, p)| p.clone())
         });
         let chapter = if let Some(cached) = cached {
-            cached
+            // The prepared pictures are shared; only the plan is made again, as
+            // the zoom may have changed since.
+            let plan_opts = opts.clone();
+            match tokio::task::spawn_blocking(move || pipeline::ChapterPreview {
+                plan: converter::plan::plan(&cached.prepared, &plan_opts),
+                prepared: cached.prepared,
+            })
+            .await
+            {
+                Ok(c) => c,
+                Err(e) => return fail(e.to_string()),
+            }
         } else {
             let (prepare_opts, grays) = (opts.clone(), grays.clone());
             match tokio::task::spawn_blocking(move || {
@@ -314,12 +330,16 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
         if !current(state) {
             return;
         }
+        let mut scroll_to = None;
         {
             let mut p = state.preview;
             let mut w = p.write();
             if w.generation != generation {
                 return;
             }
+            // The source page in view, to stay on when the pages are planned again
+            // (a zoom or a spread setting changes how many there are).
+            let anchor = w.pages.get(w.selected).and_then(|p| p.image);
             let old = std::mem::take(&mut w.pages);
             w.strip = chapter.plan.strip;
             w.images = image_count;
@@ -336,15 +356,17 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                     // Keep the previous drawing of this page until it is
                     // redrawn, but only near the screen: the full-size
                     // drawings of a long chapter would fill the memory.
-                    let (shot, thumbnail, original, kept, rendered_for) = old
+                    let (shot, thumbnail, original, region, piece, kept, rendered_for) = old
                         .iter()
                         .find(|o| o.crop_key == pipeline::crop_page_key(page))
-                        .map_or((None, None, None, None, 0), |o| {
+                        .map_or((None, None, None, None, None, None, 0), |o| {
                             let close = (near.0..=near.1).contains(&position);
                             (
                                 o.shot.clone().filter(|_| close),
                                 o.thumbnail.clone(),
                                 o.original.clone().filter(|_| close),
+                                o.region,
+                                o.piece.clone().filter(|_| close),
                                 o.kept,
                                 o.rendered_for,
                             )
@@ -357,6 +379,8 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                         shot,
                         thumbnail,
                         original,
+                        region,
+                        piece,
                         kept,
                         image,
                         crop_key: pipeline::crop_page_key(page),
@@ -367,6 +391,24 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                 })
                 .collect();
             w.selected = w.selected.min(w.pages.len().saturating_sub(1));
+            if let Some(image) = anchor {
+                if w.pages.get(w.selected).and_then(|p| p.image) != Some(image) {
+                    if let Some(at) = w.pages.iter().position(|p| p.image == Some(image)) {
+                        w.selected = at;
+                        w.draft_crop = None;
+                        scroll_to = Some(at);
+                    }
+                }
+            }
+        }
+        if let Some(at) = scroll_to {
+            spawn(async move {
+                tokio::time::sleep(Duration::from_millis(60)).await;
+                let js = format!(
+                    "document.querySelector('.editor-row[data-row=\"{at}\"]')?.scrollIntoView({{block:'start'}})"
+                );
+                let _ = document::eval(&js).await;
+            });
         }
 
         let prepared = chapter.prepared.clone();
@@ -440,7 +482,16 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                         let converted =
                             is_full.then(|| pipeline::levels_to_previews(&[levels]).remove(0));
                         let original = (is_full && (want_source || is_selected))
-                            .then(|| pipeline::render_source_preview(&prepared, &page, &opts));
+                            .then(|| pipeline::render_source_whole(&prepared, &page, &opts));
+                        // The crop is measured on the part of the picture the
+                        // page shows, so that part is drawn for the page in hand.
+                        let piece = (is_selected
+                            && matches!(
+                                page.source,
+                                converter::Source::Image { part, .. }
+                                    if part != converter::plan::Part::Whole
+                            ))
+                        .then(|| pipeline::render_source_preview(&prepared, &page, &opts));
                         let samples = if is_selected {
                             let source = converter::plan::page_source(&prepared, &page, &opts);
                             [
@@ -470,7 +521,7 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                         } else {
                             Vec::new()
                         };
-                        (converted, thumbnail, original, samples)
+                        (converted, thumbnail, original, piece, samples)
                     })
                     .await;
                     (index, result)
@@ -483,7 +534,7 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                 return;
             }
             match result {
-                Ok((converted, thumbnail, original, samples)) => {
+                Ok((converted, thumbnail, original, piece, samples)) => {
                     let mut p = state.preview;
                     let mut w = p.write();
                     if let Some(slot) = w.pages.get_mut(index) {
@@ -492,9 +543,11 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                             next.shot = Some(shot(&converted));
                         }
                         next.thumbnail = Some(shot(&thumbnail));
-                        if let Some(original) = original {
+                        if let Some((original, region)) = original {
                             next.original = Some(shot(&original));
+                            next.region = region;
                         }
+                        next.piece = piece.map(|piece| shot(&piece));
                         next.generation = generation;
                         next.rendered_for = signature;
                         *slot = Rc::new(next);

@@ -382,8 +382,16 @@ pub struct PreviewPage {
     /// The page as it will appear on the reader; `None` until it is drawn.
     pub shot: Option<Shot>,
     pub thumbnail: Option<Shot>,
-    /// The exact source section: whole image, physical spread half, or joined strip rows.
+    /// The picture the page comes from, whole and as downloaded: a double
+    /// page is one wide picture whatever the spread setting. Joined strip rows
+    /// for a strip chapter.
     pub original: Option<Shot>,
+    /// Where on `original` this page lies; `None` for a turned page and for
+    /// strip rows.
+    pub region: Option<converter::plan::SourceRegion>,
+    /// Only while cropping: the part of `original` that is cropped (a half, a
+    /// turned page, a piece), as the crop is measured on it.
+    pub piece: Option<Shot>,
     /// The part of the original the conversion keeps (left, top, width,
     /// height as fractions); paged chapters only.
     pub kept: Option<[f32; 4]>,
@@ -589,6 +597,9 @@ pub struct AppState {
     pub export_plan: Signal<ExportPlan>,
     /// The manual crop being dragged, for the page on screen.
     pub crop_draft: Signal<library::CropRect>,
+    /// The groups of the Edit controls that are open. They all start folded,
+    /// and stay as they were left when the screen is visited again.
+    pub open_groups: Signal<Vec<&'static str>>,
     /// The running (or just finished) download or export.
     pub job: Signal<Option<JobView>>,
     /// The exports lined up behind the running one, in the order they go.
@@ -682,6 +693,7 @@ impl AppState {
             export_opts: sig(ExportOpts::default()),
             export_plan: sig(ExportPlan::default()),
             crop_draft: sig(library::CropRect::default()),
+            open_groups: sig(Vec::new()),
             job: sig(None),
             export_waiting: sig(Vec::new()),
             sources_version: sig(0),

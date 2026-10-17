@@ -3,7 +3,7 @@
 use super::crop_editor::SourceCanvas;
 use crate::state::{AppState, Shot, Zoom};
 use crate::ui::cat::CirclingCat;
-use crate::ui::widgets::{EmptyState, Icon};
+use crate::ui::widgets::{EmptyState, Icon, ZoomDropdown, ZoomPick};
 use crate::ui::work::{prepare_preview, schedule_preview, select_preview_page};
 use converter::plan::Source;
 use dioxus::prelude::*;
@@ -71,23 +71,56 @@ fn reader_style(zoom: Zoom, width: u32, height: u32) -> String {
     format!("{size}aspect-ratio:{width}/{height};")
 }
 
-/// One page of the chapter in the scrolling list: the original on the left
-/// (when comparing) and the page as the reader will show it on the right.
+/// Which pages share a picture: a double page split in two, or a page zoomed
+/// into pieces, is several reader pages from one source page. Every other page
+/// is a group of its own. As `(first, one past the last)`.
+fn groups(pages: &[std::rc::Rc<crate::state::PreviewPage>]) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    for (i, page) in pages.iter().enumerate() {
+        match out.last_mut() {
+            Some(last) if page.image.is_some() && pages[last.0].image == page.image => {
+                last.1 = i + 1;
+            }
+            _ => out.push((i, i + 1)),
+        }
+    }
+    out
+}
+
+/// What a page is of its source page, when the source page makes several
+/// ("left half of source page 12"): which one of them this is.
+fn part_note(page: &crate::state::PreviewPage, k: usize, of: usize) -> Option<String> {
+    use converter::plan::Part;
+    let image = page.image?;
+    if of < 2 {
+        return None;
+    }
+    let what = match page.source.as_ref().map(|p| p.source) {
+        Some(Source::Image {
+            part: Part::Half(0),
+            ..
+        }) => "left half".to_string(),
+        Some(Source::Image {
+            part: Part::Half(_),
+            ..
+        }) => "right half".to_string(),
+        _ => format!("part {} of {of}", k + 1),
+    };
+    Some(format!("{what} of source page {}", image + 1))
+}
+
+/// One page of the chapter in the scrolling list: the page as the reader will
+/// show it. The original sits beside it, in the group's source cell.
 #[component]
 fn EditorRow(
     index: usize,
     selected: bool,
     result: Option<Shot>,
-    source: Option<Shot>,
-    compare: bool,
-    editing: bool,
-    guide: bool,
+    /// "Page 13", and when the source page makes several, which part this is.
+    label: String,
     row_style: String,
     frame_style: String,
     seam: Option<Seam>,
-    chapter: String,
-    crop_key: String,
-    draft: Signal<CropRect>,
     /// The page is being drawn again: it is darkened, with the cat on it.
     busy: bool,
 ) -> Element {
@@ -105,34 +138,8 @@ fn EditorRow(
                     p.draft_crop = None;
                 }
             },
-            div { class: "editor-row-label", "Page {index + 1}" }
-            div { class: if compare { "editor-row-panes comparing" } else { "editor-row-panes" },
-                if compare {
-                    div { class: "row-pane source-pane",
-                        if let Some(source) = source {
-                            if selected {
-                                SourceCanvas {
-                                    key: "{chapter}/{crop_key}",
-                                    source: source.clone(),
-                                    draft,
-                                    crop_key: crop_key.clone(),
-                                    editing,
-                                    guide,
-                                }
-                            } else {
-                                div { class: "editor-source-scroll",
-                                    div {
-                                        class: "editor-source-art",
-                                        style: "aspect-ratio: {source.width} / {source.height}; --source-aspect: {source.width as f64 / source.height.max(1) as f64};",
-                                        img { src: "{source.url}", alt: "Source artwork of page {index + 1}", draggable: "false" }
-                                    }
-                                }
-                            }
-                        } else {
-                            div { class: "editor-image-loading", style: "{frame_style}", "Preparing source…" }
-                        }
-                    }
-                }
+            div { class: "editor-row-label", "{label}" }
+            div { class: "editor-row-panes",
                 div { class: "row-pane result-pane",
                     div { class: "editor-reader-frame", style: "{frame_style}",
                         if let Some(shot) = result {
@@ -164,6 +171,115 @@ fn EditorRow(
                         "Clean cut: the next page starts right below"
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The source artwork beside a group of reader pages. It stays in view while
+/// any of the group's pages is, and marks which part of the picture the page
+/// being looked at shows. It is the picture as downloaded, never the split.
+#[component]
+fn SourceCell(
+    first: usize,
+    pages: Vec<std::rc::Rc<crate::state::PreviewPage>>,
+    /// The page of the group in view, as an index into the chapter.
+    selected: Option<usize>,
+    chapter: String,
+    editing: bool,
+    guide: bool,
+    draft: Signal<CropRect>,
+) -> Element {
+    let current = selected.and_then(|i| pages.get(i.checked_sub(first)?));
+    let lead = current.or(pages.first());
+    // While a crop is edited it is measured on the part of the picture the
+    // page shows, so that part is what is drawn.
+    let partial = current.is_some_and(|p| {
+        matches!(
+            p.source.as_ref().map(|s| s.source),
+            Some(Source::Image { part, .. }) if part != converter::plan::Part::Whole
+        )
+    });
+    let editing_piece = editing && partial;
+    let source = if editing_piece {
+        current.and_then(|p| p.piece.clone())
+    } else {
+        lead.and_then(|p| p.original.clone())
+            .or_else(|| pages.iter().find_map(|p| p.original.clone()))
+    };
+    let marks: Vec<(usize, [f32; 4], bool)> = if editing_piece {
+        Vec::new()
+    } else {
+        pages
+            .iter()
+            .enumerate()
+            .filter_map(|(k, p)| {
+                let region = p.region.filter(|r| !r.is_whole())?;
+                Some((first + k, region.page, Some(first + k) == selected))
+            })
+            .collect()
+    };
+    // Where the crop box sits: on the picture, inside the piece it is measured on.
+    let frame = match (editing_piece, current.and_then(|p| p.region)) {
+        (true, _) => Some([0.0, 0.0, 1.0, 1.0]),
+        (false, Some(region)) => Some(region.piece),
+        (false, None) if partial => None,
+        (false, None) => Some([0.0, 0.0, 1.0, 1.0]),
+    };
+    rsx! {
+        div { class: "source-cell source-pane", style: "grid-row: 1 / span {pages.len()};",
+            div { class: "source-sticky",
+                if let Some(source) = source {
+                    if let (Some(current), Some(frame)) = (current, frame) {
+                        SourceCanvas {
+                            key: "{chapter}/{first}",
+                            source,
+                            draft,
+                            crop_key: current.crop_key.clone(),
+                            editing,
+                            guide,
+                            frame,
+                            marks,
+                        }
+                    } else {
+                        SourcePicture { source, index: first, marks }
+                    }
+                } else {
+                    div { class: "editor-image-loading source-loading", "Preparing source…" }
+                }
+            }
+        }
+    }
+}
+
+/// The picture of a page that is not being cropped, with the parts that
+/// reader pages show marked on it.
+#[component]
+fn SourcePicture(source: Shot, index: usize, marks: Vec<(usize, [f32; 4], bool)>) -> Element {
+    rsx! {
+        div { class: "editor-source-scroll",
+            div {
+                class: "editor-source-art",
+                style: "aspect-ratio: {source.width} / {source.height}; --source-aspect: {source.width as f64 / source.height.max(1) as f64};",
+                img { src: "{source.url}", alt: "Source artwork of page {index + 1}", draggable: "false" }
+                SourceMarks { marks }
+            }
+        }
+    }
+}
+
+/// The rectangles of a picture that reader pages show: the page in view is
+/// lit, the others outlined and numbered.
+#[component]
+pub(super) fn SourceMarks(marks: Vec<(usize, [f32; 4], bool)>) -> Element {
+    rsx! {
+        for (page, r, on) in marks {
+            div {
+                key: "{page}",
+                class: if on { "source-region on" } else { "source-region" },
+                style: "left:{r[0] * 100.0}%;top:{r[1] * 100.0}%;width:{r[2] * 100.0}%;height:{r[3] * 100.0}%;",
+                title: "Shown on page {page + 1}",
+                span { "{page + 1}" }
             }
         }
     }
@@ -227,72 +343,30 @@ fn track_scroll(state: AppState, first: i64, last: i64, current: i64) {
     }
 }
 
-/// The zoom as a small menu, as in a document editor: a box showing the zoom
-/// (type a percentage in it) and a list of the ready-made ones.
+/// The zoom of the page preview, in the shared zoom menu.
 #[component]
 fn ZoomMenu() -> Element {
     let mut state = use_context::<AppState>();
-    let mut open = use_signal(|| false);
-    let zoom = state.preview.read().view.zoom;
-    let label = match zoom {
-        Zoom::Fit => "Fit page".to_string(),
-        Zoom::Width => "Fit width".to_string(),
-        Zoom::Custom(percent) => format!("{percent}%"),
+    let selected = match state.preview.read().view.zoom {
+        Zoom::Fit => ZoomPick::Fit,
+        Zoom::Width => ZoomPick::Width,
+        Zoom::Custom(percent) => ZoomPick::Percent(percent),
     };
-    let mut choose = move |zoom: Zoom| {
-        state.preview.write().view.zoom = zoom;
-        open.set(false);
-    };
-    let class = if open() { "zoom-menu is-open" } else { "zoom-menu" };
     rsx! {
-        div { class: "{class}",
-            div { class: "zoom-field",
-                span { class: "zoom-icon", Icon { name: "zoom-in", size: 15 } }
-                input {
-                    r#type: "text", value: "{label}", "aria-label": "Zoom", spellcheck: "false",
-                    onfocus: move |_| open.set(true),
-                    onchange: move |e| {
-                        if let Some(parsed) = parse_zoom(&e.value()) {
-                            choose(parsed);
-                        }
-                    },
-                }
-                button { class: "zoom-chevron", title: "Zoom choices", onclick: move |_| open.set(!open()),
-                    Icon { name: "chevron-down", size: 15 }
-                }
-            }
-            if open() {
-                div { class: "menu-scrim", onclick: move |_| open.set(false) }
-                div { class: "menu down zoom-list",
-                    button { class: if zoom == Zoom::Fit { "menu-item on" } else { "menu-item" }, onclick: move |_| choose(Zoom::Fit), "Fit page" }
-                    button { class: if zoom == Zoom::Width { "menu-item on" } else { "menu-item" }, onclick: move |_| choose(Zoom::Width), "Fit width" }
-                    div { class: "menu-sep" }
-                    for percent in [50u16, 75, 90, 100, 125, 150, 200] {
-                        button {
-                            key: "{percent}",
-                            class: if zoom == Zoom::Custom(percent) { "menu-item on" } else { "menu-item" },
-                            onclick: move |_| choose(Zoom::Custom(percent)),
-                            "{percent}%"
-                        }
-                    }
-                }
-            }
+        ZoomDropdown {
+            selected,
+            percents: vec![50u16, 75, 90, 100, 125, 150, 200],
+            min: Zoom::MIN_PERCENT,
+            max: Zoom::MAX_PERCENT,
+            onpick: move |pick| {
+                state.preview.write().view.zoom = match pick {
+                    ZoomPick::Fit => Zoom::Fit,
+                    ZoomPick::Width => Zoom::Width,
+                    ZoomPick::Percent(percent) => Zoom::Custom(percent),
+                };
+            },
         }
     }
-}
-
-/// What was typed in the zoom box: "125", "125%", "fit", "fit width".
-fn parse_zoom(text: &str) -> Option<Zoom> {
-    let text = text.trim().to_lowercase();
-    if text.contains("width") {
-        return Some(Zoom::Width);
-    }
-    if text.starts_with("fit") {
-        return Some(Zoom::Fit);
-    }
-    let number: u32 = text.trim_end_matches('%').trim().parse().ok()?;
-    let clamped = number.clamp(u32::from(Zoom::MIN_PERCENT), u32::from(Zoom::MAX_PERCENT));
-    Some(Zoom::Custom(clamped as u16))
 }
 
 #[component]
@@ -460,26 +534,45 @@ pub fn PreviewTab() -> Element {
                         if total == 0 && p.error.is_none() {
                             div { class: "editor-image-loading", "Preparing the chapter…" }
                         }
-                        for (i, page) in p.pages.iter().enumerate() {
-                            EditorRow {
-                                key: "{chapter}/{i}",
-                                index: i,
-                                selected: i == selected,
-                                result: page.shot.clone(),
-                                source: page.original.clone(),
-                                compare,
-                                editing: view.editing_crop && i == selected,
-                                guide: view.show_crop,
-                                row_style: row_style.clone(),
-                                frame_style: frame_style.clone(),
-                                seam: seams.get(i).cloned().flatten(),
-                                chapter: chapter.clone(),
-                                crop_key: page.crop_key.clone(),
-                                draft,
-                                // Darkened only while this page is being drawn again: a page drawn the
-                                // way it should look is left alone, whatever else is loading.
-                                busy: (i + 1 >= p.window.0 && i <= p.window.1 + 1)
-                                    && (page.shot.is_none() || (p.busy && page.rendered_for != p.signature)),
+                        for (start, end) in groups(&p.pages) {
+                            div {
+                                key: "{chapter}/g{start}",
+                                class: match (compare, end - start) {
+                                    (false, _) => "editor-group",
+                                    (true, 1) => "editor-group comparing single",
+                                    (true, _) => "editor-group comparing",
+                                },
+                                style: "{row_style}",
+                                if compare {
+                                    SourceCell {
+                                        first: start,
+                                        pages: p.pages[start..end].to_vec(),
+                                        selected: (start..end).contains(&selected).then_some(selected),
+                                        chapter: chapter.clone(),
+                                        editing: view.editing_crop,
+                                        guide: view.show_crop,
+                                        draft,
+                                    }
+                                }
+                                for i in start..end {
+                                    EditorRow {
+                                        key: "{chapter}/{i}",
+                                        index: i,
+                                        selected: i == selected,
+                                        result: p.pages[i].shot.clone(),
+                                        label: match part_note(&p.pages[i], i - start, end - start) {
+                                            Some(note) => format!("Page {} · {note}", i + 1),
+                                            None => format!("Page {}", i + 1),
+                                        },
+                                        row_style: row_style.clone(),
+                                        frame_style: frame_style.clone(),
+                                        seam: seams.get(i).cloned().flatten(),
+                                        // Darkened only while this page is being drawn again: a page drawn the
+                                        // way it should look is left alone, whatever else is loading.
+                                        busy: (i + 1 >= p.window.0 && i <= p.window.1 + 1)
+                                            && (p.pages[i].shot.is_none() || (p.busy && p.pages[i].rendered_for != p.signature)),
+                                    }
+                                }
                             }
                         }
                     }
@@ -520,6 +613,57 @@ pub fn PreviewTab() -> Element {
 mod tests {
     use super::*;
 
+    fn page(
+        image: Option<usize>,
+        part: converter::plan::Part,
+    ) -> std::rc::Rc<crate::state::PreviewPage> {
+        std::rc::Rc::new(crate::state::PreviewPage {
+            image,
+            source: image.map(|index| converter::PlannedPage {
+                source: Source::Image { index, part },
+                unit_top: 0,
+                unit_height: 0,
+                landscape: false,
+            }),
+            ..Default::default()
+        })
+    }
+
+    #[test]
+    fn the_pages_of_one_source_page_share_a_group() {
+        use converter::plan::Part;
+        let pages = vec![
+            page(Some(0), Part::Whole),
+            page(Some(1), Part::Half(1)),
+            page(Some(1), Part::Half(0)),
+            page(Some(2), Part::Whole),
+            page(None, Part::Whole),
+            page(None, Part::Whole),
+        ];
+        assert_eq!(groups(&pages), vec![(0, 1), (1, 3), (3, 4), (4, 5), (5, 6)]);
+        assert_eq!(part_note(&pages[0], 0, 1), None);
+        assert_eq!(
+            part_note(&pages[1], 0, 2).as_deref(),
+            Some("right half of source page 2")
+        );
+        assert_eq!(
+            part_note(&pages[2], 1, 2).as_deref(),
+            Some("left half of source page 2")
+        );
+        let tile = page(
+            Some(4),
+            Part::Tile {
+                of: converter::plan::Piece::Whole,
+                col: 1,
+                row: 0,
+            },
+        );
+        assert_eq!(
+            part_note(&tile, 1, 4).as_deref(),
+            Some("part 2 of 4 of source page 5")
+        );
+    }
+
     #[test]
     fn a_page_is_sized_by_its_zoom() {
         assert_eq!(
@@ -543,16 +687,5 @@ mod tests {
             "height:800px;width:480px;aspect-ratio:480/800;"
         );
         assert!(reader_style(Zoom::Width, 480, 800).starts_with("height:auto;width:100%;"));
-    }
-
-    #[test]
-    fn typed_zooms_are_understood() {
-        assert_eq!(parse_zoom("125"), Some(Zoom::Custom(125)));
-        assert_eq!(parse_zoom(" 90 % "), Some(Zoom::Custom(90)));
-        assert_eq!(parse_zoom("Fit page"), Some(Zoom::Fit));
-        assert_eq!(parse_zoom("fit width"), Some(Zoom::Width));
-        assert_eq!(parse_zoom("1"), Some(Zoom::Custom(Zoom::MIN_PERCENT)));
-        assert_eq!(parse_zoom("99999"), Some(Zoom::Custom(Zoom::MAX_PERCENT)));
-        assert_eq!(parse_zoom("big"), None);
     }
 }

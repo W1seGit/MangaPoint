@@ -320,6 +320,20 @@ fn PresetItem(
     }
 }
 
+/// Whether the series is going by how it was last exported. That is so when it
+/// is exactly as exported; and when it was changed since, so long as no preset
+/// was picked in the meantime (a preset it follows shows "edited" instead). So
+/// changes made and not exported are shown as edits to the last export, which
+/// stays what the last real export was.
+fn last_export_in_use(
+    exported_preset: Option<&str>,
+    exported: Option<&ConversionSettings>,
+    series_preset: Option<&str>,
+    series: &ConversionSettings,
+) -> bool {
+    exported.is_some() && exported_preset == series_preset && (exported == Some(series) || series_preset.is_none())
+}
+
 #[component]
 fn PresetsPanel() -> Element {
     let state = use_context::<AppState>();
@@ -336,10 +350,13 @@ fn PresetsPanel() -> Element {
         .rev()
         .find(|r| r.series_id == series.id && r.settings.is_some())
         .cloned();
-    // The last export is the one chosen while the series is as it was exported
-    // (and no other preset has been picked since).
     let last_on = last.as_ref().is_some_and(|r| {
-        r.settings.as_ref() == Some(&series.settings) && r.preset_id == series.preset_id
+        last_export_in_use(
+            r.preset_id.as_deref(),
+            r.settings.as_ref(),
+            series.preset_id.as_deref(),
+            &series.settings,
+        )
     });
     let series_id = series.id.clone();
     let settings_now = series.settings.clone();
@@ -371,7 +388,10 @@ fn PresetsPanel() -> Element {
                         kind: PresetKind::Last,
                         preset_id: record.preset_id.clone(),
                         name: "Last export",
-                        description: "The settings this series was last exported with, so the next part matches the first.",
+                        description: format!(
+                            "The settings this series was last exported with ({}), so the next part matches the first. Only an export changes it.",
+                            logic::ago(crate::state::now_secs(), record.at)
+                        ),
                         settings: record.settings.clone().unwrap_or_default(),
                         on: last_on,
                         series_id: series_id.clone(),
@@ -454,8 +474,8 @@ fn EditPanel() -> Element {
 
     rsx! {
         Panel { title: "Edit", icon: "sliders-horizontal", id: "edit",
-            CropSection { identity: "{chapter}/{key}", draft, crop_key: key.clone(), saved }
             ConversionControls {
+                crop_section: rsx! { CropSection { identity: "{chapter}/{key}", draft, crop_key: key.clone(), saved } },
                 value: series.settings.clone(),
                 compact: true,
                 shading_samples: p.shading_samples.clone(),
@@ -724,6 +744,30 @@ fn adopt_found(state: AppState, found: &[pipeline::export::Drive]) {
     }
 }
 
+/// What to tell about the place the reader is expected at.
+#[derive(Debug, PartialEq, Eq)]
+enum UsbStatus {
+    /// It is one of the drives plugged in now (the index in the list).
+    Found(usize),
+    /// A folder or drive chosen by hand that is there, but not a plugged-in drive.
+    Elsewhere,
+    /// Chosen, but not there: unplugged, or not mounted.
+    Gone,
+    /// Nothing chosen yet and nothing found.
+    Looking,
+}
+
+fn usb_status(chosen: Option<&std::path::Path>, found: &[pipeline::export::Drive]) -> UsbStatus {
+    match chosen {
+        None => UsbStatus::Looking,
+        Some(path) => match found.iter().position(|d| d.mount == path) {
+            Some(i) => UsbStatus::Found(i),
+            None if path.exists() => UsbStatus::Elsewhere,
+            None => UsbStatus::Gone,
+        },
+    }
+}
+
 const USB_HELP: &str = "Plug the reader in with USB (drive mode), or put its SD card in this computer. It shows up in the box by itself. With more than one drive, Choose picks the one to use.";
 const WIFI_HELP: &str = "Switch on the reader's Wi-Fi file transfer, then type the address it shows. Test checks that it answers.";
 
@@ -742,11 +786,12 @@ fn SendPanel() -> Element {
     let state = use_context::<AppState>();
     let starts_on_usb = matches!(state.export_opts.peek().target, TargetChoice::Usb);
     let mut drives = use_signal(move || if starts_on_usb { removable_drives() } else { Vec::new() });
-    // Drives are only looked for while the reader is sent to by USB, every few
-    // seconds, and not at all once this screen is left (the loop ends with it).
+    // Drives are only looked for while the reader is sent to by USB, every
+    // couple of seconds, and not at all once this screen is left (the loop ends
+    // with it).
     use_future(move || async move {
         loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
             if !matches!(state.export_opts.peek().target, TargetChoice::Usb) {
                 continue;
             }
@@ -774,7 +819,10 @@ fn SendPanel() -> Element {
     let setup = settings.reader_setup();
     let reader_dir = setup.reader_dir.clone();
     let reader_text = reader_dir.as_ref().map(|d| d.display().to_string());
-    let reader_there = reader_dir.as_ref().is_some_and(|d| d.exists());
+    // Read here, not only in the menu, so the screen follows a drive being
+    // plugged in or pulled out.
+    let found = drives.read().clone();
+    let usb = usb_status(reader_dir.as_deref(), &found);
     let on_reader = !matches!(opts.target, TargetChoice::Folder);
     // The way of reaching the reader: the one chosen if this reader takes it.
     let via = match opts.target {
@@ -934,9 +982,19 @@ fn SendPanel() -> Element {
                                     }
                                 }
                             }
-                            if reader_text.is_some() && !reader_there {
-                                div { class: "reader-note bad", "That place is not there now. Plug the reader in, or choose another." }
-                            }
+                            {match &usb {
+                                UsbStatus::Found(i) => {
+                                    let d = &found[*i];
+                                    let name = if d.name.trim().is_empty() { "your reader".to_string() } else { d.name.clone() };
+                                    rsx! { div { class: "reader-note good",
+                                        Icon { name: "check", size: 14 }
+                                        " Found {name} ({logic::human_bytes(d.available_bytes)} free). It is selected for this export."
+                                    } }
+                                }
+                                UsbStatus::Gone => rsx! { div { class: "reader-note bad", "The reader is not connected. Plug it in (drive mode), or choose another place." } },
+                                UsbStatus::Looking => rsx! { div { class: "reader-note", "Looking for your reader. Plug it in with USB (drive mode) and it will be picked up here." } },
+                                UsbStatus::Elsewhere => rsx! {},
+                            }}
                         },
                         library::ExportMethod::WiFi => rsx! {
                             label { class: "px-field",
@@ -1167,3 +1225,48 @@ fn CropSection(
     rsx! { CropInspector { key: "{identity}", draft, crop_key, saved } }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pipeline::export::Drive;
+    use std::path::PathBuf;
+
+    fn drive(mount: &std::path::Path) -> Drive {
+        Drive {
+            mount: mount.to_path_buf(),
+            name: "XTEINK".into(),
+            total_bytes: 8,
+            available_bytes: 4,
+        }
+    }
+
+    #[test]
+    fn changes_not_exported_show_as_edits_to_the_last_export_and_never_replace_it() {
+        let exported = ConversionSettings::default();
+        let mut edited = exported.clone();
+        edited.contrast = 70;
+        // As exported: in use. Changed since, with no preset picked: still the
+        // last export, now edited.
+        assert!(last_export_in_use(None, Some(&exported), None, &exported));
+        assert!(last_export_in_use(None, Some(&exported), None, &edited));
+        // A preset the series follows takes the place when it is not exact.
+        assert!(last_export_in_use(Some("manga"), Some(&exported), Some("manga"), &exported));
+        assert!(!last_export_in_use(Some("manga"), Some(&exported), Some("manga"), &edited));
+        // Another preset picked, or nothing exported yet.
+        assert!(!last_export_in_use(Some("manga"), Some(&exported), Some("manhwa"), &exported));
+        assert!(!last_export_in_use(None, None, None, &exported));
+    }
+
+    #[test]
+    fn the_reader_place_is_told_apart_as_found_elsewhere_gone_or_not_yet_looked_for() {
+        let here = std::env::temp_dir();
+        let gone = PathBuf::from("/mangapoint-no-such-reader");
+        assert_eq!(usb_status(None, &[]), UsbStatus::Looking);
+        assert_eq!(usb_status(Some(&here), &[drive(&gone), drive(&here)]), UsbStatus::Found(1));
+        assert_eq!(usb_status(Some(&here), &[]), UsbStatus::Elsewhere);
+        assert_eq!(usb_status(Some(&gone), &[]), UsbStatus::Gone);
+        // Unplugged: the drive is no longer listed and its place is not there.
+        assert_eq!(usb_status(Some(&gone), &[drive(&here)]), UsbStatus::Gone);
+    }
+}

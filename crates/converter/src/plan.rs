@@ -20,8 +20,9 @@
 
 use crate::gray::{GrayImage, LevelImage};
 use crate::process::{
-    border_median, crop_bounds, crop_rect, finish, fit, letterbox_top, resize, rotate_cw,
-    trim_bounds, trim_threshold, CropMode, Layout, Margins, ProcessOptions, SpreadMode, StripCut,
+    border_median, crop_bounds, crop_rect, finish_guided, letterbox_top, resize, rotate_cw, show,
+    tile, tile_arrow, tile_order, trim_bounds, trim_threshold, zoom_grid, Arrow, CropMode, Layout,
+    Margins, ProcessOptions, SpreadMode, StripCut, ZoomMode,
 };
 use crate::xtc::ReadDirection;
 
@@ -40,6 +41,45 @@ pub enum Part {
     Rotated,
     /// A physical spread half: 0 is left, 1 is right, independent of reading direction.
     Half(u8),
+    /// One screen of a zoomed-in piece: its column and row counted from the
+    /// left and top of the zoomed piece, whatever the reading direction.
+    Tile { of: Piece, col: u16, row: u16 },
+}
+
+/// The part of an image that a zoom is applied to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Piece {
+    Whole,
+    Rotated,
+    Half(u8),
+}
+
+/// The piece of `img` that `part` shows, before it is scaled to the screen.
+fn piece(img: &GrayImage, of: Piece) -> GrayImage {
+    match of {
+        Piece::Whole => img.clone(),
+        Piece::Rotated => rotate_cw(img),
+        Piece::Half(n) => {
+            let mid = spine(img);
+            if n == 1 {
+                crop_rect(img, mid, 0, img.width - mid, img.height)
+            } else {
+                crop_rect(img, 0, 0, mid, img.height)
+            }
+        }
+    }
+}
+
+/// How big a piece is, without cutting it out.
+fn piece_size(img: &GrayImage, of: Piece) -> (u32, u32) {
+    match of {
+        Piece::Whole => (img.width, img.height),
+        Piece::Rotated => (img.height, img.width),
+        Piece::Half(n) => {
+            let mid = spine(img);
+            (if n == 1 { img.width - mid } else { mid }, img.height)
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -273,6 +313,35 @@ fn plan_paged(images: &[GrayImage], opts: &ProcessOptions) -> ChapterPlan {
             }
         };
         for &part in parts {
+            // Zoomed in past Fit, a piece takes several screens, listed in
+            // reading order. A piece that still fits one screen is as before.
+            if !opts.zoom.is_fit() && opts.zoom_mode == ZoomMode::Tile {
+                let of = match part {
+                    Part::Rotated => Piece::Rotated,
+                    Part::Half(n) => Piece::Half(n),
+                    _ => Piece::Whole,
+                };
+                let (w, h) = piece_size(img, of);
+                let grid = zoom_grid(w, h, opts);
+                if grid.cols * grid.rows > 1 {
+                    for (col, row) in tile_order(grid.cols, grid.rows, opts.direction) {
+                        pages.push(PlannedPage {
+                            source: Source::Image {
+                                index,
+                                part: Part::Tile {
+                                    of,
+                                    col: col as u16,
+                                    row: row as u16,
+                                },
+                            },
+                            unit_top: 0,
+                            unit_height: 0,
+                            landscape,
+                        });
+                    }
+                    continue;
+                }
+            }
             pages.push(PlannedPage {
                 source: Source::Image { index, part },
                 unit_top: 0,
@@ -423,20 +492,46 @@ pub fn render_page(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOption
         }
         _ => unreachable!("a plan is only rendered with the chapter it was made from"),
     };
-    finish(screen, opts)
+    finish_guided(screen, opts, page_arrow(prepared, page, opts))
+}
+
+/// The guide arrow this page gets, when they are on: the first half of a
+/// split double page points to the other half, and a screen of a zoomed page
+/// to the next screen. The last page of a source page has none.
+fn page_arrow(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) -> Option<Arrow> {
+    if !opts.guide_arrows {
+        return None;
+    }
+    let (Kind::Paged(images), Source::Image { index, part }) = (&prepared.kind, page.source) else {
+        return None;
+    };
+    // The half of a double page that is read first.
+    let first_half = |n: u8| (n == 1) == (opts.direction == ReadDirection::RightToLeft);
+    match part {
+        Part::Whole | Part::Rotated => None,
+        Part::Half(n) => first_half(n).then(|| crate::process::across(opts.direction)),
+        Part::Tile { of, col, row } => {
+            let (w, h) = piece_size(&images[index], of);
+            let grid = zoom_grid(w, h, opts);
+            let continues = matches!(of, Piece::Half(n) if first_half(n));
+            tile_arrow(grid.cols, grid.rows, (col as u32, row as u32), continues, opts.direction)
+        }
+    }
 }
 
 fn paged_screen(img: &GrayImage, part: Part, opts: &ProcessOptions) -> GrayImage {
     match part {
-        Part::Whole => fit(img, opts.width, opts.height),
-        Part::Rotated => fit(&rotate_cw(img), opts.width, opts.height),
-        Part::Half(n) => {
-            let mid = spine(img);
-            let left = crop_rect(img, 0, 0, mid, img.height);
-            let right = crop_rect(img, mid, 0, img.width - mid, img.height);
-            let half = if n == 1 { right } else { left };
-            fit(&half, opts.width, opts.height)
-        }
+        Part::Whole => show(img, opts),
+        Part::Rotated => show(&rotate_cw(img), opts),
+        Part::Half(_) => show(&piece(img, half_of(part)), opts),
+        Part::Tile { of, col, row } => tile(&piece(img, of), opts, col as u32, row as u32),
+    }
+}
+
+fn half_of(part: Part) -> Piece {
+    match part {
+        Part::Half(n) => Piece::Half(n),
+        _ => Piece::Whole,
     }
 }
 
@@ -837,6 +932,7 @@ mod tests {
 #[cfg(test)]
 mod manual_crop_tests {
     use super::*;
+    use crate::process::{finish, fit};
     use crate::{Depth, Dither};
     #[test]
     fn manual_crop_uses_source_before_fit_and_zero_preserves_pixels() {
@@ -922,20 +1018,106 @@ pub fn page_source(prepared: &Prepared, page: &PlannedPage, _opts: &ProcessOptio
             let img = &images[index];
             match part {
                 Part::Whole => img.clone(),
-                Part::Rotated => rotate_cw(img),
-                Part::Half(n) => {
-                    let mid = spine(img);
-                    let right = n == 1;
-                    if right {
-                        crop_rect(img, mid, 0, img.width - mid, img.height)
-                    } else {
-                        crop_rect(img, 0, 0, mid, img.height)
-                    }
-                }
+                Part::Rotated => piece(img, Piece::Rotated),
+                Part::Half(n) => piece(img, Piece::Half(n)),
+                Part::Tile { of, .. } => piece(img, of),
             }
         }
         _ => unreachable!("a plan belongs to its prepared chapter"),
     }
+}
+
+/// The downloaded picture a page comes from, whole: for a split double page
+/// both halves, for a zoomed page all of it. A strip page has no picture of
+/// its own, so it is its rows, as in [`page_source`].
+pub fn whole_source(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) -> GrayImage {
+    match (&prepared.kind, page.source) {
+        (Kind::Paged(images), Source::Image { index, .. }) => images[index].clone(),
+        _ => page_source(prepared, page, opts),
+    }
+}
+
+/// Where a page lies on [`whole_source`], as fractions `[left, top, width,
+/// height]` of the picture.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceRegion {
+    /// What the page shows of the picture: the half of a split double page,
+    /// the piece of a zoomed page, the middle that a crop keeps. All of it
+    /// (`[0, 0, 1, 1]`) when the page is the whole picture.
+    pub page: [f32; 4],
+    /// The part of the picture a manual crop is measured on: the half of a
+    /// split double page, else the whole picture (a zoom piece is cropped
+    /// before it is zoomed).
+    pub piece: [f32; 4],
+}
+
+impl SourceRegion {
+    /// The page is the whole picture.
+    pub fn is_whole(&self) -> bool {
+        self.page[0] <= 0.0005
+            && self.page[1] <= 0.0005
+            && self.page[2] >= 0.999
+            && self.page[3] >= 0.999
+    }
+}
+
+/// Where this page lies on [`whole_source`]. `None` for a turned page (its
+/// region would not be a rectangle on the upright picture) and for strip rows.
+pub fn source_region(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+) -> Option<SourceRegion> {
+    let (Kind::Paged(images), Source::Image { index, part }) = (&prepared.kind, page.source) else {
+        return None;
+    };
+    let img = &images[index];
+    let (of, tile_at) = match part {
+        Part::Whole => (Piece::Whole, None),
+        Part::Rotated => return None,
+        Part::Half(n) => (Piece::Half(n), None),
+        Part::Tile { of, col, row } => (of, Some((col as u32, row as u32))),
+    };
+    let (w, h) = (img.width as f64, img.height as f64);
+    let (px, pw) = match of {
+        Piece::Rotated => return None,
+        Piece::Whole => (0.0, w),
+        Piece::Half(n) => {
+            let mid = spine(img) as f64;
+            if n == 1 {
+                (mid, w - mid)
+            } else {
+                (0.0, mid)
+            }
+        }
+    };
+    // Where the page lies inside its piece, as fractions of the piece.
+    let (mut fx, mut fy, mut fw, mut fh) = (0.0, 0.0, 1.0, 1.0);
+    if let Some((col, row)) = tile_at {
+        let grid = zoom_grid(pw as u32, h as u32, opts);
+        let (col, row) = (col.min(grid.cols - 1), row.min(grid.rows - 1));
+        let (gw, gh) = (grid.width as f64, grid.height as f64);
+        fx = (grid.width * col / grid.cols) as f64 / gw;
+        fw = (grid.width * (col + 1) / grid.cols) as f64 / gw - fx;
+        fy = (grid.height * row / grid.rows) as f64 / gh;
+        fh = (grid.height * (row + 1) / grid.rows) as f64 / gh - fy;
+    } else if !opts.zoom.is_fit() && opts.zoom_mode == ZoomMode::Crop {
+        let grid = zoom_grid(pw as u32, h as u32, opts);
+        let (sw, sh) = (grid.width.min(opts.width), grid.height.min(opts.height));
+        fw = sw as f64 / grid.width as f64;
+        fh = sh as f64 / grid.height as f64;
+        fx = ((grid.width - sw) / 2) as f64 / grid.width as f64;
+        fy = ((grid.height - sh) / 2) as f64 / grid.height as f64;
+    }
+    Some(SourceRegion {
+        page: [
+            ((px + fx * pw) / w) as f32,
+            fy as f32,
+            (fw * pw / w) as f32,
+            fh as f32,
+        ],
+        piece: [(px / w) as f32, 0.0, (pw / w) as f32, 1.0],
+    })
 }
 
 /// Remove source-edge fractions before fitting and finishing. Zero retains the fast original path.
@@ -980,8 +1162,405 @@ pub fn render_page_cropped(
         let w = (cut.width as f64 * scale).round().max(1.0) as u32;
         let h = (cut.height as f64 * scale).round().max(1.0) as u32;
         letterbox_top(&resize(&cut, w, h), opts.width, opts.height)
+    } else if let Source::Image {
+        part: Part::Tile { col, row, .. },
+        ..
+    } = page.source
+    {
+        tile(&cut, opts, col as u32, row as u32)
     } else {
-        fit(&cut, opts.width, opts.height)
+        show(&cut, opts)
     };
-    finish(screen, opts)
+    finish_guided(screen, opts, page_arrow(prepared, page, opts))
+}
+
+#[cfg(test)]
+mod zoom_tests {
+    use super::*;
+    use crate::process::PageZoom;
+    use crate::{Depth, Dither};
+
+    /// A 480 x 800 page of four flat quadrants: top left black, top right
+    /// 85, bottom left 170, bottom right white. At zoom 200 each quadrant
+    /// fills one screen exactly.
+    fn quadrants() -> GrayImage {
+        GrayImage::from_fn(480, 800, |x, y| match (x >= 240, y >= 400) {
+            (false, false) => 0,
+            (true, false) => 85,
+            (false, true) => 170,
+            (true, true) => 255,
+        })
+        .unwrap()
+    }
+
+    fn opts(zoom: u16, mode: ZoomMode, direction: ReadDirection) -> ProcessOptions {
+        opts_with(PageZoom::Percent(zoom), mode, direction)
+    }
+
+    fn opts_with(zoom: PageZoom, mode: ZoomMode, direction: ReadDirection) -> ProcessOptions {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
+        o.layout = Layout::Manga;
+        o.crop = CropMode::Full;
+        o.auto_levels = false;
+        o.contrast = 50;
+        o.dither = Dither::Threshold;
+        o.spread = SpreadMode::Split;
+        o.zoom = zoom;
+        o.zoom_mode = mode;
+        o.direction = direction;
+        o
+    }
+
+    fn middle(page: &LevelImage) -> u8 {
+        page.get(page.width / 2, page.height / 2)
+    }
+
+    #[test]
+    fn a_page_zoomed_to_twice_fit_takes_four_screens() {
+        let o = opts(200, ZoomMode::Tile, ReadDirection::LeftToRight);
+        let grid = zoom_grid(480, 800, &o);
+        assert_eq!((grid.width, grid.height, grid.cols, grid.rows), (960, 1600, 2, 2));
+        // At Fit, and a little past it on a page that still fits, one screen.
+        let fit_grid = zoom_grid(480, 800, &opts(100, ZoomMode::Tile, ReadDirection::LeftToRight));
+        assert_eq!((fit_grid.cols, fit_grid.rows), (1, 1));
+    }
+
+    #[test]
+    fn zoomed_screens_follow_the_reading_direction_and_show_each_part_once() {
+        for (direction, want) in [
+            // Left to right: top row left then right, then the bottom row.
+            (ReadDirection::LeftToRight, [0u8, 85, 170, 255]),
+            // Right to left: each row starts at its right.
+            (ReadDirection::RightToLeft, [85, 0, 255, 170]),
+        ] {
+            let o = opts(200, ZoomMode::Tile, direction);
+            let pages = convert_chapter(&[quadrants()], &o);
+            assert_eq!(pages.len(), 4, "{direction:?}");
+            for page in &pages {
+                assert_eq!((page.width, page.height), (480, 800));
+            }
+            let got: Vec<u8> = pages.iter().map(middle).collect();
+            assert_eq!(got, want, "{direction:?}");
+            // Every screen is one quadrant and nothing else: no repeats.
+            for page in &pages {
+                let first = page.levels[0];
+                assert!(page.levels.iter().all(|&l| l == first));
+            }
+        }
+    }
+
+    #[test]
+    fn the_plan_lists_each_screen_so_previews_and_exports_agree() {
+        let images = [quadrants(), quadrants()];
+        let o = opts(200, ZoomMode::Tile, ReadDirection::RightToLeft);
+        let prepared = prepare(&images, &o);
+        let plan = plan(&prepared, &o);
+        assert_eq!(plan.pages.len(), 8);
+        let first = plan.pages[0].source;
+        assert_eq!(
+            first,
+            Source::Image {
+                index: 0,
+                part: Part::Tile { of: Piece::Whole, col: 1, row: 0 }
+            }
+        );
+        let rendered = render_all_cropped(&prepared, &plan.pages, &o, &[]);
+        assert_eq!(rendered, convert_chapter(&images, &o));
+    }
+
+    #[test]
+    fn fit_width_makes_a_tall_page_for_a_wide_screen_several_screens_top_to_bottom() {
+        // A sideways screen (800 x 480) and a 480 x 800 page of four quadrants:
+        // at Fit it is a small page in the middle, at Fit width it fills the
+        // width, 1333 rows tall, and takes three screens.
+        let mut o = opts_with(PageZoom::Width, ZoomMode::Tile, ReadDirection::LeftToRight);
+        o.width = 800;
+        o.height = 480;
+        let pages = convert_chapter(&[quadrants()], &o);
+        assert_eq!(pages.len(), 3);
+        for page in &pages {
+            assert_eq!((page.width, page.height), (800, 480));
+        }
+        // Left half of the page is darker than its right half, top to bottom.
+        assert_eq!(pages[0].get(100, 100), 0);
+        assert_eq!(pages[0].get(700, 100), 85);
+        assert_eq!(pages[2].get(100, 400), 170);
+        assert_eq!(pages[2].get(700, 400), 255);
+        // The page already fills a portrait screen's width: Fit width is Fit.
+        let upright = opts_with(PageZoom::Width, ZoomMode::Tile, ReadDirection::LeftToRight);
+        assert_eq!(convert_chapter(&[quadrants()], &upright).len(), 1);
+    }
+
+    #[test]
+    fn cropping_keeps_the_middle_and_loses_the_edges() {
+        let o = opts(200, ZoomMode::Crop, ReadDirection::LeftToRight);
+        let pages = convert_chapter(&[quadrants()], &o);
+        assert_eq!(pages.len(), 1);
+        let page = &pages[0];
+        // The window straddles all four quadrants, one in each corner.
+        assert_eq!(page.get(10, 10), 0);
+        assert_eq!(page.get(470, 10), 85);
+        assert_eq!(page.get(10, 790), 170);
+        assert_eq!(page.get(470, 790), 255);
+    }
+
+    #[test]
+    fn fit_is_unchanged_whatever_the_zoom_mode() {
+        let plain = convert_chapter(&[quadrants()], &opts(100, ZoomMode::Tile, ReadDirection::RightToLeft));
+        let crop = convert_chapter(&[quadrants()], &opts(100, ZoomMode::Crop, ReadDirection::RightToLeft));
+        assert_eq!(plain.len(), 1);
+        assert_eq!(plain, crop);
+    }
+
+    #[test]
+    fn each_half_of_a_split_spread_is_zoomed_on_its_own() {
+        // 900 x 450: two 450 x 450 halves, each 1.07 x the screen width at Fit
+        // and 1.6 x at 150%, which is two screens wide and one tall.
+        let spread = GrayImage::new(900, 450, 200).unwrap();
+        let o = opts(150, ZoomMode::Tile, ReadDirection::RightToLeft);
+        let prepared = prepare(std::slice::from_ref(&spread), &o);
+        let plan = plan(&prepared, &o);
+        let parts: Vec<Part> = plan
+            .pages
+            .iter()
+            .map(|p| match p.source {
+                Source::Image { part, .. } => part,
+                _ => unreachable!(),
+            })
+            .collect();
+        assert_eq!(
+            parts,
+            vec![
+                Part::Tile { of: Piece::Half(1), col: 1, row: 0 },
+                Part::Tile { of: Piece::Half(1), col: 0, row: 0 },
+                Part::Tile { of: Piece::Half(0), col: 1, row: 0 },
+                Part::Tile { of: Piece::Half(0), col: 0, row: 0 },
+            ]
+        );
+        assert_eq!(convert_chapter(&[spread], &o).len(), 4);
+    }
+
+    #[test]
+    fn a_manual_crop_of_a_zoomed_screen_still_gives_a_full_screen() {
+        let o = opts(200, ZoomMode::Tile, ReadDirection::LeftToRight);
+        let prepared = prepare(&[quadrants()], &o);
+        let plan = plan(&prepared, &o);
+        let shown = render_page_cropped(&prepared, &plan.pages[0], &o, [0.0, 0.0, 0.25, 0.25]);
+        assert_eq!((shown.width, shown.height), (480, 800));
+    }
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+    use crate::process::PageZoom;
+    use crate::{Depth, Dither};
+
+    fn opts() -> ProcessOptions {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
+        o.layout = Layout::Manga;
+        o.crop = CropMode::Full;
+        o.dither = Dither::Threshold;
+        o.spread = SpreadMode::Split;
+        o.direction = ReadDirection::RightToLeft;
+        o
+    }
+
+    /// A double page 1600 x 1000: art on both sides of a blank fold in the middle.
+    fn spread() -> GrayImage {
+        GrayImage::from_fn(1600, 1000, |x, _| {
+            if (100..700).contains(&x) || (900..1500).contains(&x) {
+                0
+            } else {
+                255
+            }
+        })
+        .unwrap()
+    }
+
+    fn near(a: [f32; 4], b: [f32; 4]) {
+        for (x, y) in a.iter().zip(b) {
+            assert!((x - y).abs() < 0.01, "{a:?} is not {b:?}");
+        }
+    }
+
+    #[test]
+    fn a_split_spread_shows_both_halves_on_the_one_picture() {
+        let o = opts();
+        let prepared = prepare(&[spread()], &o);
+        let pages = plan(&prepared, &o).pages;
+        assert_eq!(pages.len(), 2);
+        // Right to left: the right half comes first.
+        let first = source_region(&prepared, &pages[0], &o).unwrap();
+        near(first.page, [0.5, 0.0, 0.5, 1.0]);
+        near(first.piece, [0.5, 0.0, 0.5, 1.0]);
+        near(
+            source_region(&prepared, &pages[1], &o).unwrap().page,
+            [0.0, 0.0, 0.5, 1.0],
+        );
+        for page in &pages {
+            let whole = whole_source(&prepared, page, &o);
+            assert_eq!(
+                (whole.width, whole.height),
+                (1600, 1000),
+                "the picture is never cut"
+            );
+        }
+    }
+
+    #[test]
+    fn fit_and_rotate_leave_the_whole_picture() {
+        for mode in [SpreadMode::Fit, SpreadMode::Rotate] {
+            let mut o = opts();
+            o.spread = mode;
+            let prepared = prepare(&[spread()], &o);
+            let pages = plan(&prepared, &o).pages;
+            assert_eq!(pages.len(), 1);
+            let region = source_region(&prepared, &pages[0], &o);
+            if mode == SpreadMode::Rotate {
+                assert_eq!(
+                    region, None,
+                    "a turned page is not a rectangle on the picture"
+                );
+            } else {
+                assert!(region.unwrap().is_whole());
+            }
+        }
+    }
+
+    #[test]
+    fn zoomed_pieces_and_crops_mark_their_part_of_the_picture() {
+        let mut o = opts();
+        o.spread = SpreadMode::Fit;
+        o.zoom = PageZoom::Percent(200);
+        let page = GrayImage::new(480, 800, 255).unwrap();
+        let prepared = prepare(std::slice::from_ref(&page), &o);
+        let pages = plan(&prepared, &o).pages;
+        assert_eq!(pages.len(), 4);
+        // Right to left: the top right quarter first.
+        near(
+            source_region(&prepared, &pages[0], &o).unwrap().page,
+            [0.5, 0.0, 0.5, 0.5],
+        );
+        near(
+            source_region(&prepared, &pages[3], &o).unwrap().page,
+            [0.0, 0.5, 0.5, 0.5],
+        );
+        o.zoom_mode = ZoomMode::Crop;
+        let pages = plan(&prepared, &o).pages;
+        assert_eq!(pages.len(), 1);
+        near(
+            source_region(&prepared, &pages[0], &o).unwrap().page,
+            [0.25, 0.25, 0.5, 0.5],
+        );
+    }
+}
+
+#[cfg(test)]
+mod arrow_tests {
+    use super::*;
+    use crate::process::PageZoom;
+    use crate::{Depth, Dither};
+
+    fn opts(direction: ReadDirection) -> ProcessOptions {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Eight);
+        o.layout = Layout::Manga;
+        o.crop = CropMode::Full;
+        o.auto_levels = false;
+        o.contrast = 50;
+        o.dither = Dither::Threshold;
+        o.spread = SpreadMode::Split;
+        o.direction = direction;
+        o.guide_arrows = true;
+        o
+    }
+
+    /// Where the black of a page is, on an otherwise white one: the corner
+    /// the arrow sits in.
+    fn arrow_at(page: &LevelImage) -> Option<&'static str> {
+        let dark: Vec<u32> = (0..page.height)
+            .flat_map(|y| (0..page.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| page.get(x, y) == 0)
+            .map(|(x, _)| x)
+            .collect();
+        let mean = dark.iter().map(|&x| x as f64).sum::<f64>() / dark.len().max(1) as f64;
+        match (dark.is_empty(), mean / page.width as f64) {
+            (true, _) => None,
+            (_, m) if m < 0.33 => Some("left"),
+            (_, m) if m > 0.67 => Some("right"),
+            _ => Some("down"),
+        }
+    }
+
+    fn arrows(img: &GrayImage, o: &ProcessOptions) -> Vec<Option<&'static str>> {
+        let prepared = prepare(std::slice::from_ref(img), o);
+        plan(&prepared, o)
+            .pages
+            .iter()
+            .map(|p| arrow_at(&render_page(&prepared, p, o)))
+            .collect()
+    }
+
+    fn white(w: u32, h: u32) -> GrayImage {
+        GrayImage::new(w, h, 255).unwrap()
+    }
+
+    #[test]
+    fn the_first_half_of_a_split_spread_points_to_the_second() {
+        // Right to left: the right half is read first, so the arrow points left.
+        assert_eq!(
+            arrows(&white(1600, 1000), &opts(ReadDirection::RightToLeft)),
+            vec![Some("left"), None]
+        );
+        assert_eq!(
+            arrows(&white(1600, 1000), &opts(ReadDirection::LeftToRight)),
+            vec![Some("right"), None]
+        );
+    }
+
+    #[test]
+    fn arrows_are_off_unless_asked_for_and_never_on_a_whole_page() {
+        let mut o = opts(ReadDirection::RightToLeft);
+        o.guide_arrows = false;
+        assert_eq!(arrows(&white(1600, 1000), &o), vec![None, None]);
+        o.guide_arrows = true;
+        assert_eq!(arrows(&white(480, 800), &o), vec![None]);
+        o.spread = SpreadMode::Fit;
+        assert_eq!(arrows(&white(1600, 1000), &o), vec![None]);
+    }
+
+    #[test]
+    fn a_zoomed_page_points_along_its_row_then_down() {
+        let mut o = opts(ReadDirection::LeftToRight);
+        o.zoom = PageZoom::Percent(200);
+        // Two by two: right, down to the next row, right, and the last has none.
+        assert_eq!(
+            arrows(&white(480, 800), &o),
+            vec![Some("right"), Some("down"), Some("right"), None]
+        );
+        o.direction = ReadDirection::RightToLeft;
+        assert_eq!(
+            arrows(&white(480, 800), &o),
+            vec![Some("left"), Some("down"), Some("left"), None]
+        );
+    }
+
+    #[test]
+    fn the_last_screen_of_the_first_half_points_on_to_the_other_half() {
+        let mut o = opts(ReadDirection::RightToLeft);
+        o.zoom = PageZoom::Percent(200);
+        let all = arrows(&white(1600, 1000), &o);
+        let half = all.len() / 2;
+        assert!(all.len() >= 2 && all.len().is_multiple_of(2), "{all:?}");
+        assert_eq!(all[half - 1], Some("left"), "the first half hands on to the second");
+        assert_eq!(all[all.len() - 1], None, "the book of this page ends here");
+    }
+
+    #[test]
+    fn the_arrow_is_drawn_the_same_by_the_single_page_path() {
+        let o = opts(ReadDirection::RightToLeft);
+        let pages = crate::process::process_page(&white(1600, 1000), &o);
+        let got: Vec<_> = pages.iter().map(arrow_at).collect();
+        assert_eq!(got, vec![Some("left"), None]);
+    }
 }

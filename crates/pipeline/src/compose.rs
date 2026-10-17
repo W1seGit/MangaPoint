@@ -367,8 +367,8 @@ pub async fn export_series(
                         title: job.series.title.clone(),
                         language: job.language.clone(),
                         rtl: settings.direction == converter::xtc::ReadDirection::RightToLeft,
-                        width: job.device.width,
-                        height: job.device.height,
+                        width: opts.width,
+                        height: opts.height,
                         created: now_secs(),
                     },
                 )?))
@@ -629,7 +629,7 @@ async fn convert_chapter(
         cache_path.clone(),
         cancel.clone(),
     );
-    let (width, height, format) = (opts.width, opts.height, settings.format);
+    let ((width, height), format) = (opts.output_size(), settings.format);
     let (epub, depth) = (settings.pictures(), opts.depth);
     let crop_configuration = crops.chapter_configuration(&chapter.key);
     let lookup_crops = crop_configuration.clone();
@@ -717,8 +717,8 @@ async fn convert_chapter(
         let fingerprint = conversion_cache::fingerprint_bytes(
             decoded.iter().map(|(_, _, bytes)| bytes.as_slice()),
             &settings,
-            opts.width,
-            opts.height,
+            width,
+            height,
         );
         let fingerprint = conversion_cache::with_crops(fingerprint, &crop_configuration);
         let fingerprint = if epub {
