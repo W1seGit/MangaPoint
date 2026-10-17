@@ -537,8 +537,12 @@ pub fn PreviewTab() -> Element {
                         for (start, end) in groups(&p.pages) {
                             div {
                                 key: "{chapter}/g{start}",
-                                class: if compare { "editor-group comparing" } else { "editor-group" },
-                                style: "--rows:{end - start};",
+                                class: match (compare, end - start) {
+                                    (false, _) => "editor-group",
+                                    (true, 1) => "editor-group comparing single",
+                                    (true, _) => "editor-group comparing",
+                                },
+                                style: "{row_style}",
                                 if compare {
                                     SourceCell {
                                         first: start,

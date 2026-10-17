@@ -136,3 +136,6 @@
 .source-region span { position: absolute; top: 4px; left: 4px; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.75); color: var(--text); font-size: 0.72rem; line-height: 1.5; text-align: center; }
 .source-region.on { border: 2px solid var(--accent); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55); z-index: 1; transition: left 0.18s ease, width 0.18s ease; }
 .source-region.on span { background: var(--accent); color: var(--accent-text); }
+/* A page that is just one page: the source sits in a box as tall as the reader page, picture centred. Only a source page that makes several keeps its tall, sticky picture. */
+.editor-group.single .source-sticky { position: static; height: var(--row-h); display: flex; align-items: center; justify-content: center; }
+.editor-group.single .editor-source-scroll { width: 100%; }
