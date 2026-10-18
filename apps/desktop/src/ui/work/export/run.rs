@@ -32,6 +32,9 @@ fn take_next_waiting(state: AppState) -> Option<WaitingExport> {
 /// The one running is the first of the plan; the others wait behind it, like
 /// downloads, and each is finished (and announced) on its own.
 pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
+    // An export can take long and be cut short; what is waiting to be saved
+    // is written first.
+    state.flush_saves();
     // The ones behind the first, in order, ready before the first starts.
     let mut waiting = state.export_waiting;
     let mut entries = saved

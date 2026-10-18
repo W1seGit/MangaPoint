@@ -64,6 +64,8 @@ pub enum ModalAction {
     ClearFinishedDownloads,
     /// Stop every download, the one running and those waiting.
     CancelAllDownloads,
+    /// Close the app although a download or an export is running.
+    QuitApp,
     /// Delete an exported file from disk.
     /// Every file of one export.
     DeleteExport { record_id: String },

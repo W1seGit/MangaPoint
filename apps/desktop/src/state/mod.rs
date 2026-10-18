@@ -11,6 +11,7 @@ mod job;
 mod navigation;
 mod notices;
 mod preview;
+mod saver;
 mod search_view;
 mod storage;
 mod workspace;
