@@ -218,6 +218,21 @@ fn main() {
                 pct(&mut seam_ink.clone(), 0.9)
             );
         }
+        if out.is_some() && chapter.strip {
+            let spans: Vec<String> = chapter
+                .pages
+                .iter()
+                .filter_map(|p| match p.source {
+                    Source::Strip { top, height } => Some(format!("[{top},{height}]")),
+                    _ => None,
+                })
+                .collect();
+            line += &format!(",\"spans\":[{}]", spans.join(","));
+            if let Some((_, starts)) = v2::strip_image(&prepared) {
+                let starts: Vec<String> = starts.iter().map(|s| s.to_string()).collect();
+                line += &format!(",\"slice_starts\":[{}]", starts.join(","));
+            }
+        }
         line += "}";
         println!("{line}");
 
@@ -225,6 +240,12 @@ fn main() {
             let name = Path::new(dir).file_name().unwrap().to_string_lossy().to_string();
             let folder = Path::new(out).join(name);
             std::fs::create_dir_all(&folder).unwrap();
+            if let Some((strip, _)) = v2::strip_image(&prepared) {
+                image::GrayImage::from_raw(strip.width, strip.height, strip.pixels.clone())
+                    .unwrap()
+                    .save(folder.join("strip.png"))
+                    .unwrap();
+            }
             for (i, page) in chapter.pages.iter().enumerate() {
                 let level = plan::render_page(&prepared, page, &opts);
                 let max = level.depth.max_level() as u32;

@@ -372,3 +372,17 @@ pub fn plan_v2(prepared: &Prepared, opts: &ProcessOptions, p: &V2) -> ChapterPla
         Kind::Strip(strip) => plan_strip_v2(strip, opts, p),
     }
 }
+
+/// The whole stitched strip as one image, and where each downloaded image starts in it.
+pub fn strip_image(prepared: &Prepared) -> Option<(GrayImage, Vec<u32>)> {
+    let Kind::Strip(strip) = &prepared.kind else {
+        return None;
+    };
+    let mut pixels = Vec::with_capacity(strip.width as usize * strip.total as usize);
+    for part in &strip.parts {
+        pixels.extend_from_slice(&part.pixels);
+    }
+    GrayImage::from_pixels(strip.width, strip.total, pixels)
+        .ok()
+        .map(|img| (img, strip.starts.clone()))
+}
