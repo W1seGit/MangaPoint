@@ -22,6 +22,11 @@ const BUSY_CUT_COST: f32 = 1.2;
 const BUSY_ROW: f32 = 12.0;
 /// The shortest page that is not the last, as a share of the screen height.
 const MIN_FILL_PERCENT: u32 = 40;
+/// The cost of cutting through lettering, or this close to it. Far above
+/// any other cost, so it happens only when every other place is lettering too.
+const LETTERING_CUT_COST: f32 = 3.0;
+/// A bubble has about this much padding round its letters, in rows.
+const LETTERING_MARGIN: u32 = 16;
 
 /// A place a page can end, and where the next one then starts.
 struct Cut {
@@ -66,6 +71,13 @@ pub(super) fn plan_quiet(strip: &Strip, opts: &ProcessOptions) -> ChapterPlan {
         activity[lo..=hi].iter().sum::<f32>() / (hi - lo + 1) as f32
     };
 
+    // Per row: the cost of cutting through lettering, 0 where there is none.
+    let mut lettering = vec![0.0f32; total as usize];
+    for (y0, y1) in lettering::lettered_spans(strip, screen) {
+        let (y0, y1) = (y0.saturating_sub(LETTERING_MARGIN), (y1 + LETTERING_MARGIN).min(total));
+        lettering[y0 as usize..y1 as usize].fill(LETTERING_CUT_COST);
+    }
+
     // Every row is a place to cut, except in a blank gap, where one cut stands
     // for the whole gap and the middle of it is left out.
     let mut cuts = vec![Cut { ends: 0, starts: 0, cost: 0.0, gap: true }];
@@ -84,7 +96,8 @@ pub(super) fn plan_quiet(strip: &Strip, opts: &ProcessOptions) -> ChapterPlan {
             }
             continue;
         }
-        let cost = NOT_A_GAP_COST + BUSY_CUT_COST * (busyness(y) / BUSY_ROW).min(1.0);
+        let through = (BUSY_CUT_COST * (busyness(y) / BUSY_ROW).min(1.0)).max(lettering[y as usize]);
+        let cost = NOT_A_GAP_COST + through;
         cuts.push(Cut { ends: y, starts: y, cost, gap: false });
         y += 1;
     }
@@ -269,5 +282,46 @@ mod tests {
         let images = [GrayImage::new(480, 3000, 255).unwrap()];
         let o = opts();
         assert!(plan(&prepare(&images, &o), &o).pages.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod lettering_tests {
+    use super::*;
+    use crate::dither::Dither;
+    use crate::gray::Depth;
+
+    /// Busy stripes everywhere, and a line of lettering across rows 700..760,
+    /// right where a full page would end.
+    fn strip_with_lettering() -> GrayImage {
+        GrayImage::from_fn(480, 3000, |x, y| {
+            let letter = (700..760).contains(&y) && (x % 24) < 14 && !((x % 24) >= 4 && (x % 24) < 10 && (y - 700) % 30 >= 6 && (y - 700) % 30 < 24);
+            if letter {
+                0
+            } else if (700..760).contains(&y) {
+                255
+            } else if (x / 3) % 2 == 0 {
+                60
+            } else {
+                200
+            }
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn a_cut_keeps_away_from_lettering() {
+        let mut o = ProcessOptions::manga_default(480, 800, Depth::Two);
+        o.layout = Layout::Webtoon;
+        o.crop = CropMode::Full;
+        o.auto_levels = false;
+        o.dither = Dither::Threshold;
+        o.strip_cut = StripCut::Quiet;
+        let plan = plan(&prepare(&[strip_with_lettering()], &o), &o);
+        let Source::Strip { height, .. } = plan.pages[0].source else {
+            unreachable!()
+        };
+        assert!(!(700..=760).contains(&height), "the first page ends at {height}, in the lettering");
+        assert!(height > 760, "the page should run past the lettering, not stop short of it: {height}");
     }
 }

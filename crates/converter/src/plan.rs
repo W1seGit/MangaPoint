@@ -29,6 +29,7 @@ use crate::process::{
 use crate::xtc::ReadDirection;
 
 mod cuts;
+mod lettering;
 mod seams;
 
 /// The width a strip has in unit coordinates.
