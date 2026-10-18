@@ -432,6 +432,9 @@ pub async fn export_series(
     let all: u64 = sizes.iter().sum();
     let mut before = 0u64;
     for (i, volume) in volumes.iter().enumerate() {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
         let name = volume_name(job, volume, &volumes, i, extension);
         emit(JobEvent::Writing { file: name.clone() });
         emit(JobEvent::Sent { done: before, total: all });
@@ -457,6 +460,7 @@ pub async fn export_series(
                             let _ = tx.send(JobEvent::Flushing);
                         }
                     },
+                    cancel,
                 )
                 .await?,
         );

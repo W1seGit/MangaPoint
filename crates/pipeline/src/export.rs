@@ -1,6 +1,7 @@
 //! Getting a finished file onto the reader.
 
 use crate::error::{PipelineError, Result};
+use crate::types::CancelFlag;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -45,7 +46,7 @@ impl ExportTarget {
     /// never loaded into memory (Wi-Fi uploads are the exception, since they
     /// need the whole body).
     pub async fn write_file(&self, filename: &str, src: &Path) -> Result<ExportedFile> {
-        self.write_file_with(filename, src, |_| {}, || {}).await
+        self.write_file_with(filename, src, |_| {}, || {}, &CancelFlag::new()).await
     }
 
     /// As [`write_file`](Self::write_file), calling `progress` with how many
@@ -55,13 +56,21 @@ impl ExportTarget {
     /// To a drive, what is reported is what the drive has accepted: it is made
     /// to store the file as it goes, so the numbers follow its real speed
     /// instead of racing ahead into the system's cache and then stalling.
+    ///
+    /// When `cancel` is set the copy stops at once, the half-written file is
+    /// removed and [`PipelineError::Cancelled`] is returned.
     pub async fn write_file_with(
         &self,
         filename: &str,
         src: &Path,
         mut progress: impl FnMut(u64) + Send + 'static,
         flushing: impl FnOnce() + Send + 'static,
+        cancel: &CancelFlag,
     ) -> Result<ExportedFile> {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
+        let cancel = cancel.clone();
         let size = fs::metadata(src)
             .map_err(|e| PipelineError::Io(src.to_path_buf(), e))?
             .len();
@@ -71,13 +80,13 @@ impl ExportTarget {
         match self {
             ExportTarget::Folder { path } => {
                 let path = path.clone();
-                blocking(move || copy_file(&path, &filename_owned, &src_owned, None, &mut progress)).await
+                blocking(move || copy_file(&path, &filename_owned, &src_owned, None, &mut progress, &cancel)).await
             }
             ExportTarget::Device { mount, folder } => {
                 check_space(mount, size)?;
                 let dir = mount.join(sanitize_component(folder));
                 blocking(move || {
-                    copy_file(&dir, &filename_owned, &src_owned, Some(Box::new(flushing)), &mut progress)
+                    copy_file(&dir, &filename_owned, &src_owned, Some(Box::new(flushing)), &mut progress, &cancel)
                 })
                 .await
             }
@@ -116,13 +125,18 @@ fn copy_file(
     src: &Path,
     flush: Option<Box<dyn FnOnce() + Send>>,
     progress: &mut dyn FnMut(u64),
+    cancel: &CancelFlag,
 ) -> Result<ExportedFile> {
     fs::create_dir_all(dir).map_err(|e| PipelineError::Io(dir.to_path_buf(), e))?;
     let path = unique_path(dir, filename);
     let tmp = path.with_extension("part");
-    let bytes = copy_in_chunks(src, &tmp, flush.is_some(), progress).map_err(|e| {
+    let bytes = copy_in_chunks(src, &tmp, flush.is_some(), progress, cancel).map_err(|e| {
         let _ = fs::remove_file(&tmp);
-        PipelineError::Io(tmp.clone(), e)
+        if e.kind() == std::io::ErrorKind::Interrupted && cancel.is_cancelled() {
+            PipelineError::Cancelled
+        } else {
+            PipelineError::Io(tmp.clone(), e)
+        }
     })?;
     if let Some(flushing) = flush {
         flushing();
@@ -151,6 +165,7 @@ fn copy_in_chunks(
     dst: &Path,
     to_drive: bool,
     progress: &mut dyn FnMut(u64),
+    cancel: &CancelFlag,
 ) -> std::io::Result<u64> {
     use std::io::{Read, Write};
     let mut from = fs::File::open(src)?;
@@ -158,6 +173,11 @@ fn copy_in_chunks(
     let mut buffer = vec![0u8; COPY_CHUNK];
     let (mut written, mut synced) = (0u64, 0u64);
     loop {
+        // Checked before every chunk, so a cancel stops the copy within one
+        // chunk (and one drive sync), not at the end of the file.
+        if cancel.is_cancelled() {
+            return Err(std::io::ErrorKind::Interrupted.into());
+        }
         let n = from.read(&mut buffer)?;
         if n == 0 {
             break;
@@ -706,7 +726,7 @@ mod tests {
         let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let log = seen.clone();
         let sent = target
-            .write_file_with("Big.xtc", &src, move |n| log.lock().unwrap().push(n), || {})
+            .write_file_with("Big.xtc", &src, move |n| log.lock().unwrap().push(n), || {}, &CancelFlag::new())
             .await
             .unwrap();
         assert_eq!(sent.bytes, size as u64);
@@ -714,6 +734,58 @@ mod tests {
         assert!(seen.len() > 5, "it is reported as it goes, not once at the end");
         assert!(seen.windows(2).all(|w| w[0] <= w[1]), "never goes backwards");
         assert_eq!(*seen.last().unwrap(), size as u64);
+        let _ = fs::remove_dir_all(mount);
+    }
+
+    #[tokio::test]
+    async fn cancelling_stops_a_copy_to_a_drive_and_leaves_no_file() {
+        let mount = temp("device-cancel");
+        fs::create_dir_all(&mount).unwrap();
+        let src = mount.join("big.xtc");
+        let size = 64 * 1024 * 1024;
+        fs::write(&src, vec![1u8; size]).unwrap();
+        let target = ExportTarget::Device {
+            mount: mount.clone(),
+            folder: "Manga".into(),
+        };
+        let cancel = CancelFlag::new();
+        let (flag, stored) = (cancel.clone(), std::sync::Arc::new(std::sync::Mutex::new(0u64)));
+        let seen = stored.clone();
+        let result = target
+            .write_file_with(
+                "Big.xtc",
+                &src,
+                move |n| {
+                    *seen.lock().unwrap() = n;
+                    // Cancel when about a quarter of it is stored.
+                    if n >= size as u64 / 4 {
+                        flag.cancel();
+                    }
+                },
+                || {},
+                &cancel,
+            )
+            .await;
+        assert!(matches!(result, Err(PipelineError::Cancelled)), "{result:?}");
+        let stored = *stored.lock().unwrap();
+        assert!(stored < size as u64 / 2, "it kept writing after the cancel: {stored} of {size} bytes");
+        let leftovers: Vec<_> = fs::read_dir(mount.join("Manga")).map(|d| d.flatten().collect()).unwrap_or_default();
+        assert!(leftovers.is_empty(), "files left behind: {leftovers:?}");
+        let _ = fs::remove_dir_all(mount);
+    }
+
+    #[tokio::test]
+    async fn a_copy_that_was_already_cancelled_does_not_start() {
+        let mount = temp("device-cancelled-first");
+        fs::create_dir_all(&mount).unwrap();
+        let src = mount.join("a.xtc");
+        fs::write(&src, b"data").unwrap();
+        let target = ExportTarget::Folder { path: mount.join("out") };
+        let cancel = CancelFlag::new();
+        cancel.cancel();
+        let result = target.write_file_with("a.xtc", &src, |_| {}, || {}, &cancel).await;
+        assert!(matches!(result, Err(PipelineError::Cancelled)));
+        assert!(!mount.join("out").exists(), "nothing is created for a cancelled copy");
         let _ = fs::remove_dir_all(mount);
     }
 
