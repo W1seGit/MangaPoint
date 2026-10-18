@@ -54,6 +54,21 @@ struct State {
     path_latency: Vec<(String, u64)>,
     in_flight: usize,
     max_in_flight: usize,
+    /// How long `browse`, `fetch_chapters` and `fetch_extensions` take.
+    call_latency_ms: u64,
+    calls_in_flight: usize,
+    max_calls_in_flight: usize,
+}
+
+/// Counts a slow call as running until it finishes or is dropped.
+struct CallGuard<'a>(&'a Mutex<State>);
+
+impl Drop for CallGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut s) = self.0.lock() {
+            s.calls_in_flight -= 1;
+        }
+    }
 }
 
 #[derive(Default)]
@@ -166,6 +181,36 @@ impl FakeCatalog {
             .push((prefix.to_string(), ms));
     }
 
+    /// Make `browse`, `fetch_chapters` and `fetch_extensions` take this long,
+    /// so tests can overlap searches or cut them off.
+    pub fn set_call_latency_ms(&self, ms: u64) {
+        self.state.lock().unwrap().call_latency_ms = ms;
+    }
+
+    /// The most slow-able calls (see `set_call_latency_ms`) running at once.
+    pub fn max_calls_in_flight(&self) -> usize {
+        self.state.lock().unwrap().max_calls_in_flight
+    }
+
+    /// Calls (see `set_call_latency_ms`) running right now.
+    pub fn calls_in_flight(&self) -> usize {
+        self.state.lock().unwrap().calls_in_flight
+    }
+
+    async fn slow_call(&self) -> CallGuard<'_> {
+        let ms = {
+            let mut s = self.state.lock().unwrap();
+            s.calls_in_flight += 1;
+            s.max_calls_in_flight = s.max_calls_in_flight.max(s.calls_in_flight);
+            s.call_latency_ms
+        };
+        let guard = CallGuard(&self.state);
+        if ms > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        }
+        guard
+    }
+
     /// The most `get_bytes` calls that were ever running at the same moment.
     pub fn max_in_flight(&self) -> usize {
         self.state.lock().unwrap().max_in_flight
@@ -204,6 +249,7 @@ impl FakeCatalog {
 #[async_trait]
 impl Catalog for FakeCatalog {
     async fn fetch_extensions(&self) -> Result<Vec<Extension>> {
+        let _slow = self.slow_call().await;
         let s = self.state.lock().unwrap();
         Ok(s.extensions
             .iter()
@@ -254,6 +300,7 @@ impl Catalog for FakeCatalog {
 
     async fn browse(&self, source_id: &str, kind: &Browse, _page: u32) -> Result<BrowsePage> {
         self.record(format!("browse {source_id} {kind:?}"));
+        let _slow = self.slow_call().await;
         if let Some(f) = self.source_fault(source_id) {
             return Err(f.error());
         }
@@ -276,6 +323,7 @@ impl Catalog for FakeCatalog {
 
     async fn fetch_chapters(&self, manga_id: i64) -> Result<Vec<Chapter>> {
         self.record(format!("chapters {manga_id}"));
+        let _slow = self.slow_call().await;
         // Faults are keyed by source; find which source owns this manga.
         let owner = {
             let s = self.state.lock().unwrap();
@@ -287,14 +335,16 @@ impl Catalog for FakeCatalog {
         if let Some(f) = owner.and_then(|o| self.source_fault(&o)) {
             return Err(f.error());
         }
-        Ok(self
+        // A named result, so the lock is released before `_slow` is dropped.
+        let chapters = self
             .state
             .lock()
             .unwrap()
             .chapters
             .get(&manga_id)
             .cloned()
-            .unwrap_or_default())
+            .unwrap_or_default();
+        Ok(chapters)
     }
 
     async fn manga_of_chapter(&self, chapter_id: i64) -> Result<MangaDetails> {

@@ -223,6 +223,58 @@ fn client() -> Result<reqwest::Client, String> {
         .map_err(|e| e.to_string())
 }
 
+/// A download of any size is fine as long as data keeps arriving; this long
+/// without any means the connection is stuck.
+const STALL: Duration = Duration::from_secs(60);
+
+/// For the installer itself: no overall time limit (a big file on a slow link
+/// takes a while), only a limit on connecting and, in [`download`], on silence.
+fn download_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .user_agent(format!("MangaPoint/{VERSION}"))
+        .connect_timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+fn stalled_message(stall: Duration) -> String {
+    format!(
+        "The download stalled: no data arrived for {} seconds. Check your internet connection and try again.",
+        stall.as_secs().max(1)
+    )
+}
+
+/// Write the body of `resp` to `file` and `hasher`, reporting progress. Fails
+/// if `stall` passes without any data, however long the download as a whole.
+async fn save_stream(
+    resp: reqwest::Response,
+    file: &mut std::fs::File,
+    hasher: &mut Sha256,
+    stall: Duration,
+    mut progress: impl FnMut(f32),
+) -> Result<(), String> {
+    let total = resp.content_length().unwrap_or(0);
+    let mut got = 0u64;
+    let mut stream = resp.bytes_stream();
+    loop {
+        let next = tokio::time::timeout(stall, stream.next())
+            .await
+            .map_err(|_| stalled_message(stall))?;
+        let Some(chunk) = next else { break };
+        let chunk = chunk.map_err(|_| "The download was interrupted. Check your internet connection and try again.".to_string())?;
+        hasher.update(&chunk);
+        file.write_all(&chunk).map_err(|e| format!("Could not save the download: {e}"))?;
+        got += chunk.len() as u64;
+        if total > 0 {
+            progress((got as f32 / total as f32).min(1.0));
+        }
+    }
+    if total > 0 && got < total {
+        return Err("The download was interrupted. Check your internet connection and try again.".to_string());
+    }
+    Ok(())
+}
+
 #[derive(serde::Deserialize)]
 struct Release {
     tag_name: String,
@@ -327,6 +379,7 @@ pub async fn download(update: &Update, mut progress: impl FnMut(f32)) -> Result<
     let asset = update.asset.as_ref().ok_or("This release has no file for your system.")?;
     let sums = update.sums.as_ref().ok_or("This release has no list of checksums, so the file cannot be checked.")?;
     let client = client()?;
+    let big_client = download_client()?;
     let text = client
         .get(&sums.url)
         .send()
@@ -344,27 +397,14 @@ pub async fn download(update: &Update, mut progress: impl FnMut(f32)) -> Result<
     let part = dir.join(format!("{}.part", asset.name));
     let done = dir.join(&asset.name);
     let result = async {
-        let resp = client
-            .get(&asset.url)
-            .timeout(Duration::from_secs(600))
-            .send()
+        let resp = tokio::time::timeout(STALL, big_client.get(&asset.url).send())
             .await
+            .map_err(|_| stalled_message(STALL))?
             .and_then(|r| r.error_for_status())
             .map_err(|_| "The download could not be started.".to_string())?;
-        let total = resp.content_length().unwrap_or(0);
         let mut file = std::fs::File::create(&part).map_err(|e| format!("Could not save the download: {e}"))?;
         let mut hasher = Sha256::new();
-        let mut got = 0u64;
-        let mut stream = resp.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let chunk = chunk.map_err(|_| "The download was interrupted.".to_string())?;
-            hasher.update(&chunk);
-            file.write_all(&chunk).map_err(|e| format!("Could not save the download: {e}"))?;
-            got += chunk.len() as u64;
-            if total > 0 {
-                progress((got as f32 / total as f32).min(1.0));
-            }
-        }
+        save_stream(resp, &mut file, &mut hasher, STALL, &mut progress).await?;
         file.flush().map_err(|e| format!("Could not save the download: {e}"))?;
         drop(file);
         let have = hasher
@@ -555,5 +595,86 @@ mod tests {
         let deb = PathBuf::from("/tmp/u/MangaPoint-1.1.0-linux-x86_64.deb");
         assert_eq!(install_command(&deb).unwrap(), "sudo apt install \"/tmp/u/MangaPoint-1.1.0-linux-x86_64.deb\"");
         assert!(install_command(std::path::Path::new("/tmp/u/MangaPoint-1.1.0-macos-arm64.dmg")).is_none());
+    }
+
+    /// A one-connection server: sends `head`, then `first`, then holds the
+    /// connection open (a stall) or, if `rest` is given, sends that too.
+    fn serve(head: &'static str, first: Vec<u8>, rest: Option<Vec<u8>>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}/file", listener.local_addr().unwrap().port());
+        std::thread::spawn(move || {
+            if let Ok((mut s, _)) = listener.accept() {
+                let mut buf = [0u8; 2048];
+                let _ = s.read(&mut buf);
+                let _ = s.write_all(head.as_bytes());
+                let _ = s.write_all(&first);
+                let _ = s.flush();
+                match rest {
+                    Some(r) => {
+                        let _ = s.write_all(&r);
+                    }
+                    None => std::thread::sleep(Duration::from_secs(20)),
+                }
+            }
+        });
+        url
+    }
+
+    async fn save(url: &str, stall: Duration) -> (Result<(), String>, Vec<f32>, usize) {
+        let resp = download_client().unwrap().get(url).send().await.unwrap();
+        let path = std::env::temp_dir().join(format!("mangapoint-upd-{}-{}", std::process::id(), url.len() + url.bytes().map(|b| b as usize).sum::<usize>()));
+        let mut file = std::fs::File::create(&path).unwrap();
+        let mut hasher = Sha256::new();
+        let mut seen = Vec::new();
+        let r = save_stream(resp, &mut file, &mut hasher, stall, |p| seen.push(p)).await;
+        let len = std::fs::metadata(&path).map(|m| m.len() as usize).unwrap_or(0);
+        let _ = std::fs::remove_file(&path);
+        (r, seen, len)
+    }
+
+    #[tokio::test]
+    async fn a_stalled_download_is_reported_not_left_hanging() {
+        let url = serve("HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n\r\n", vec![1; 1000], None);
+        let started = std::time::Instant::now();
+        let (r, _, len) = save(&url, Duration::from_millis(400)).await;
+        let err = r.unwrap_err();
+        assert!(err.contains("stalled"), "{err}");
+        assert_eq!(len, 1000, "what arrived was saved");
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn a_slow_but_steady_download_is_not_cut_off_by_a_total_time() {
+        // Total time (about 0.9 s) is well past the stall limit (0.4 s) but data never stops.
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}/f", listener.local_addr().unwrap().port());
+        std::thread::spawn(move || {
+            let (mut s, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 2048];
+            let _ = s.read(&mut buf);
+            let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 6000\r\n\r\n");
+            for _ in 0..6 {
+                let _ = s.write_all(&[5u8; 1000]);
+                let _ = s.flush();
+                std::thread::sleep(Duration::from_millis(150));
+            }
+        });
+        let (r, seen, len) = save(&url, Duration::from_millis(400)).await;
+        r.unwrap();
+        assert_eq!(len, 6000);
+        assert_eq!(seen.last().copied(), Some(1.0));
+    }
+
+    #[tokio::test]
+    async fn a_connection_that_closes_early_is_an_interruption() {
+        let url = serve(
+            "HTTP/1.1 200 OK\r\nContent-Length: 5000\r\nConnection: close\r\n\r\n",
+            vec![1; 1000],
+            Some(Vec::new()),
+        );
+        let (r, _, _) = save(&url, Duration::from_secs(2)).await;
+        assert!(r.unwrap_err().contains("interrupted"));
     }
 }

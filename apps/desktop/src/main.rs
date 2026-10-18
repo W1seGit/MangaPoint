@@ -65,6 +65,25 @@ fn main() {
     }
 
     init_logging();
+    // Only one copy per data folder: two would share (and fight over) the same
+    // files and the same catalog engine.
+    match backend::acquire_instance_lock(state::paths().root()) {
+        Ok(lock) => backend::keep_instance_lock(lock),
+        // A lock file that cannot be written is not worth refusing to start for.
+        Err(e @ backend::LockError::Io(_)) => tracing::warn!("Running without a lock: {e}"),
+        Err(e) => {
+            tracing::error!("Not starting: {e}");
+            eprintln!("MangaPoint: {e}");
+            rfd::MessageDialog::new()
+                .set_level(rfd::MessageLevel::Warning)
+                .set_title("MangaPoint")
+                .set_description(
+                    "MangaPoint is already open. Look for its window or taskbar icon.",
+                )
+                .show();
+            std::process::exit(1);
+        }
+    }
     notify::register();
     // Ctrl+C in the terminal would otherwise leave the catalog server running
     // and holding its database, so the next start could not open it.
