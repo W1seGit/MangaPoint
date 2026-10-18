@@ -78,29 +78,30 @@ mod tests {
         }
     }
 
+    // Paths with forward slashes, which every platform splits into folders.
     #[test]
     fn a_letter_that_now_belongs_to_another_drive_is_noticed() {
         let reader = DriveIdentity {
             name: "XTEINK".into(),
             total_bytes: 8_000_000_000,
         };
-        let place = Path::new("E:\\books");
-        let same = [drive("E:\\", "XTEINK", 8)];
+        let place = Path::new("/media/reader/books");
+        let same = [drive("/media/reader", "XTEINK", 8)];
         assert_eq!(identity_of(place, &same).as_ref(), Some(&reader));
         assert_eq!(check_drive(Some(&reader), place, &same), DriveCheck::Same);
-        let other = [drive("E:\\", "USB DISK", 64)];
+        let other = [drive("/media/reader", "USB DISK", 64)];
         assert!(matches!(
             check_drive(Some(&reader), place, &other),
             DriveCheck::Changed { .. }
         ));
         // Same label, other size: a different card.
-        let bigger = [drive("E:\\", "XTEINK", 32)];
+        let bigger = [drive("/media/reader", "XTEINK", 32)];
         assert!(matches!(
             check_drive(Some(&reader), place, &bigger),
             DriveCheck::Changed { .. }
         ));
         assert!(matches!(
-            check_drive(Some(&reader), place, &[drive("F:\\", "XTEINK", 8)]),
+            check_drive(Some(&reader), place, &[drive("/media/other", "XTEINK", 8)]),
             DriveCheck::Missing(_)
         ));
         assert_eq!(check_drive(None, place, &other), DriveCheck::Unchecked);
