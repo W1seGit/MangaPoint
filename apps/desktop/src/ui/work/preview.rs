@@ -752,6 +752,14 @@ mod page_editor_tests {
             .await
             .unwrap();
         std::fs::write(&path, image(255)).unwrap();
+        // Some file systems stamp two quick writes with the same time; a real
+        // replacement happens later, so move the stamp on.
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+            .unwrap();
         let (new, second) = decode_chapter("revision-test".into(), vec![path.clone()])
             .await
             .unwrap();
