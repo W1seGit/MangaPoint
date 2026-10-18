@@ -419,6 +419,7 @@ fn run_action(state: AppState, action: ModalAction) {
             }
             ModalAction::ClearFinishedDownloads => state.edit_queue(|q| q.clear_finished()),
             ModalAction::CancelAllDownloads => work::cancel_all_downloads(state),
+            ModalAction::ResumeExportAnyway => work::resume_export_unchecked(state),
             ModalAction::QuitApp => {
                 state.flush_saves();
                 backend::shutdown();

@@ -6,6 +6,7 @@
 mod backoff;
 mod busy;
 mod chapters;
+mod drive_identity;
 mod export;
 mod format;
 mod generation;
@@ -17,6 +18,7 @@ mod series_info;
 pub use backoff::*;
 pub use busy::*;
 pub use chapters::*;
+pub use drive_identity::*;
 pub use export::*;
 pub use format::*;
 pub use generation::*;

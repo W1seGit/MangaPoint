@@ -13,6 +13,9 @@ pub struct SavedExport {
     pub(super) items: Vec<SavedExportItem>,
     pub(super) grouping: SavedGrouping,
     pub(super) target: Option<ExportTarget>,
+    /// The drive the reader was on when the export began, to notice a
+    /// different one under the same letter when it is resumed.
+    pub(super) drive: Option<logic::DriveIdentity>,
     /// The first series that is not finished.
     pub(super) next: usize,
 }
@@ -87,6 +90,7 @@ mod saved_export_tests {
             ],
             grouping: SavedGrouping::from(Grouping::EveryN(25)),
             target: Some(ExportTarget::Folder { path: "out".into() }),
+            drive: None,
             next: 1,
         };
         let back: SavedExport = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
