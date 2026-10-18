@@ -6,17 +6,19 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// Outcome of a source test.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Verdict {
     Pass,
     /// Works only with browser support turned on.
     NeedsBrowser,
     /// Needs a FlareSolverr service for Cloudflare.
     NeedsFlareSolverr,
+    #[default]
     Failed,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StepTiming {
     pub name: String,
     pub ms: u64,
@@ -24,7 +26,8 @@ pub struct StepTiming {
     pub detail: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TestRecord {
     /// Seconds since the Unix epoch.
     pub at: u64,

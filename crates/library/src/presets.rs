@@ -14,7 +14,8 @@ use thiserror::Error;
 
 pub const MAX_NAME_CHARS: usize = 40;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ConversionPreset {
     pub id: String,
     pub name: String,
@@ -97,6 +98,7 @@ pub fn builtin_presets() -> Vec<ConversionPreset> {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PresetsDb {
+    #[serde(deserialize_with = "crate::json::lenient_vec")]
     pub presets: Vec<ConversionPreset>,
 }
 

@@ -16,7 +16,8 @@ const FAILURE_KEEPS: f32 = 0.25;
 /// What a source that has never worked is worth: practically nothing.
 const FLOOR: f32 = 0.05;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SourceSpeed {
     /// Pages per second the source delivered when asked for a handful at once.
     pub pages_per_second: f32,

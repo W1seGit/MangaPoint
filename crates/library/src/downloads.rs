@@ -65,7 +65,8 @@ pub fn chapter_key(number: Option<f64>, chapter_id: i64) -> String {
 
 // ---- The index -------------------------------------------------------------
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DownloadedChapter {
     pub key: String,
     pub number: Option<f64>,
@@ -193,6 +194,7 @@ impl DownloadedSeries {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct LibraryDb {
+    #[serde(deserialize_with = "crate::json::lenient_vec")]
     pub series: Vec<DownloadedSeries>,
 }
 
@@ -232,7 +234,30 @@ impl LibraryDb {
                 self.series.len() - 1
             }
         };
-        let series = &mut self.series[index];
+        Self::insert_chapter(&mut self.series[index], chapter, now);
+        id
+    }
+
+    /// Like [`LibraryDb::record_chapter`], but only when the series is still
+    /// in the library: a series the user deleted while a download was running
+    /// is not brought back. Returns whether the chapter was recorded.
+    pub fn record_chapter_if_present(
+        &mut self,
+        title: &str,
+        chapter: DownloadedChapter,
+        now: u64,
+    ) -> bool {
+        let id = series_id(title);
+        match self.series.iter_mut().find(|s| s.id == id) {
+            Some(series) => {
+                Self::insert_chapter(series, chapter, now);
+                true
+            }
+            None => false,
+        }
+    }
+
+    fn insert_chapter(series: &mut DownloadedSeries, chapter: DownloadedChapter, now: u64) {
         series.chapters.retain(|c| c.key != chapter.key);
         series.chapters.push(chapter);
         series.chapters.sort_by(|a, b| {
@@ -242,7 +267,6 @@ impl LibraryDb {
                 .then_with(|| a.name.cmp(&b.name))
         });
         series.updated_at = now;
-        id
     }
 
     /// Forget one chapter; the series goes too when its last chapter does.
@@ -580,6 +604,36 @@ mod tests {
             bytes: 1000,
             downloaded_at: 5,
         }
+    }
+
+    #[test]
+    fn a_deleted_series_is_not_resurrected_by_a_late_chapter() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.record_chapter("Solo", &defaults, chapter(Some(1.0), 1, "a"), 1);
+        assert!(db.record_chapter_if_present("Solo", chapter(Some(2.0), 2, "b"), 2));
+        assert_eq!(db.find(&id).unwrap().chapters.len(), 2);
+        db.remove_series(&id);
+        assert!(!db.record_chapter_if_present("Solo", chapter(Some(3.0), 3, "c"), 3));
+        assert!(db.series.is_empty());
+    }
+
+    #[test]
+    fn a_library_with_one_bad_series_and_old_chapters_still_loads() {
+        let dir = temp("tolerant");
+        let path = dir.join("library.json");
+        // Series 1 has a chapter lacking most fields; series 2 is garbage.
+        fs::write(
+            &path,
+            r#"{"series":[{"id":"a","title":"A","chapters":[{"key":"c1"}]},{"id":5,"title":[]},{"id":"b","title":"B"}]}"#,
+        )
+        .unwrap();
+        let db = crate::JsonFile::<LibraryDb>::new(&path).load();
+        assert_eq!(db.series.len(), 2);
+        assert_eq!(db.series[0].chapters[0].key, "c1");
+        assert!(path.exists(), "the file is kept, not set aside");
+        assert!(dir.join("library.json.skipped.bad").exists());
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
