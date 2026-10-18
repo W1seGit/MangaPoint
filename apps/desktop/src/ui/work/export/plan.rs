@@ -259,6 +259,8 @@ pub fn start_export_plan(state: AppState) {
         state.error("Something is already running. Wait for it to finish, or cancel it.");
         return;
     }
+    // Whatever the screen shows, the files are made in something the reader opens.
+    crate::ui::presets::fit_output_to_reader(state);
     let plan = state.export_plan.peek().clone();
     let opts = state.export_opts.peek().clone();
     let settings = state.settings.peek().clone();

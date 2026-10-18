@@ -122,9 +122,13 @@ pub(super) fn SendPanel() -> Element {
     let both = setup.usb && setup.wifi;
     let reader_folder = setup.folder.clone();
     // The book is made as something the reader opens: if what it was made as is
-    // not listed (the list was changed), it switches to the first that is.
+    // not listed (the reader or its list was changed, or a series was added or
+    // loaded with a preset made for another reader), it switches to the first
+    // that is.
     use_effect(move || {
         let _ = state.settings.read().reader_setup().formats.len();
+        let _ = state.export_plan.read().items.len();
+        let _ = state.library.read();
         presets::fit_output_to_reader(state);
     });
     // Another reader may not take the way that was chosen: follow what it does take.
