@@ -2,6 +2,21 @@
 
 All notable changes to MangaPoint are written down here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.1] - 2026-10-18
+
+### Fixes
+
+- Exporting to a reader that opens only EPUB (the Kindles) now makes an EPUB. Before, a series added after the reader was chosen could still be written as an XTC file, which a Kindle cannot open.
+
+### Changes under the hood
+
+- split the largest source files into one file per topic
+
+### Build
+
+- update png to 0.18 and stop Dependabot opening pull requests
+- update every dependency and group the Dependabot updates
+
 ## [1.1.0] - 2026-10-17
 
 ### What's new
