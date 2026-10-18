@@ -7,7 +7,7 @@ use super::{
 };
 use crate::gray::LevelImage;
 use std::fs::File;
-use std::io::{self, BufReader, Seek, SeekFrom, Write};
+use std::io::{self, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
 /// Book-level information shown by the reader. Strings are truncated to fit
@@ -183,13 +183,25 @@ impl XtcBuilder {
         let mut out = Vec::new();
         self.write_to(&mut out).map_err(|e| match e {
             WriteError::Xtc(e) => e,
-            WriteError::Io(_) => unreachable!("writing to a Vec cannot fail"),
+            WriteError::Io(_) | WriteError::Cancelled => {
+                unreachable!("writing to a Vec cannot fail or be cancelled")
+            }
         })?;
         Ok(out)
     }
 
     /// Write the finished file to any `Write`.
-    pub fn write_to<W: Write>(mut self, w: &mut W) -> Result<(), WriteError> {
+    pub fn write_to<W: Write>(self, w: &mut W) -> Result<(), WriteError> {
+        self.write_to_cancellable(w, &|| false)
+    }
+
+    /// [`write_to`](Self::write_to), asking `cancel` between pieces of a
+    /// book that may be gigabytes; `Err(WriteError::Cancelled)` once it is true.
+    pub fn write_to_cancellable<W: Write>(
+        mut self,
+        w: &mut W,
+        cancel: &dyn Fn() -> bool,
+    ) -> Result<(), WriteError> {
         let count = self.entries.len();
         if count == 0 {
             return Err(XtcError::NoPages.into());
@@ -275,6 +287,9 @@ impl XtcBuilder {
         match &mut self.data {
             PageData::Memory(pages) => {
                 for bytes in pages.iter() {
+                    if cancel() {
+                        return Err(WriteError::Cancelled);
+                    }
                     w.write_all(bytes)?;
                 }
             }
@@ -285,7 +300,18 @@ impl XtcBuilder {
                     .expect("the spool file is open until the builder is finished");
                 file.flush()?;
                 file.seek(SeekFrom::Start(0))?;
-                io::copy(&mut BufReader::new(&*file), w)?;
+                let mut reader = BufReader::new(&*file);
+                let mut chunk = vec![0u8; 256 * 1024];
+                loop {
+                    if cancel() {
+                        return Err(WriteError::Cancelled);
+                    }
+                    let n = reader.read(&mut chunk)?;
+                    if n == 0 {
+                        break;
+                    }
+                    w.write_all(&chunk[..n])?;
+                }
             }
         }
         Ok(())
@@ -298,6 +324,8 @@ pub enum WriteError {
     Xtc(#[from] XtcError),
     #[error(transparent)]
     Io(#[from] io::Error),
+    #[error("writing the book was cancelled")]
+    Cancelled,
 }
 
 /// Append `s` as a fixed-size UTF-8 field: truncated on a character boundary
@@ -428,6 +456,21 @@ mod tests {
             end_page: 4,
         });
         b
+    }
+
+    #[test]
+    fn a_book_being_written_stops_when_cancelled() {
+        for spool in [false, true] {
+            let dir = std::env::temp_dir().join(format!("mp-cancel-write-{}-{spool}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("book.spool");
+            let b = book(Format::Xtc, spool.then_some(path.as_path()));
+            let mut out = Vec::new();
+            let result = b.write_to_cancellable(&mut out, &|| true);
+            assert!(matches!(result, Err(WriteError::Cancelled)), "spool {spool}");
+            assert!(out.len() < 100_000, "stopped before the pages: {} bytes", out.len());
+            let _ = std::fs::remove_dir_all(dir);
+        }
     }
 
     #[test]

@@ -935,14 +935,32 @@ pub fn render_all_cropped_cancellable(
     crops: &[[f32; 4]],
     cancel: CancelCheck,
 ) -> Result<Vec<LevelImage>, Cancelled> {
+    render_all_cropped_with(prepared, pages, opts, crops, cancel, |_, page| page)
+}
+
+/// [`render_all_cropped_cancellable`] that hands each page to `finish` (with
+/// its number) on the thread that drew it, and keeps what that returns: a page
+/// can be packed or encoded while the others are still being drawn, and its
+/// pixels are let go at once rather than all held until the last is drawn.
+pub fn render_all_cropped_with<T: Send>(
+    prepared: &Prepared,
+    pages: &[PlannedPage],
+    opts: &ProcessOptions,
+    crops: &[[f32; 4]],
+    cancel: CancelCheck,
+    finish: impl Fn(usize, LevelImage) -> T + Sync,
+) -> Result<Vec<T>, Cancelled> {
     let cache = PieceCache::for_pages(pages);
     par_map(pages.len(), cancel, |i| {
-        render_page_cropped_with(
-            prepared,
-            &pages[i],
-            opts,
-            crops.get(i).copied().unwrap_or([0.0; 4]),
-            cache.as_ref(),
+        finish(
+            i,
+            render_page_cropped_with(
+                prepared,
+                &pages[i],
+                opts,
+                crops.get(i).copied().unwrap_or([0.0; 4]),
+                cache.as_ref(),
+            ),
         )
     })
 }
