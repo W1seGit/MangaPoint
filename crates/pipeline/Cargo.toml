@@ -19,7 +19,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 # EPUBs are zip files; their page pictures are PNGs of 2 or 1 bits.
 zip = { version = "9", default-features = false, features = ["deflate"] }
-png = "0.17"
+png = "0.18"
 # 0.39 needs Rust 1.95; 0.37 works on 1.90 and has the same Disks API.
 sysinfo = { version = "0.39", default-features = false, features = ["disk"] }
 
