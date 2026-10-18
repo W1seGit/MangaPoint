@@ -379,6 +379,7 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
                 &client,
                 batch.requests.clone(),
                 &batch.source_names,
+                &batch.cancel,
             ),
             || batch.cancel.is_cancelled(),
             Duration::from_millis(100),
@@ -622,6 +623,7 @@ pub(super) async fn order_sources(
     client: &catalog::SuwayomiClient,
     requests: Vec<pipeline::ChapterRequest>,
     names: &HashMap<String, String>,
+    cancel: &pipeline::CancelFlag,
 ) -> Vec<pipeline::ChapterRequest> {
     let name_of = |id: &str| names.get(id).cloned().unwrap_or_else(|| id.to_string());
     let now = now_secs();
@@ -651,7 +653,8 @@ pub(super) async fn order_sources(
                 b.progress.note = Some("Checking which source is fastest…".into());
             }
         });
-        let results = pipeline::probe_sources(client, &to_test, &RetryPolicy::default()).await;
+        let results =
+            pipeline::probe::probe_sources_cancellable(client, &to_test, &RetryPolicy::default(), cancel).await;
         for (source, speed) in results {
             match speed {
                 Some(pages_per_second) => {

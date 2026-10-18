@@ -93,14 +93,29 @@ impl Slot {
         go.then(|| self.taken.fetch_add(1, Ordering::SeqCst) + 1)
     }
 
-    /// Write copy `number` unless a newer one has been written already.
-    fn write(&self, number: u64, save: impl FnOnce()) {
-        if let Ok(mut written) = self.written.lock() {
-            if number > *written {
-                save();
+    /// Write copy `number` unless a newer one has been written already. The
+    /// error, if it could not be written, is for the person to be told.
+    fn write(&self, number: u64, save: impl FnOnce() -> Result<(), library::JsonError>) -> Option<String> {
+        let mut written = self.written.lock().ok()?;
+        if number <= *written {
+            return None;
+        }
+        match save() {
+            Ok(()) => {
                 *written = number;
+                None
+            }
+            // Marked as changed again, so the saver (and the save at exit) tries once more.
+            Err(e) => {
+                self.mark();
+                Some(e.to_string())
             }
         }
+    }
+
+    /// Wait until a write that is under way has finished.
+    fn wait_idle(&self) {
+        drop(self.written.lock());
     }
 }
 
@@ -112,16 +127,30 @@ fn now_ms() -> u64 {
     START.get_or_init(Instant::now).elapsed().as_millis() as u64
 }
 
-fn write_library(number: u64, copy: LibraryDb) {
-    LIBRARY.write(number, || {
-        let _ = JsonFile::new(super::paths().library_file()).save(&copy);
-    });
+fn write_library(number: u64, copy: LibraryDb) -> Option<String> {
+    LIBRARY.write(number, || JsonFile::new(super::paths().library_file()).save(&copy))
 }
 
-fn write_queue(number: u64, copy: SavedQueue) {
-    QUEUE.write(number, || {
-        let _ = JsonFile::new(super::paths().queue_file()).save(&copy);
-    });
+fn write_queue(number: u64, copy: SavedQueue) -> Option<String> {
+    QUEUE.write(number, || JsonFile::new(super::paths().queue_file()).save(&copy))
+}
+
+/// Tell the person a file could not be saved, once for each different reason
+/// (the saver would otherwise say it again every second).
+fn report(state: AppState, what: &str, failure: Option<String>) {
+    static LAST: Mutex<Option<String>> = Mutex::new(None);
+    let Ok(mut last) = LAST.lock() else { return };
+    match failure {
+        Some(reason) => {
+            let message = format!("Could not save {what}: {reason}");
+            if last.as_deref() != Some(message.as_str()) {
+                tracing::warn!("{message}");
+                state.error(message.clone());
+                *last = Some(message);
+            }
+        }
+        None => *last = None,
+    }
 }
 
 impl AppState {
@@ -144,11 +173,15 @@ impl AppState {
                 tokio::time::sleep(LOOK_EVERY).await;
                 if let Some(number) = LIBRARY.claim(false) {
                     let copy = state.library.peek().clone();
-                    let _ = tokio::task::spawn_blocking(move || write_library(number, copy)).await;
+                    if let Ok(failure) = tokio::task::spawn_blocking(move || write_library(number, copy)).await {
+                        report(state, "your library", failure);
+                    }
                 }
                 if let Some(number) = QUEUE.claim(false) {
                     let copy = state.queue.peek().to_saved();
-                    let _ = tokio::task::spawn_blocking(move || write_queue(number, copy)).await;
+                    if let Ok(failure) = tokio::task::spawn_blocking(move || write_queue(number, copy)).await {
+                        report(state, "the download queue", failure);
+                    }
                 }
             }
         });
@@ -158,11 +191,14 @@ impl AppState {
     /// before an export starts.
     pub fn flush_saves(&self) {
         if let Some(number) = LIBRARY.claim(true) {
-            write_library(number, self.library.peek().clone());
+            report(*self, "your library", write_library(number, self.library.peek().clone()));
         }
         if let Some(number) = QUEUE.claim(true) {
-            write_queue(number, self.queue.peek().to_saved());
+            report(*self, "the download queue", write_queue(number, self.queue.peek().to_saved()));
         }
+        // A write the background task began a moment ago must be finished, too.
+        LIBRARY.wait_idle();
+        QUEUE.wait_idle();
     }
 }
 
@@ -221,9 +257,41 @@ mod tests {
         let second = slot.claim(true).unwrap();
         assert!(second > first);
         let log = std::cell::RefCell::new(Vec::new());
-        slot.write(second, || log.borrow_mut().push("new"));
-        slot.write(first, || log.borrow_mut().push("old"));
+        slot.write(second, || {
+            log.borrow_mut().push("new");
+            Ok(())
+        });
+        slot.write(first, || {
+            log.borrow_mut().push("old");
+            Ok(())
+        });
         assert_eq!(*log.borrow(), ["new"], "the slow older write is dropped");
         assert!(slot.claim(true).is_none(), "nothing left waiting");
+    }
+
+    #[test]
+    fn a_save_that_fails_is_reported_and_tried_again_with_the_next_copy() {
+        let slot = Slot::new();
+        slot.mark();
+        let first = slot.claim(true).unwrap();
+        let failure = slot.write(first, || {
+            Err(library::JsonError::Unreadable(std::path::PathBuf::from("library.json")))
+        });
+        assert!(failure.is_some_and(|m| m.contains("library.json")), "the person is told why");
+        // A failed copy is not counted as written, so a copy that follows still is.
+        slot.mark();
+        let second = slot.claim(true).unwrap();
+        assert_eq!(slot.write(second, || Ok(())), None);
+    }
+
+    #[test]
+    fn a_failed_write_is_marked_for_another_try() {
+        let slot = Slot::new();
+        slot.mark();
+        let first = slot.claim(true).unwrap();
+        assert!(slot
+            .write(first, || Err(library::JsonError::Unreadable(std::path::PathBuf::from("x.json"))))
+            .is_some());
+        assert!(slot.claim(true).is_some(), "the save at exit still has it to do");
     }
 }

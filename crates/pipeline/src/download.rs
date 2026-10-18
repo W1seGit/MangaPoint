@@ -87,7 +87,8 @@ impl StageGuard {
 
     /// Normal end: remove every staging folder except `keep`, off the UI thread.
     async fn finish(mut self, keep: Option<String>) {
-        self.armed = false;
+        // Stays armed while the clean-up runs: if this future is dropped
+        // (cancelled) in the middle, the guard's drop still removes the folders.
         let files = self.files.clone();
         let (series_id, stages) = (self.series_id.clone(), self.stages.clone());
         let _ = blocking(move || {
@@ -101,6 +102,7 @@ impl StageGuard {
             Ok(())
         })
         .await;
+        self.armed = false;
     }
 }
 

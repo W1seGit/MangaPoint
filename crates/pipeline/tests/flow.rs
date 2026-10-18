@@ -219,6 +219,9 @@ async fn download_saves_every_page_and_reports_each_finished_chapter() {
             _ => {}
         }
     }
+    // The two chapters download side by side, so either may finish first; the
+    // library sorts chapters as it records them.
+    saved.sort();
     assert_eq!(saved, ["c1", "c2"]);
     assert_eq!(page_events, 5);
     let _ = fs::remove_dir_all(lib.root);

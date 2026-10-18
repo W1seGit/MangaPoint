@@ -106,6 +106,14 @@ fn main() {
         .with_min_inner_size(LogicalSize::new(1280.0, 720.0));
     // Covers are handed to the page by address, not kept in memory; see `covers`.
     covers::tidy_cache();
+    // Scratch files an earlier run left behind when it was closed during an
+    // export (they can be gigabytes), swept off the main thread.
+    std::thread::spawn(|| {
+        let removed = pipeline::sweep_spool(&state::paths().spool_dir(), std::time::Duration::from_secs(24 * 3600));
+        if removed > 0 {
+            tracing::info!("Removed {removed} leftover scratch file(s) from an earlier export");
+        }
+    });
     let mut config = Config::new()
         .with_window(window)
         .with_asynchronous_custom_protocol(covers::SCHEME, |_id, request, responder| {

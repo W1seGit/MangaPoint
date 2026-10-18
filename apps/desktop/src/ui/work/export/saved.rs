@@ -58,7 +58,7 @@ pub(super) fn save_export_plan(saved: &SavedExport) {
     let _ = JsonFile::new(paths().export_job_file()).save(saved);
 }
 
-pub(super) fn forget_export_plan() {
+pub(in crate::ui::work) fn forget_export_plan() {
     let _ = std::fs::remove_file(paths().export_job_file());
 }
 

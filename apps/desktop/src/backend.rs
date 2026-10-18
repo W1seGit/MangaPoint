@@ -23,6 +23,11 @@ static SERVER: Mutex<Option<RunningServer>> = Mutex::new(None);
 
 /// Bumped at every boot, so a watchdog from an earlier boot knows to stop.
 static GENERATION: AtomicU64 = AtomicU64::new(0);
+/// One start of the engine at a time: the watchdog's restart, "Try again" and
+/// the browser switches must not each start one.
+static BOOTING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Set once the app is closing, so nothing starts an engine after that.
+static CLOSING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static RESTARTS: Mutex<RestartBudget> = Mutex::new(RestartBudget::new());
 
 /// How often the running engine is checked.
@@ -68,6 +73,10 @@ pub async fn boot(state: AppState, install: bool) {
 }
 
 async fn boot_with(state: AppState, install: bool, first_message: &str) {
+    let _one_at_a_time = BOOTING.lock().await;
+    if CLOSING.load(Ordering::SeqCst) {
+        return;
+    }
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let mut boot = state.boot;
     let mut services = state.services;
@@ -89,6 +98,13 @@ async fn boot_with(state: AppState, install: bool, first_message: &str) {
     stop_leftover_servers().await;
 
     match start(state).await {
+        Ok(_) if CLOSING.load(Ordering::SeqCst) => {
+            // The app closed while the engine was starting: do not leave it behind.
+            if let Some(mut server) = SERVER.lock().unwrap().take() {
+                server.kill_now();
+            }
+            return;
+        }
         Ok(svc) => {
             crate::covers::set_client(Some(svc.client.clone()));
             services.set(Some(svc));
@@ -302,12 +318,14 @@ async fn stop_running() {
 /// End the server right now. Used when the window closes or on Ctrl+C.
 pub fn shutdown() {
     // Nothing should restart it from here on.
+    CLOSING.store(true, Ordering::SeqCst);
     GENERATION.fetch_add(1, Ordering::SeqCst);
-    release_instance_lock();
     if let Some(mut server) = SERVER.lock().unwrap().take() {
         info!("Closing: stopping the catalog server");
         server.kill_now();
     }
+    // Only now may another copy of the app start: its engine can use the database.
+    release_instance_lock();
 }
 
 const ROOT_DIR_ARG: &str = "-Dsuwayomi.tachidesk.config.server.rootDir=";

@@ -23,7 +23,7 @@ pub mod preview;
 pub mod probe;
 pub mod types;
 
-pub use compose::{export_series, ExportJob, ExportOutcome, Grouping};
+pub use compose::{export_series, sweep_spool, ExportJob, ExportOutcome, Grouping};
 pub use download::{download_chapters, DownloadOutcome};
 pub use error::PipelineError;
 pub use export::{ExportTarget, ExportedFile};

@@ -137,6 +137,8 @@ fn start_update(state: AppState, update: Update) {
                 phase.set(UpdatePhase::Replacing);
                 // Let the installer take over, then close so it can replace us.
                 tokio::time::sleep(Duration::from_millis(1500)).await;
+                // Anything changed in the last second is still waiting to be saved.
+                state.flush_saves();
                 crate::backend::shutdown();
                 std::process::exit(0);
             }

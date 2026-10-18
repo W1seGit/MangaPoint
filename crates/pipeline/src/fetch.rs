@@ -299,7 +299,7 @@ mod tests {
         c.set_bytes("/p", vec![1]);
         c.flaky_path("/p", 1000);
         let limiter = Limiter::new(2);
-        let breaker = Breaker::default();
+        let breaker = Breaker::with_spacing(Duration::ZERO);
         let cancel = CancelFlag::new();
         for _ in 0..20 {
             let _ = fetch_page_limited(&c, "/p", &quick(1), &limiter, &breaker, &cancel, &|_| {}).await;

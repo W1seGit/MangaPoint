@@ -464,7 +464,18 @@ async fn upload_webdav(
     let bytes = data.len() as u64;
     // Set once the file's request may have reached the reader.
     let put_started = std::sync::atomic::AtomicBool::new(false);
+    // Set when the reader said the file was not there before this upload, so a
+    // cancelled upload may remove what it left and never an older book.
+    let was_not_there = std::sync::atomic::AtomicBool::new(false);
     let work = async {
+        let before = client
+            .head(&file_url)
+            .timeout(Duration::from_secs(8))
+            .send()
+            .await
+            .map(|r| r.status() == reqwest::StatusCode::NOT_FOUND)
+            .unwrap_or(false);
+        was_not_there.store(before, std::sync::atomic::Ordering::SeqCst);
         // Create the folder; a failure usually just means it already exists.
         let mkcol = reqwest::Method::from_bytes(b"MKCOL").expect("valid method");
         let _ = client.request(mkcol, &dir_url).send().await;
@@ -480,7 +491,9 @@ async fn upload_webdav(
     let response = tokio::select! {
         response = work => response?,
         () = cancel.cancelled() => {
-            if put_started.load(std::sync::atomic::Ordering::SeqCst) {
+            if put_started.load(std::sync::atomic::Ordering::SeqCst)
+                && was_not_there.load(std::sync::atomic::Ordering::SeqCst)
+            {
                 // The reader may be holding the front of the file. Ask it to
                 // throw that away, in the background so Cancel is not delayed.
                 let url = file_url.clone();
@@ -688,26 +701,29 @@ mod tests {
 
     #[tokio::test]
     async fn webdav_creates_the_folder_then_puts_the_file() {
-        let (url, server) = fake_server("201 Created", 2);
+        let (url, server) = fake_server("201 Created", 3);
         let target = ExportTarget::WebDav {
             base_url: url.clone(),
             folder: "Manga".into(),
         };
         let f = target.write("My Book.xtch", b"payload").await.unwrap();
         let seen = server.join().unwrap();
-        assert!(seen[0].0.starts_with("MKCOL /Manga/ "), "{:?}", seen[0]);
+        // First it asks whether the file is already there (so a cancelled upload
+        // never removes an older book), then makes the folder, then sends the file.
+        assert!(seen[0].0.starts_with("HEAD /Manga/My%20Book.xtch "), "{:?}", seen[0]);
+        assert!(seen[1].0.starts_with("MKCOL /Manga/ "), "{:?}", seen[1]);
         assert!(
-            seen[1].0.starts_with("PUT /Manga/My%20Book.xtch "),
+            seen[2].0.starts_with("PUT /Manga/My%20Book.xtch "),
             "{:?}",
-            seen[1]
+            seen[2]
         );
-        assert_eq!(seen[1].1, b"payload");
+        assert_eq!(seen[2].1, b"payload");
         assert_eq!(f.location, format!("{url}/Manga/My%20Book.xtch"));
     }
 
     #[tokio::test]
     async fn webdav_errors_are_reported() {
-        let (url, server) = fake_server("507 Insufficient Storage", 2);
+        let (url, server) = fake_server("507 Insufficient Storage", 3);
         let target = ExportTarget::WebDav {
             base_url: url,
             folder: "Manga".into(),
@@ -861,6 +877,7 @@ mod tests {
     /// `stall`. Returns its address and the request lines it saw.
     fn stalling_reader(
         stall: Duration,
+        head_status: &'static str,
     ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
@@ -879,7 +896,12 @@ mod tests {
                         .unwrap_or("")
                         .to_string();
                     let put = line.starts_with("PUT");
+                    let head = line.starts_with("HEAD");
                     log.lock().unwrap().push(line);
+                    if head {
+                        let _ = write!(stream, "HTTP/1.1 {head_status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                        return;
+                    }
                     if put {
                         std::thread::sleep(stall);
                     }
@@ -903,7 +925,7 @@ Connection: close
         fs::create_dir_all(&dir).unwrap();
         let src = dir.join("b.xtc");
         fs::write(&src, vec![3u8; 1000]).unwrap();
-        let (url, seen) = stalling_reader(Duration::from_secs(4));
+        let (url, seen) = stalling_reader(Duration::from_secs(4), "404 Not Found");
         let target = ExportTarget::WebDav { base_url: url, folder: "Manga".into() };
         let cancel = CancelFlag::new();
         let flag = cancel.clone();
@@ -915,10 +937,34 @@ Connection: close
         let result = target.write_file_with("b.xtc", &src, |_| {}, || {}, &cancel).await;
         assert!(matches!(result, Err(PipelineError::Cancelled)), "{result:?}");
         assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
-        // The half-sent file is deleted from the reader, in the background.
+        // The file was not on the reader before, so the half-sent one is deleted, in the background.
         tokio::time::sleep(Duration::from_millis(500)).await;
         let seen = seen.lock().unwrap();
         assert!(seen.iter().any(|l| l.starts_with("DELETE /Manga/b.xtc ")), "{seen:?}");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_wifi_upload_never_deletes_a_book_that_was_already_on_the_reader() {
+        let dir = temp("webdav-cancel-existing");
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("b.xtc");
+        fs::write(&src, vec![3u8; 1000]).unwrap();
+        // The reader already holds a b.xtc (it answers the existence check with 200).
+        let (url, seen) = stalling_reader(Duration::from_secs(4), "200 OK");
+        let target = ExportTarget::WebDav { base_url: url, folder: "Manga".into() };
+        let cancel = CancelFlag::new();
+        let flag = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            flag.cancel();
+        });
+        let result = target.write_file_with("b.xtc", &src, |_| {}, || {}, &cancel).await;
+        assert!(matches!(result, Err(PipelineError::Cancelled)), "{result:?}");
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        let seen = seen.lock().unwrap();
+        assert!(seen.iter().any(|l| l.starts_with("PUT ")), "the upload had started: {seen:?}");
+        assert!(!seen.iter().any(|l| l.starts_with("DELETE")), "the older book was deleted: {seen:?}");
         let _ = fs::remove_dir_all(dir);
     }
 

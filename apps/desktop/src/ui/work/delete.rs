@@ -43,6 +43,23 @@ pub(super) async fn stop_work_for(state: AppState, series_ids: &[String]) -> boo
             }
         }
     }
+    // A paused export is not running, but resuming it would fail on pages that
+    // are about to be deleted: it is ended instead.
+    {
+        let mut job = state.job;
+        let mut guard = job.write();
+        if let Some(view) = guard.as_mut() {
+            if view.kind == JobKind::Export
+                && view.paused
+                && view.result.is_none()
+                && series_ids.contains(&view.series_id)
+            {
+                view.paused = false;
+                view.result = Some(Err("Cancelled: the series was deleted.".to_string()));
+                super::export::forget_export_plan();
+            }
+        }
+    }
     let started = Instant::now();
     while any_busy(state, series_ids) {
         if started.elapsed() > STOP_WAIT {

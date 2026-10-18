@@ -598,17 +598,14 @@ pub(super) async fn load_chapters(
         .collect();
     info!("Loading chapter lists from {}", names.join(", "));
     let started = Instant::now();
-    let fetches = members.iter().map(|m| {
-        let client = client.clone();
-        let id = m.candidate.manga_id;
-        async move { tokio::time::timeout(Duration::from_secs(60), client.fetch_chapters(id)).await }
-    });
+    // At most six at a time, within the app-wide limit on requests to the engine.
+    let ids: Vec<i64> = members.iter().map(|m| m.candidate.manga_id).collect();
     let mut lists = Vec::new();
     let mut unreachable = 0;
-    for result in join_all(fetches).await {
+    for result in search::fanout::fetch_chapter_lists(&*client, &ids, Duration::from_secs(60), 6).await {
         match result {
-            Ok(Ok(chapters)) => lists.push(chapters),
-            _ => {
+            Some(chapters) => lists.push(chapters),
+            None => {
                 unreachable += 1;
                 lists.push(Vec::new());
             }
