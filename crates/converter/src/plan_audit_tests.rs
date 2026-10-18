@@ -220,18 +220,12 @@ fn cancelling_stops_the_preparation_and_the_rendering_early() {
     assert!(plan.pages.len() > 150, "{} pages", plan.pages.len());
     let asked = AtomicUsize::new(0);
     let cancel = || asked.fetch_add(1, Ordering::SeqCst) >= 5;
-    let started = std::time::Instant::now();
     let result = render_all_cropped_cancellable(&prepared, &plan.pages, &o, &[], &cancel);
-    let partial = started.elapsed();
     assert_eq!(result.err(), Some(Cancelled));
+    // Counting the checks proves it stopped early without depending on how fast the machine is.
     let checks = asked.load(Ordering::SeqCst);
     assert!(checks < 5 + 2 * 64 + 8, "{checks} checks for {} pages", plan.pages.len());
-    let started = std::time::Instant::now();
-    let all = render_all_cropped(&prepared, &plan.pages, &o, &[]);
-    let full = started.elapsed();
-    assert_eq!(all.len(), plan.pages.len());
-    eprintln!("cancelled after {partial:?}; the whole render takes {full:?}");
-    assert!(partial < full, "cancel {partial:?} vs full {full:?}");
+    assert!(checks < plan.pages.len(), "{checks} checks for {} pages", plan.pages.len());
 }
 
 #[test]
