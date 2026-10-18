@@ -1,6 +1,7 @@
 //! Downloading page images reliably.
 
-use crate::limiter::Limiter;
+use crate::limiter::{Breaker, Limiter};
+use crate::types::CancelFlag;
 use catalog::{Catalog, CatalogError};
 use std::future::Future;
 use std::time::Duration;
@@ -32,8 +33,40 @@ pub fn is_retryable(err: &CatalogError) -> bool {
     }
 }
 
+/// Is another try allowed after attempt number `attempt` (1-based) failed
+/// with `err`? A request that timed out is tried one more time at most: each
+/// timeout can cost minutes, and a source that hangs twice is not going to
+/// answer on the third.
+fn may_retry(err: &CatalogError, attempt: u32, attempts: u32) -> bool {
+    let timed_out = matches!(err, CatalogError::Http(e) if e.is_timeout());
+    let allowed = if timed_out { attempts.min(2) } else { attempts };
+    attempt < allowed && is_retryable(err)
+}
+
+/// Wait `delay`; `false` if the job was cancelled first.
+async fn rest(cancel: &CancelFlag, delay: Duration) -> bool {
+    tokio::select! {
+        () = tokio::time::sleep(delay) => true,
+        () = cancel.cancelled() => false,
+    }
+}
+
 /// Run `op` up to `policy.attempts` times, waiting longer after each failure.
-pub async fn with_retry<T, F, Fut>(policy: &RetryPolicy, mut op: F) -> Result<T, CatalogError>
+pub async fn with_retry<T, F, Fut>(policy: &RetryPolicy, op: F) -> Result<T, CatalogError>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, CatalogError>>,
+{
+    with_retry_cancellable(policy, &CancelFlag::new(), op).await
+}
+
+/// As [`with_retry`], but a cancel during the wait between tries ends it at
+/// once with the last error.
+pub async fn with_retry_cancellable<T, F, Fut>(
+    policy: &RetryPolicy,
+    cancel: &CancelFlag,
+    mut op: F,
+) -> Result<T, CatalogError>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = Result<T, CatalogError>>,
@@ -44,8 +77,10 @@ where
     loop {
         match op().await {
             Ok(v) => return Ok(v),
-            Err(e) if attempt < attempts && is_retryable(&e) => {
-                tokio::time::sleep(delay).await;
+            Err(e) if may_retry(&e, attempt, attempts) => {
+                if !rest(cancel, delay).await {
+                    return Err(e);
+                }
                 delay = (delay * 2).min(Duration::from_secs(5));
                 attempt += 1;
             }
@@ -71,8 +106,13 @@ pub async fn fetch_page_limited<C: Catalog>(
     path: &str,
     policy: &RetryPolicy,
     limiter: &Limiter,
+    breaker: &Breaker,
+    cancel: &CancelFlag,
     on_limit: &(dyn Fn(usize) + Sync),
 ) -> Result<Vec<u8>, CatalogError> {
+    if breaker.is_open() {
+        return Err(Breaker::error());
+    }
     let attempts = policy.attempts.max(1);
     let mut delay = policy.base_delay;
     let mut attempt = 1;
@@ -84,6 +124,7 @@ pub async fn fetch_page_limited<C: Catalog>(
         };
         match result {
             Ok(bytes) => {
+                breaker.succeeded();
                 if let Some(limit) = limiter.succeeded() {
                     on_limit(limit);
                 }
@@ -96,16 +137,26 @@ pub async fn fetch_page_limited<C: Catalog>(
                         on_limit(limit);
                     }
                 }
-                if attempt >= attempts || !is_retryable(&e) {
+                if !may_retry(&e, attempt, attempts) {
+                    // Only a source that is failing counts against it, not
+                    // a page that is simply gone.
+                    if is_retryable(&e) {
+                        breaker.failed();
+                    }
+                    return Err(e);
+                }
+                if breaker.is_open() {
                     return Err(e);
                 }
                 // A source that is pushing back gets a longer rest.
-                let rest = if throttled {
+                let pause = if throttled {
                     delay.max(Duration::from_secs(1))
                 } else {
                     delay
                 };
-                tokio::time::sleep(rest).await;
+                if !self::rest(cancel, pause).await {
+                    return Err(e);
+                }
                 delay = (delay * 2).min(Duration::from_secs(5));
                 attempt += 1;
             }
@@ -195,5 +246,79 @@ mod tests {
             "{:?}",
             start.elapsed()
         );
+    }
+
+    /// A real "timed out" error: a server that never answers, a short timeout.
+    async fn timeout_error() -> CatalogError {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_millis(40))
+            .build()
+            .unwrap();
+        let e = client.get(url).send().await.unwrap_err();
+        assert!(e.is_timeout());
+        CatalogError::Http(e)
+    }
+
+    #[tokio::test]
+    async fn a_timeout_is_retried_only_once() {
+        let calls = AtomicU32::new(0);
+        let r = with_retry(&quick(5), || {
+            calls.fetch_add(1, Ordering::SeqCst);
+            async { Err::<(), _>(timeout_error().await) }
+        })
+        .await;
+        assert!(r.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn cancelling_ends_the_wait_between_tries() {
+        let policy = RetryPolicy {
+            attempts: 3,
+            base_delay: Duration::from_secs(10),
+        };
+        let cancel = CancelFlag::new();
+        let flag = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            flag.cancel();
+        });
+        let started = std::time::Instant::now();
+        let r: Result<(), CatalogError> =
+            with_retry_cancellable(&policy, &cancel, || async { Err(CatalogError::SourceHttp(500)) })
+                .await;
+        assert!(r.is_err());
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+    }
+
+    #[tokio::test]
+    async fn a_source_that_keeps_failing_is_given_up_on() {
+        let c = FakeCatalog::new();
+        c.set_bytes("/p", vec![1]);
+        c.flaky_path("/p", 1000);
+        let limiter = Limiter::new(2);
+        let breaker = Breaker::default();
+        let cancel = CancelFlag::new();
+        for _ in 0..20 {
+            let _ = fetch_page_limited(&c, "/p", &quick(1), &limiter, &breaker, &cancel, &|_| {}).await;
+        }
+        let tried = c.calls().iter().filter(|x| *x == "get /p").count();
+        assert_eq!(tried, 6, "after six failures in a row the rest are not even tried");
+        let err = fetch_page_limited(&c, "/p", &quick(1), &limiter, &breaker, &cancel, &|_| {})
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CatalogError::BadResponse(_)));
+    }
+
+    #[tokio::test]
+    async fn missing_pages_do_not_count_against_a_source() {
+        let c = FakeCatalog::new();
+        let (limiter, breaker, cancel) = (Limiter::new(2), Breaker::default(), CancelFlag::new());
+        for _ in 0..20 {
+            let _ = fetch_page_limited(&c, "/gone", &quick(1), &limiter, &breaker, &cancel, &|_| {}).await;
+        }
+        assert_eq!(c.calls().len(), 20);
     }
 }

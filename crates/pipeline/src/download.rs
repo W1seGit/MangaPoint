@@ -12,7 +12,7 @@
 
 use crate::balance::Balancer;
 use crate::error::{PipelineError, Result};
-use crate::fetch::{fetch_page_limited, with_retry, RetryPolicy};
+use crate::fetch::{fetch_page_limited, with_retry_cancellable, RetryPolicy};
 use crate::limiter::LimiterSet;
 use crate::types::{CancelFlag, ChapterRef, ChapterRequest, JobEvent, SkippedChapter, SourceUse};
 use catalog::{Catalog, CatalogError};
@@ -455,6 +455,11 @@ async fn download_one<C: Catalog>(
     let (files, series_id, key) = (cx.files, cx.series_id, dir_key);
     let limiter = cx.limiters.get(&option.source_id);
     let limiter = &*limiter;
+    let breaker = cx.limiters.breaker(&option.source_id);
+    let breaker = &*breaker;
+    if breaker.is_open() {
+        return Err(crate::limiter::Breaker::error().into());
+    }
     let dir = files.chapter_dir(series_id, key);
     let marker = dir.join("source.txt");
     let wanted = format!("{}:{}", option.source_id, option.chapter_id);
@@ -466,7 +471,15 @@ async fn download_one<C: Catalog>(
     fs::create_dir_all(&dir).map_err(io_err(&dir))?;
     fs::write(&marker, &wanted).map_err(io_err(&marker))?;
 
-    let paths = with_retry(cx.policy, || cx.catalog.chapter_pages(option.chapter_id)).await?;
+    let paths = with_retry_cancellable(cx.policy, cx.cancel, || {
+        cx.catalog.chapter_pages(option.chapter_id)
+    })
+    .await
+    .inspect_err(|e| {
+        if crate::fetch::is_retryable(e) {
+            breaker.failed();
+        }
+    })?;
     if paths.is_empty() {
         return Err(
             CatalogError::BadResponse("the source lists no pages for this chapter".into()).into(),
@@ -494,8 +507,17 @@ async fn download_one<C: Catalog>(
             let dest = files.page_path(series_id, key, index);
             let have = fs::metadata(&dest).map(|m| m.len() > 0).unwrap_or(false);
             if !have {
-                let bytes =
-                    fetch_page_limited(cx.catalog, path, cx.policy, limiter, on_limit).await?;
+                let bytes = fetch_page_limited(
+                    cx.catalog, path, cx.policy, limiter, breaker, cx.cancel, on_limit,
+                )
+                .await
+                .map_err(|e| {
+                    if cx.stopped() {
+                        PipelineError::Cancelled
+                    } else {
+                        e.into()
+                    }
+                })?;
                 if cx.stopped() {
                     return Err(PipelineError::Cancelled);
                 }
