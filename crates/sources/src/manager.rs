@@ -3,12 +3,18 @@
 use crate::defaults::{self, DefaultSource, KEIYOUSHI_INDEX};
 use catalog::{Catalog, CatalogError, Extension, Source};
 use library::{Choice, SourceState};
+use std::time::Duration;
 use thiserror::Error;
+
+/// How long listing the installed sources may take.
+pub const INSTALLED_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Error)]
 pub enum SourcesError {
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error("the catalog engine did not answer within {0:?}")]
+    TimedOut(Duration),
     #[error("'{0}' is not an https address")]
     InvalidUrl(String),
     #[error("{0} is not offered by the extension store")]
@@ -139,7 +145,25 @@ impl<'a, C: Catalog> SourceManager<'a, C> {
     }
 
     /// Installed sources in `language` (or language-independent ones).
+    ///
+    /// Gives up after [`INSTALLED_TIMEOUT`], so a hung engine cannot leave the
+    /// caller waiting minutes.
     pub async fn installed(&self, language: &str) -> Result<Vec<InstalledSource>, SourcesError> {
+        self.installed_within(language, INSTALLED_TIMEOUT).await
+    }
+
+    /// Like [`SourceManager::installed`] with the caller's own time limit.
+    pub async fn installed_within(
+        &self,
+        language: &str,
+        limit: Duration,
+    ) -> Result<Vec<InstalledSource>, SourcesError> {
+        tokio::time::timeout(limit, self.installed_unbounded(language))
+            .await
+            .map_err(|_| SourcesError::TimedOut(limit))?
+    }
+
+    async fn installed_unbounded(&self, language: &str) -> Result<Vec<InstalledSource>, SourcesError> {
         let extensions = self.catalog.fetch_extensions().await?;
         let sources = self.catalog.list_sources().await?;
         let mut out = Vec::new();
@@ -377,6 +401,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(st.custom_extensions.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn listing_installed_sources_gives_up_on_a_hung_engine() {
+        let c = FakeCatalog::new();
+        c.set_call_latency_ms(10_000);
+        let m = SourceManager::new(&c);
+        let started = std::time::Instant::now();
+        let err = m
+            .installed_within("en", Duration::from_millis(100))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, SourcesError::TimedOut(_)), "{err:?}");
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[tokio::test]
