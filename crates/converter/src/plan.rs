@@ -10,7 +10,8 @@
 //! * Paged chapters: one page per image. A double-page spread is split at its
 //!   spine, rotated, or fitted, as the settings say.
 //! * Webtoon chapters: every image is scaled to the screen width and joined.
-//!   Pages are cut at the blank gutters between scenes when there is one near
+//!   A chapter is one when its images are tall, or when they are short slices
+//!   that carry on from one another. Pages are cut at the blank gutters between scenes when there is one near
 //!   the bottom of the screen. When there is not, the cut is made at the
 //!   quietest row near the bottom (or, in the older way, at the full screen
 //!   height with the last rows repeated on the next page).
@@ -25,6 +26,8 @@ use crate::process::{
     Margins, ProcessOptions, SpreadMode, StripCut, ZoomMode,
 };
 use crate::xtc::ReadDirection;
+
+mod seams;
 
 /// The width a strip has in unit coordinates.
 pub const UNIT_WIDTH: u32 = 1000;
@@ -173,7 +176,10 @@ pub fn is_strip_chapter(images: &[(u32, u32)], opts: &ProcessOptions) -> bool {
 /// Crop and, for a webtoon, stitch. `images` are the chapter's pages in order.
 pub fn prepare(images: &[GrayImage], opts: &ProcessOptions) -> Prepared {
     let dims: Vec<(u32, u32)> = images.iter().map(|i| (i.width, i.height)).collect();
-    if is_strip_chapter(&dims, opts) {
+    // A long strip downloaded in short slices has the shape of pages, but each
+    // slice carries on from the one before it.
+    let sliced = opts.layout == Layout::Auto && seams::run_on_across_seams(images);
+    if sliced || is_strip_chapter(&dims, opts) {
         Prepared {
             kind: Kind::Strip(build_strip(images, opts)),
         }
