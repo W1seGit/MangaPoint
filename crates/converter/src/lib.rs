@@ -18,3 +18,6 @@ pub use plan::{ChapterPlan, PlannedPage, Prepared, Source};
 pub use process::{
     crop_bounds, process_page, CropMode, Layout, Margins, ProcessOptions, SpreadMode, StripCut,
 };
+
+#[cfg(test)]
+mod reference;

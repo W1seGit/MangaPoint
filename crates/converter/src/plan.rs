@@ -20,7 +20,7 @@
 
 use crate::gray::{GrayImage, LevelImage};
 use crate::process::{
-    border_median, crop_bounds, crop_rect, finish_guided, letterbox_top, resize, rotate_cw, show,
+    border_median, clamp_rect, crop_bounds, crop_rect, finish_guided, letterbox_top, resize, rotate_cw, show,
     tile, tile_arrow, tile_order, trim_bounds, trim_threshold, zoom_grid, Arrow, CropMode, Layout,
     Margins, ProcessOptions, SpreadMode, StripCut, ZoomMode,
 };
@@ -47,7 +47,7 @@ pub enum Part {
 }
 
 /// The part of an image that a zoom is applied to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Piece {
     Whole,
     Rotated,
@@ -135,11 +135,19 @@ struct Strip {
     total: u32,
     /// Per row: nothing but background.
     blank: Vec<bool>,
+    /// Some of the source was left out to stay within the row limits.
+    truncated: bool,
 }
 
 impl Prepared {
     pub fn is_strip(&self) -> bool {
         matches!(self.kind, Kind::Strip(_))
+    }
+
+    /// A webtoon strip had to leave out part of its pictures to stay within
+    /// [`MAX_IMAGE_ROWS`] and [`MAX_STRIP_ROWS`].
+    pub fn truncated(&self) -> bool {
+        matches!(&self.kind, Kind::Strip(strip) if strip.truncated)
     }
 
     /// The number of source images.
@@ -170,38 +178,158 @@ pub fn is_strip_chapter(images: &[(u32, u32)], opts: &ProcessOptions) -> bool {
     }
 }
 
-/// Crop and, for a webtoon, stitch. `images` are the chapter's pages in order.
-pub fn prepare(images: &[GrayImage], opts: &ProcessOptions) -> Prepared {
-    let dims: Vec<(u32, u32)> = images.iter().map(|i| (i.width, i.height)).collect();
-    if is_strip_chapter(&dims, opts) {
-        Prepared {
-            kind: Kind::Strip(build_strip(images, opts)),
-        }
-    } else {
-        let cropped = images
-            .iter()
-            .map(|img| {
-                let (x, y, w, h) = crop_bounds(img, opts);
-                if (x, y, w, h) == (0, 0, img.width, img.height) {
-                    img.clone()
-                } else {
-                    crop_rect(img, x, y, w, h)
-                }
-            })
-            .collect();
-        Prepared {
-            kind: Kind::Paged(cropped),
-        }
+/// The most rows one image may add to a strip once scaled to the screen
+/// width. A 100 x 1,000,000 pixel image is within the decoder's limit but
+/// would become millions of rows; what lies below this is left out.
+pub const MAX_IMAGE_ROWS: u32 = 150_000;
+
+/// The most rows a whole strip may have. Images that would take it past this
+/// are cut short, and later ones left out.
+pub const MAX_STRIP_ROWS: u32 = 600_000;
+
+/// A chapter's work was stopped by the caller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the conversion was cancelled")
     }
 }
 
-fn build_strip(images: &[GrayImage], opts: &ProcessOptions) -> Strip {
+impl std::error::Error for Cancelled {}
+
+/// Asked between pages and between images: has the caller given up? This
+/// crate knows nothing of the app's cancel flag, so it is a plain function.
+pub type CancelCheck<'a> = &'a (dyn Fn() -> bool + Sync);
+
+fn never() -> bool {
+    false
+}
+
+/// Run `work(0..count)` on every core and give the results back in order.
+/// `Err` as soon as `cancel` says so; the jobs not yet begun are not run.
+fn par_map<T: Send>(
+    count: usize,
+    cancel: CancelCheck,
+    work: impl Fn(usize) -> T + Sync,
+) -> Result<Vec<T>, Cancelled> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        let workers = std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .min(count);
+        if workers > 1 {
+            let next = AtomicUsize::new(0);
+            let stopped = AtomicBool::new(false);
+            let mut slots: Vec<Option<T>> = (0..count).map(|_| None).collect();
+            std::thread::scope(|scope| {
+                let handles: Vec<_> = (0..workers)
+                    .map(|_| {
+                        scope.spawn(|| {
+                            let mut done = Vec::new();
+                            loop {
+                                if stopped.load(Ordering::Relaxed) {
+                                    break;
+                                }
+                                if cancel() {
+                                    stopped.store(true, Ordering::Relaxed);
+                                    break;
+                                }
+                                let i = next.fetch_add(1, Ordering::Relaxed);
+                                if i >= count {
+                                    break;
+                                }
+                                done.push((i, work(i)));
+                            }
+                            done
+                        })
+                    })
+                    .collect();
+                for handle in handles {
+                    for (i, value) in handle.join().expect("a conversion worker panicked") {
+                        slots[i] = Some(value);
+                    }
+                }
+            });
+            if stopped.load(Ordering::Relaxed) {
+                return Err(Cancelled);
+            }
+            return Ok(slots
+                .into_iter()
+                .map(|slot| slot.expect("every job was run"))
+                .collect());
+        }
+    }
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        if cancel() {
+            return Err(Cancelled);
+        }
+        out.push(work(i));
+    }
+    Ok(out)
+}
+
+/// Crop and, for a webtoon, stitch. `images` are the chapter's pages in order.
+/// Copies them; [`prepare_owned`] takes them instead, so a big chapter does
+/// not exist twice.
+pub fn prepare(images: &[GrayImage], opts: &ProcessOptions) -> Prepared {
+    prepare_owned(images.to_vec(), opts, &never).expect("nothing cancels it")
+}
+
+/// [`prepare`], consuming the images: each is freed as soon as its cropped or
+/// scaled copy exists. `Err` if `cancel` turns true while it works.
+pub fn prepare_owned(
+    images: Vec<GrayImage>,
+    opts: &ProcessOptions,
+    cancel: CancelCheck,
+) -> Result<Prepared, Cancelled> {
+    let dims: Vec<(u32, u32)> = images.iter().map(|i| (i.width, i.height)).collect();
+    if is_strip_chapter(&dims, opts) {
+        Ok(Prepared {
+            kind: Kind::Strip(build_strip(images, opts, cancel)?),
+        })
+    } else {
+        let mut cropped = Vec::with_capacity(images.len());
+        for img in images {
+            if cancel() {
+                return Err(Cancelled);
+            }
+            let (x, y, w, h) = crop_bounds(&img, opts);
+            cropped.push(if (x, y, w, h) == (0, 0, img.width, img.height) {
+                img
+            } else {
+                crop_rect(&img, x, y, w, h)
+            });
+        }
+        Ok(Prepared {
+            kind: Kind::Paged(cropped),
+        })
+    }
+}
+
+/// What to do with one image of a strip: the part of it that is kept, as a
+/// rectangle of the downloaded picture, and how tall it is once scaled.
+struct StripJob {
+    rect: (u32, u32, u32, u32),
+    scaled_h: u32,
+}
+
+fn build_strip(
+    images: Vec<GrayImage>,
+    opts: &ProcessOptions,
+    cancel: CancelCheck,
+) -> Result<Strip, Cancelled> {
     let side = |p: u8| p.min(Margins::MAX_PERCENT) as u64;
     let cut = |len: u32, p: u8| (len as u64 * side(p) / 100) as u32;
+    let threshold = trim_threshold(opts.trim_sensitivity);
 
     // Fixed margins first. Top and bottom apply to every image (a banner on
-    // each slice); left and right are the same cut everywhere.
-    let fixed: Vec<GrayImage> = images
+    // each slice); left and right are the same cut everywhere. Only the
+    // rectangle is worked out here; nothing is copied.
+    let fixed: Vec<(u32, u32, u32, u32)> = images
         .iter()
         .map(|img| {
             let x = cut(img.width, opts.margins.left);
@@ -214,29 +342,34 @@ fn build_strip(images: &[GrayImage], opts: &ProcessOptions) -> Strip {
                 .height
                 .saturating_sub(y + cut(img.height, opts.margins.bottom))
                 .max(1);
-            crop_rect(img, x, y, w, h)
+            clamp_rect((img.width, img.height), x, y, w, h)
         })
         .collect();
 
     // Blank side margins: one cut for the whole chapter, so every image keeps
     // the same width and the strip does not jitter sideways.
-    let (left, right) = if opts.crop == CropMode::Margins {
-        let threshold = trim_threshold(opts.trim_sensitivity);
+    let (left, right) = if opts.crop == CropMode::Margins && !images.is_empty() {
+        let found = par_map(images.len(), cancel, |i| {
+            let (x, y, w, h) = fixed[i];
+            let img = &images[i];
+            let bounds = if (x, y, w, h) == (0, 0, img.width, img.height) {
+                trim_bounds(img, threshold, opts.trim_padding)
+            } else {
+                trim_bounds(&crop_rect(img, x, y, w, h), threshold, opts.trim_padding)
+            };
+            // The fractions of the fixed-margin picture that hold content.
+            match bounds {
+                Some((tx, _, tw, _)) => (tx as f32 / w as f32, (tx + tw) as f32 / w as f32),
+                None => (0.0, 1.0),
+            }
+        })?;
         let mut left = 1.0f32;
         let mut right = 0.0f32;
-        let mut any = false;
-        for img in &fixed {
-            if let Some((x, _, w, _)) = trim_bounds(img, threshold, opts.trim_padding) {
-                left = left.min(x as f32 / img.width as f32);
-                right = right.max((x + w) as f32 / img.width as f32);
-                any = true;
-            } else {
-                left = 0.0;
-                right = 1.0;
-                any = true;
-            }
+        for (l, r) in found {
+            left = left.min(l);
+            right = right.max(r);
         }
-        if any && right > left {
+        if right > left {
             (left, right)
         } else {
             (0.0, 1.0)
@@ -245,43 +378,90 @@ fn build_strip(images: &[GrayImage], opts: &ProcessOptions) -> Strip {
         (0.0, 1.0)
     };
 
-    let width = opts.width;
-    let threshold = trim_threshold(opts.trim_sensitivity);
-    let mut parts = Vec::with_capacity(fixed.len());
-    let mut starts = Vec::with_capacity(fixed.len());
+    // How much of each image is kept and how tall it comes out, with the
+    // limits on the rows of one image and of the whole strip. Images are
+    // cut short rather than allocated at absurd sizes.
+    let width = opts.width.max(1);
+    let mut jobs: Vec<Option<StripJob>> = Vec::with_capacity(images.len());
+    let mut budget = MAX_STRIP_ROWS as u64;
+    let mut truncated = false;
+    for &(fx, fy, fw, fh) in &fixed {
+        let x = ((left * fw as f32).floor() as u32).min(fw - 1);
+        let w = (((right - left) * fw as f32).round() as u32).clamp(1, fw - x);
+        let rows = |h: u32| (h as f64 * width as f64 / w as f64).round().max(1.0);
+        let allowed = (MAX_IMAGE_ROWS as u64).min(budget);
+        if allowed == 0 {
+            truncated = true;
+            jobs.push(None);
+            continue;
+        }
+        let mut h = fh;
+        if rows(h) > allowed as f64 {
+            // Keep the top of the image: as many source rows as fit.
+            h = ((allowed as f64 * w as f64 / width as f64).floor() as u32).clamp(1, fh);
+            truncated = true;
+        }
+        let scaled_h = (rows(h) as u64).min(allowed).max(1) as u32;
+        budget -= scaled_h as u64;
+        jobs.push(Some(StripJob {
+            rect: (fx + x, fy, w, h),
+            scaled_h,
+        }));
+    }
+
+    // Scale the images side by side, each freed as it is taken. The order of
+    // the rows does not depend on which finishes first.
+    let slots: Vec<std::sync::Mutex<Option<GrayImage>>> = images
+        .into_iter()
+        .map(|img| std::sync::Mutex::new(Some(img)))
+        .collect();
+    let scaled = par_map(slots.len(), cancel, |i| {
+        let job = jobs[i].as_ref()?;
+        let img = slots[i].lock().expect("no panic holds the lock").take()?;
+        let (x, y, w, h) = job.rect;
+        let sideways = if (x, y, w, h) == (0, 0, img.width, img.height) {
+            img
+        } else {
+            crop_rect(&img, x, y, w, h)
+        };
+        let scaled = if (sideways.width, sideways.height) == (width, job.scaled_h) {
+            sideways
+        } else {
+            resize(&sideways, width, job.scaled_h)
+        };
+        let bg = border_median(&scaled) as i16;
+        let row_limit = (width / 200).max(1) as usize;
+        let blank: Vec<bool> = scaled
+            .pixels
+            .chunks_exact(width as usize)
+            .map(|row| {
+                row.iter()
+                    .filter(|&&p| (p as i16 - bg).abs() > threshold)
+                    .count()
+                    <= row_limit
+            })
+            .collect();
+        Some((scaled, blank))
+    })?;
+
+    let mut parts = Vec::with_capacity(scaled.len());
+    let mut starts = Vec::with_capacity(scaled.len());
     let mut blank = Vec::new();
     let mut total = 0u32;
-    for img in &fixed {
-        let x = (left * img.width as f32).floor() as u32;
-        let w = (((right - left) * img.width as f32).round() as u32).clamp(1, img.width - x);
-        let sideways = if (x, w) == (0, img.width) {
-            img.clone()
-        } else {
-            crop_rect(img, x, 0, w, img.height)
-        };
-        let scaled_h = (sideways.height as f64 * width as f64 / sideways.width as f64)
-            .round()
-            .max(1.0) as u32;
-        let scaled = resize(&sideways, width, scaled_h);
-        let bg = border_median(&scaled);
-        let row_limit = (width / 200).max(1);
-        for y in 0..scaled.height {
-            let ink = (0..width)
-                .filter(|&x| (scaled.get(x, y) as i16 - bg as i16).abs() > threshold)
-                .count() as u32;
-            blank.push(ink <= row_limit);
-        }
+    for (scaled, rows_blank) in scaled.into_iter().flatten() {
         starts.push(total);
         total += scaled.height;
+        blank.extend(rows_blank);
         parts.push(scaled);
     }
-    Strip {
+    Ok(Strip {
         width,
         parts,
         starts,
         total,
         blank,
-    }
+        truncated,
+    })
 }
 
 fn to_units(px: u32, width: u32) -> u32 {
@@ -481,14 +661,123 @@ fn latest_gutter(strip: &Strip, from: u32, to: u32, min_len: u32) -> Option<(u32
     best
 }
 
+/// A piece of a source image: the image itself, or one cut out of it that
+/// the screens of a zoomed page share.
+enum PieceRef<'a> {
+    Borrowed(&'a GrayImage),
+    Shared(std::sync::Arc<GrayImage>),
+}
+
+impl std::ops::Deref for PieceRef<'_> {
+    type Target = GrayImage;
+    fn deref(&self) -> &GrayImage {
+        match self {
+            PieceRef::Borrowed(img) => img,
+            PieceRef::Shared(img) => img,
+        }
+    }
+}
+
+impl PieceRef<'_> {
+    fn into_owned(self) -> GrayImage {
+        match self {
+            PieceRef::Borrowed(img) => img.clone(),
+            PieceRef::Shared(img) => std::sync::Arc::try_unwrap(img).unwrap_or_else(|img| (*img).clone()),
+        }
+    }
+}
+
+struct CachedPiece {
+    piece: std::sync::OnceLock<std::sync::Arc<GrayImage>>,
+    /// Screens that still need it; the last one lets it go.
+    left: std::sync::atomic::AtomicUsize,
+}
+
+/// The rotated or half pieces that several screens of one zoomed page are cut
+/// from, made once however many screens (and threads) use them, and dropped
+/// when the last screen has.
+struct PieceCache {
+    pieces: std::sync::Mutex<std::collections::HashMap<(usize, Piece), std::sync::Arc<CachedPiece>>>,
+}
+
+impl PieceCache {
+    /// For the pages about to be rendered; `None` if none shares a piece.
+    fn for_pages(pages: &[PlannedPage]) -> Option<PieceCache> {
+        let mut counts: std::collections::HashMap<(usize, Piece), usize> = Default::default();
+        for page in pages {
+            if let Source::Image {
+                index,
+                part: Part::Tile { of, .. },
+            } = page.source
+            {
+                if of != Piece::Whole {
+                    *counts.entry((index, of)).or_default() += 1;
+                }
+            }
+        }
+        counts.retain(|_, n| *n > 1);
+        (!counts.is_empty()).then(|| PieceCache {
+            pieces: std::sync::Mutex::new(
+                counts
+                    .into_iter()
+                    .map(|(key, n)| {
+                        (
+                            key,
+                            std::sync::Arc::new(CachedPiece {
+                                piece: Default::default(),
+                                left: std::sync::atomic::AtomicUsize::new(n),
+                            }),
+                        )
+                    })
+                    .collect(),
+            ),
+        })
+    }
+
+    fn get(&self, img: &GrayImage, index: usize, of: Piece) -> Option<std::sync::Arc<GrayImage>> {
+        let entry = self.pieces.lock().expect("no panic holds the lock").get(&(index, of))?.clone();
+        let piece = entry.piece.get_or_init(|| std::sync::Arc::new(piece(img, of))).clone();
+        if entry.left.fetch_sub(1, std::sync::atomic::Ordering::AcqRel) == 1 {
+            self.pieces.lock().expect("no panic holds the lock").remove(&(index, of));
+        }
+        Some(piece)
+    }
+}
+
+/// The piece of source image `index` that screens of a zoomed page are cut from.
+fn piece_of<'a>(
+    img: &'a GrayImage,
+    index: usize,
+    of: Piece,
+    cache: Option<&PieceCache>,
+) -> PieceRef<'a> {
+    if of == Piece::Whole {
+        return PieceRef::Borrowed(img);
+    }
+    PieceRef::Shared(
+        cache
+            .and_then(|c| c.get(img, index, of))
+            .unwrap_or_else(|| std::sync::Arc::new(piece(img, of))),
+    )
+}
+
 /// Render one planned page to device pixels and levels.
 pub fn render_page(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) -> LevelImage {
+    render_page_with(prepared, page, opts, None)
+}
+
+fn render_page_with(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+    cache: Option<&PieceCache>,
+) -> LevelImage {
     let screen = match (&prepared.kind, page.source) {
         (Kind::Strip(strip), Source::Strip { top, height }) => {
             letterbox_top(&strip_rows(strip, top, height), opts.width, opts.height)
         }
         (Kind::Paged(images), Source::Image { index, part }) => {
-            paged_screen(&images[index], part, opts)
+            paged_screen(&images[index], index, part, opts, cache)
         }
         _ => unreachable!("a plan is only rendered with the chapter it was made from"),
     };
@@ -519,12 +808,20 @@ fn page_arrow(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) ->
     }
 }
 
-fn paged_screen(img: &GrayImage, part: Part, opts: &ProcessOptions) -> GrayImage {
+fn paged_screen(
+    img: &GrayImage,
+    index: usize,
+    part: Part,
+    opts: &ProcessOptions,
+    cache: Option<&PieceCache>,
+) -> GrayImage {
     match part {
         Part::Whole => show(img, opts),
         Part::Rotated => show(&rotate_cw(img), opts),
         Part::Half(_) => show(&piece(img, half_of(part)), opts),
-        Part::Tile { of, col, row } => tile(&piece(img, of), opts, col as u32, row as u32),
+        Part::Tile { of, col, row } => {
+            tile(&piece_of(img, index, of, cache), opts, col as u32, row as u32)
+        }
     }
 }
 
@@ -601,95 +898,53 @@ pub fn original_rows(prepared: &Prepared, page: &PlannedPage) -> Option<GrayImag
 
 /// Plan and render a whole chapter.
 pub fn convert_chapter(images: &[GrayImage], opts: &ProcessOptions) -> Vec<LevelImage> {
-    let prepared = prepare(images, opts);
+    convert_chapter_owned(images.to_vec(), opts, &never).expect("nothing cancels it")
+}
+
+/// [`convert_chapter`], consuming the images (see [`prepare_owned`]) and
+/// giving up with `Err` soon after `cancel` turns true.
+pub fn convert_chapter_owned(
+    images: Vec<GrayImage>,
+    opts: &ProcessOptions,
+    cancel: CancelCheck,
+) -> Result<Vec<LevelImage>, Cancelled> {
+    let prepared = prepare_owned(images, opts, cancel)?;
     let plan = plan(&prepared, opts);
-    render_all_cropped(&prepared, &plan.pages, opts, &[])
+    render_all_cropped_cancellable(&prepared, &plan.pages, opts, &[], cancel)
 }
 
 /// Render pages, using every core of the machine: each page is independent,
 /// and resizing, contrast and dithering are most of an export's time. The
 /// pages come back in order.
-#[cfg(not(target_arch = "wasm32"))]
 pub fn render_all_cropped(
     prepared: &Prepared,
     pages: &[PlannedPage],
     opts: &ProcessOptions,
     crops: &[[f32; 4]],
 ) -> Vec<LevelImage> {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    let workers = std::thread::available_parallelism()
-        .map_or(1, |n| n.get())
-        .min(pages.len());
-    if workers <= 1 {
-        return pages
-            .iter()
-            .enumerate()
-            .map(|(i, page)| {
-                render_page_cropped(
-                    prepared,
-                    page,
-                    opts,
-                    crops.get(i).copied().unwrap_or([0.0; 4]),
-                )
-            })
-            .collect();
-    }
-    let next = AtomicUsize::new(0);
-    let mut slots: Vec<Option<LevelImage>> = (0..pages.len()).map(|_| None).collect();
-    std::thread::scope(|scope| {
-        let handles: Vec<_> = (0..workers)
-            .map(|_| {
-                scope.spawn(|| {
-                    let mut done = Vec::new();
-                    loop {
-                        let i = next.fetch_add(1, Ordering::Relaxed);
-                        let Some(page) = pages.get(i) else { break };
-                        done.push((
-                            i,
-                            render_page_cropped(
-                                prepared,
-                                page,
-                                opts,
-                                crops.get(i).copied().unwrap_or([0.0; 4]),
-                            ),
-                        ));
-                    }
-                    done
-                })
-            })
-            .collect();
-        for handle in handles {
-            for (i, image) in handle.join().expect("a page renderer panicked") {
-                slots[i] = Some(image);
-            }
-        }
-    });
-    slots
-        .into_iter()
-        .map(|slot| slot.expect("every page was rendered"))
-        .collect()
+    render_all_cropped_cancellable(prepared, pages, opts, crops, &never)
+        .expect("nothing cancels it")
 }
 
-/// The website runs on one thread.
-#[cfg(target_arch = "wasm32")]
-pub fn render_all_cropped(
+/// [`render_all_cropped`] that looks at `cancel` before each page and gives
+/// up with `Err` once it is true.
+pub fn render_all_cropped_cancellable(
     prepared: &Prepared,
     pages: &[PlannedPage],
     opts: &ProcessOptions,
     crops: &[[f32; 4]],
-) -> Vec<LevelImage> {
-    pages
-        .iter()
-        .enumerate()
-        .map(|(i, page)| {
-            render_page_cropped(
-                prepared,
-                page,
-                opts,
-                crops.get(i).copied().unwrap_or([0.0; 4]),
-            )
-        })
-        .collect()
+    cancel: CancelCheck,
+) -> Result<Vec<LevelImage>, Cancelled> {
+    let cache = PieceCache::for_pages(pages);
+    par_map(pages.len(), cancel, |i| {
+        render_page_cropped_with(
+            prepared,
+            &pages[i],
+            opts,
+            crops.get(i).copied().unwrap_or([0.0; 4]),
+            cache.as_ref(),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -1011,17 +1266,29 @@ mod manual_crop_tests {
 }
 
 /// Prepared section before fitting or tone adjustment, including the selected spread part.
-pub fn page_source(prepared: &Prepared, page: &PlannedPage, _opts: &ProcessOptions) -> GrayImage {
+pub fn page_source(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) -> GrayImage {
+    source_of(prepared, page, opts, None).into_owned()
+}
+
+fn source_of<'a>(
+    prepared: &'a Prepared,
+    page: &PlannedPage,
+    _opts: &ProcessOptions,
+    cache: Option<&PieceCache>,
+) -> PieceRef<'a> {
     match (&prepared.kind, page.source) {
-        (Kind::Strip(strip), Source::Strip { top, height }) => strip_rows(strip, top, height),
+        (Kind::Strip(strip), Source::Strip { top, height }) => {
+            PieceRef::Shared(std::sync::Arc::new(strip_rows(strip, top, height)))
+        }
         (Kind::Paged(images), Source::Image { index, part }) => {
             let img = &images[index];
-            match part {
-                Part::Whole => img.clone(),
-                Part::Rotated => piece(img, Piece::Rotated),
-                Part::Half(n) => piece(img, Piece::Half(n)),
-                Part::Tile { of, .. } => piece(img, of),
-            }
+            let of = match part {
+                Part::Whole => Piece::Whole,
+                Part::Rotated => Piece::Rotated,
+                Part::Half(n) => Piece::Half(n),
+                Part::Tile { of, .. } => of,
+            };
+            piece_of(img, index, of, cache)
         }
         _ => unreachable!("a plan belongs to its prepared chapter"),
     }
@@ -1127,6 +1394,16 @@ pub fn render_page_cropped(
     opts: &ProcessOptions,
     crop: [f32; 4],
 ) -> LevelImage {
+    render_page_cropped_with(prepared, page, opts, crop, None)
+}
+
+fn render_page_cropped_with(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+    crop: [f32; 4],
+    cache: Option<&PieceCache>,
+) -> LevelImage {
     let mut c = crop.map(|v| {
         if v.is_finite() {
             v.clamp(0.0, 0.99)
@@ -1142,9 +1419,9 @@ pub fn render_page_cropped(
         }
     }
     if c == [0.0; 4] {
-        return render_page(prepared, page, opts);
+        return render_page_with(prepared, page, opts, cache);
     }
-    let source = page_source(prepared, page, opts);
+    let source = source_of(prepared, page, opts, cache);
     let x = ((source.width as f32 * c[0]).floor() as u32).min(source.width - 1);
     let y = ((source.height as f32 * c[1]).floor() as u32).min(source.height - 1);
     let w = source
@@ -1156,6 +1433,7 @@ pub fn render_page_cropped(
         .saturating_sub(y + (source.height as f32 * c[3]).floor() as u32)
         .max(1);
     let cut = crop_rect(&source, x, y, w, h);
+    drop(source);
     let screen = if matches!(page.source, Source::Strip { .. }) {
         let scale =
             (opts.width as f64 / cut.width as f64).min(opts.height as f64 / cut.height as f64);
@@ -1564,3 +1842,7 @@ mod arrow_tests {
         assert_eq!(got, vec![Some("left"), None]);
     }
 }
+
+#[cfg(test)]
+#[path = "plan_audit_tests.rs"]
+mod audit_tests;
