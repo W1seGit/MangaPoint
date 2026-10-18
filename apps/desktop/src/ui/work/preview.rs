@@ -38,10 +38,16 @@ pub fn prepare_preview(state: AppState) {
             p.pages.clear();
             p.fresh = 0;
         }
-        let on_disk = p
-            .chapter_key
-            .as_ref()
-            .map_or(0, |k| library_files().page_files(&ws.series_id, k).len());
+        // What the library recorded, not a look at the folder: this runs on the
+        // UI thread, and a missing folder is reported when the preview is made.
+        let on_disk = p.chapter_key.as_ref().map_or(0, |k| {
+            state
+                .library
+                .peek()
+                .find(&ws.series_id)
+                .and_then(|s| s.chapters.iter().find(|c| &c.key == k))
+                .map_or(0, |c| c.pages)
+        });
         valid && on_disk > 0 && !p.pages.is_empty() && p.fresh == p.pages.len() && !p.busy
     };
     if !up_to_date {
@@ -160,11 +166,65 @@ pub fn select_preview_page(state: AppState, selected: usize) {
     });
 }
 
-/// Read and decode a chapter's saved pages, in order.
+/// What identifies one saved page without reading it: where it is, how big,
+/// and when it was last written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct FileStamp {
+    pub path: std::path::PathBuf,
+    pub len: u64,
+    pub modified_nanos: u128,
+}
+
+pub(super) fn stamp_files(files: &[std::path::PathBuf]) -> Result<Vec<FileStamp>, String> {
+    files
+        .iter()
+        .map(|path| {
+            let meta = std::fs::metadata(path)
+                .map_err(|e| format!("Could not read a saved page: {e}"))?;
+            let modified_nanos = meta
+                .modified()
+                .ok()
+                .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_nanos());
+            Ok(FileStamp {
+                path: path.clone(),
+                len: meta.len(),
+                modified_nanos,
+            })
+        })
+        .collect()
+}
+
+/// One short name for a set of saved pages, from their stamps: it changes when
+/// a page is added, replaced or rewritten, without reading any of them.
+pub(super) fn fingerprint_of(stamps: &[FileStamp]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for stamp in stamps {
+        stamp.path.hash(&mut hasher);
+        stamp.len.hash(&mut hasher);
+        stamp.modified_nanos.hash(&mut hasher);
+    }
+    format!("{:016x}", hasher.finish())
+}
+
+/// Read and decode a chapter's saved pages, in order. The decoded chapter is
+/// remembered under a name made from the pages' stamps, so asking again for the
+/// same pages only looks at the files' sizes and dates, off the UI thread.
 pub(super) async fn decode_chapter(
     cache_key: String,
     files: Vec<std::path::PathBuf>,
 ) -> Result<(String, Arc<Vec<converter::GrayImage>>), String> {
+    let stamps = tokio::task::spawn_blocking(move || stamp_files(&files).map(|s| (s, files)))
+        .await
+        .map_err(|e| e.to_string())??;
+    let (stamps, files) = stamps;
+    let cache_key = format!("{cache_key}/{}", fingerprint_of(&stamps));
+    if let Some((k, grays)) = DECODED.lock().ok().and_then(|g| g.clone()) {
+        if k == cache_key {
+            return Ok((cache_key, grays));
+        }
+    }
     let raw = tokio::task::spawn_blocking(move || {
         files
             .into_iter()
@@ -175,18 +235,6 @@ pub(super) async fn decode_chapter(
     })
     .await
     .map_err(|e| e.to_string())??;
-    let mut digest = Sha256::new();
-    for bytes in &raw {
-        digest.update((bytes.len() as u64).to_le_bytes());
-        digest.update(bytes);
-    }
-    let fingerprint: String = digest.finalize().iter().map(|b| format!("{b:02x}")).collect();
-    let cache_key = format!("{cache_key}/{fingerprint}");
-    if let Some((k, grays)) = DECODED.lock().ok().and_then(|g| g.clone()) {
-        if k == cache_key {
-            return Ok((cache_key, grays));
-        }
-    }
     let decoded: Vec<Result<converter::GrayImage, String>> = stream::iter(raw)
         .map(|bytes| async move {
             tokio::task::spawn_blocking(move || {
@@ -212,7 +260,6 @@ pub(super) async fn decode_chapter(
 /// One number for everything that decides how the pages look. `0` if it
 /// cannot be worked out.
 fn preview_signature(state: AppState) -> u64 {
-    use std::hash::{Hash, Hasher};
     let Some(ws) = state.workspace.peek().clone() else {
         return 0;
     };
@@ -223,13 +270,45 @@ fn preview_signature(state: AppState) -> u64 {
     let Some(key) = key else {
         return 0;
     };
-    let Some(series) = state.library.peek().find(&ws.series_id).cloned() else {
+    let library = state.library.peek();
+    let Some(series) = library.find(&ws.series_id) else {
         return 0;
     };
     let device = state.settings.peek().device_profile();
     let opts = pipeline::process_options_for(&device, &series.settings);
+    // Only the crops that apply to this chapter matter to how it looks.
+    let crops = series.crops.chapter_configuration(&key);
+    signature_of(&ws.series_id, &key, &opts, &crops, &draft)
+}
+
+/// Writes what is formatted straight into a hasher, so the options are hashed
+/// without first being made into a string.
+struct HashWriter<'a, H: std::hash::Hasher>(&'a mut H);
+
+impl<H: std::hash::Hasher> std::fmt::Write for HashWriter<'_, H> {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.0.write(s.as_bytes());
+        Ok(())
+    }
+}
+
+/// One number for the chapter, the conversion options, the crops that apply to
+/// it and the crop being dragged. Never 0.
+pub(super) fn signature_of(
+    series_id: &str,
+    key: &str,
+    opts: &converter::ProcessOptions,
+    crops: &[u8],
+    draft: &Option<(String, library::CropRect)>,
+) -> u64 {
+    use std::fmt::Write;
+    use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    format!("{}|{key}|{opts:?}|{:?}|{draft:?}", ws.series_id, series.crops).hash(&mut hasher);
+    series_id.hash(&mut hasher);
+    key.hash(&mut hasher);
+    let _ = write!(HashWriter(&mut hasher), "{opts:?}");
+    crops.hash(&mut hasher);
+    let _ = write!(HashWriter(&mut hasher), "{draft:?}");
     hasher.finish().max(1)
 }
 
@@ -277,7 +356,15 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
             return fail("This series is not in your library.".into());
         };
         let device = state.settings.peek().device_profile();
-        let files = library_files().page_files(&ws.series_id, &key);
+        let files = {
+            let (id, k) = (ws.series_id.clone(), key.clone());
+            tokio::task::spawn_blocking(move || library_files().page_files(&id, &k))
+                .await
+                .unwrap_or_default()
+        };
+        if !current(state) {
+            return;
+        }
         if files.is_empty() {
             return fail("This chapter has no saved pages. Download it again.".into());
         }
@@ -673,5 +760,64 @@ mod page_editor_tests {
         assert_eq!(second[0].pixels, [255; 16]);
         let _ = std::fs::remove_file(path);
         let _ = std::fs::remove_dir(root);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn opts() -> converter::ProcessOptions {
+        pipeline::process_options_for(
+            &device_profiles::x4(),
+            &library::ConversionSettings::default(),
+        )
+    }
+
+    #[test]
+    fn the_signature_changes_with_the_settings_and_crops_and_only_then() {
+        let base = opts();
+        let sig = |o: &converter::ProcessOptions, crops: &[u8], d: &Option<(String, library::CropRect)>| {
+            signature_of("s", "c1", o, crops, d)
+        };
+        let first = sig(&base, b"x", &None);
+        assert_ne!(first, 0);
+        assert_eq!(first, sig(&base.clone(), b"x", &None), "same inputs, same number");
+        let mut other = base.clone();
+        other.contrast = base.contrast.wrapping_add(7);
+        assert_ne!(first, sig(&other, b"x", &None), "a setting changed");
+        assert_ne!(first, sig(&base, b"y", &None), "a crop changed");
+        let draft = Some(("p".to_string(), library::CropRect { left: 0.1, ..Default::default() }));
+        assert_ne!(first, sig(&base, b"x", &draft), "a crop is being dragged");
+        assert_ne!(first, signature_of("s", "c2", &base, b"x", &None), "another chapter");
+    }
+
+    #[test]
+    fn a_decoded_chapter_is_found_by_the_files_stamps_without_reading_them() {
+        let dir = std::env::temp_dir().join(format!("mp-decode-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // Not pictures: if they were read and decoded this would be an error.
+        let files: Vec<_> = (0..3)
+            .map(|i| {
+                let p = dir.join(format!("{i}.img"));
+                std::fs::write(&p, vec![i as u8; 100 + i]).unwrap();
+                p
+            })
+            .collect();
+        let key = format!("s/c1/3/{}", fingerprint_of(&stamp_files(&files).unwrap()));
+        let grays = Arc::new(Vec::new());
+        *DECODED.lock().unwrap() = Some((key.clone(), grays.clone()));
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        let (got_key, got) = rt
+            .block_on(decode_chapter("s/c1/3".into(), files.clone()))
+            .expect("a cache hit needs no decoding");
+        assert_eq!(got_key, key);
+        assert!(Arc::ptr_eq(&got, &grays));
+        // A page that changed size is not the same chapter: it is read, and
+        // these are not pictures.
+        std::fs::write(&files[1], b"changed on disk").unwrap();
+        assert!(rt.block_on(decode_chapter("s/c1/3".into(), files)).is_err());
+        *DECODED.lock().unwrap() = None;
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
