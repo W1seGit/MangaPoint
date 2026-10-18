@@ -351,3 +351,34 @@ fn a_batch_can_be_put_aside_and_goes_on_with_what_is_left() {
     assert!(q.cancel(b));
     assert!(q.get(b).is_none());
 }
+
+#[test]
+fn a_cancel_after_a_pause_wins_and_a_pause_after_a_cancel_does_not_park() {
+    let mut q = DownloadQueue::default();
+    q.add(batch("a", &[1, 2]));
+    q.add(batch("b", &[1, 2]));
+    let (a, b) = (q.batches[0].id, q.batches[1].id);
+    q.start(a);
+    assert!(q.pause(a));
+    q.cancel_all();
+    assert!(!q.get(a).unwrap().pausing, "the cancel clears the pending pause");
+    assert!(q.get(a).unwrap().cancel.is_cancelled());
+    assert!(q.get(b).is_none());
+    q.finish(a, BatchStatus::Cancelled, "x".into(), vec![], vec![]);
+    assert!(!q.series_has_work("a"));
+
+    q.add(batch("c", &[1]));
+    let c = q.batches.last().unwrap().id;
+    q.start(c);
+    assert!(q.cancel(c));
+    assert!(!q.pause(c), "a batch that is stopping for good cannot be parked");
+    assert!(!q.get(c).unwrap().pausing);
+    q.finish(c, BatchStatus::Cancelled, "x".into(), vec![], vec![]);
+
+    q.add(batch("d", &[1]));
+    let d = q.batches.last().unwrap().id;
+    q.start(d);
+    q.pause(d);
+    q.cancel_series("d");
+    assert!(!q.get(d).unwrap().pausing);
+}

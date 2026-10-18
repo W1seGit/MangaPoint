@@ -151,6 +151,8 @@ impl DownloadQueue {
             }
             BatchStatus::Running => {
                 let b = &mut self.batches[at];
+                // A cancel wins over a pause that has not landed yet.
+                b.pausing = false;
                 b.cancel.cancel();
                 b.progress.stopping = true;
                 true
@@ -207,6 +209,10 @@ impl DownloadQueue {
                 true
             }
             BatchStatus::Running => {
+                // Already being cancelled: the cancel stands.
+                if b.cancel.is_cancelled() && !b.pausing {
+                    return false;
+                }
                 b.pausing = true;
                 b.cancel.cancel();
                 b.progress.stopping = true;
