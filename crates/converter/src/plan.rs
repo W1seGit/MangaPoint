@@ -26,6 +26,8 @@ use crate::process::{
 };
 use crate::xtc::ReadDirection;
 
+pub mod v2;
+
 /// The width a strip has in unit coordinates.
 pub const UNIT_WIDTH: u32 = 1000;
 
