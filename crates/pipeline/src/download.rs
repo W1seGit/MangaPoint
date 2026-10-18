@@ -23,7 +23,7 @@ use std::fs;
 use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -36,6 +36,12 @@ fn storage_limits(quality: PageQuality) -> Option<StorageLimits> {
         PageQuality::Full => None,
     }
 }
+/// The biggest page file we accept. Nothing legitimate is near it, and a
+/// source (or a proxy error) that sends more is not sending a manga page.
+const MAX_PAGE_BYTES: usize = 64 * 1024 * 1024;
+/// The most pixels in one page; the same limit the converter decodes up to
+/// (120 megapixels), so an unusable page fails here, not when exporting.
+const MAX_PAGE_PIXELS: u64 = 120_000_000;
 /// How often a waiting download looks at the cancel button.
 const CANCEL_POLL: Duration = Duration::from_millis(60);
 
@@ -49,6 +55,62 @@ pub struct DownloadOutcome {
 }
 
 type Events = Option<UnboundedSender<JobEvent>>;
+
+/// Run file work on a thread of its own: the download is polled on the
+/// thread the app's window runs on, which file calls must not hold up.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T> + Send + 'static,
+) -> Result<T> {
+    // Only a stopping runtime fails the join.
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|_| PipelineError::Cancelled)?
+}
+
+/// Removes the per-source staging folders of a race, also when the download
+/// is cancelled and the future is dropped half way.
+struct StageGuard {
+    files: LibraryFiles,
+    series_id: String,
+    stages: Vec<String>,
+    armed: bool,
+}
+
+impl StageGuard {
+    fn remove_except(&self, keep: Option<&str>) {
+        for stage in &self.stages {
+            if keep != Some(stage.as_str()) {
+                let _ = self.files.remove_chapter(&self.series_id, stage);
+            }
+        }
+    }
+
+    /// Normal end: remove every staging folder except `keep`, off the UI thread.
+    async fn finish(mut self, keep: Option<String>) {
+        self.armed = false;
+        let files = self.files.clone();
+        let (series_id, stages) = (self.series_id.clone(), self.stages.clone());
+        let _ = blocking(move || {
+            let g = StageGuard {
+                files,
+                series_id,
+                stages,
+                armed: false,
+            };
+            g.remove_except(keep.as_deref());
+            Ok(())
+        })
+        .await;
+    }
+}
+
+impl Drop for StageGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            self.remove_except(None);
+        }
+    }
+}
 
 fn send(events: &Events, event: JobEvent) {
     if let Some(tx) = events {
@@ -369,6 +431,12 @@ async fn race_sources<'a, C: Catalog>(
         ..*cx
     };
     let stage_of = |option: &ChapterRef| format!("{key}-via-{}", option.source_id);
+    let guard = StageGuard {
+        files: cx.files.clone(),
+        series_id: cx.series_id.to_string(),
+        stages: options.iter().map(stage_of).collect(),
+        armed: true,
+    };
 
     let mut pending: FuturesUnordered<_> = options
         .iter()
@@ -412,35 +480,40 @@ async fn race_sources<'a, C: Catalog>(
     }
     drop(pending);
 
-    let finish = |winner_stage: Option<&str>| {
-        for option in options {
-            let stage = stage_of(option);
-            if winner_stage != Some(stage.as_str()) {
-                let _ = cx.files.remove_chapter(cx.series_id, &stage);
-            }
-        }
-    };
     if cx.cancel.is_cancelled() {
-        finish(None);
+        guard.finish(None).await;
         return Err(PipelineError::Cancelled);
     }
     let Some((option, _)) = winner else {
-        finish(None);
+        guard.finish(None).await;
         return Ok((None, source_use, last_reason));
     };
     // Move the winner's pages into the chapter's own folder.
     let stage = stage_of(option);
-    finish(Some(&stage));
-    let (from, to) = (
-        cx.files.chapter_dir(cx.series_id, &stage),
-        cx.files.chapter_dir(cx.series_id, key),
+    guard.finish(Some(stage.clone())).await;
+    let (files, series_id, key_owned) = (
+        cx.files.clone(),
+        cx.series_id.to_string(),
+        key.to_string(),
     );
-    cx.files
-        .remove_chapter(cx.series_id, key)
-        .map_err(io_err(&to))?;
-    fs::rename(&from, &to).map_err(io_err(&to))?;
-    let pages = cx.files.page_files(cx.series_id, key).len();
-    let bytes = cx.files.chapter_bytes(cx.series_id, key);
+    let (pages, bytes) = blocking(move || {
+        let (from, to) = (
+            files.chapter_dir(&series_id, &stage),
+            files.chapter_dir(&series_id, &key_owned),
+        );
+        let moved = files
+            .remove_chapter(&series_id, &key_owned)
+            .and_then(|()| fs::rename(&from, &to));
+        if let Err(e) = moved {
+            let _ = files.remove_chapter(&series_id, &stage);
+            return Err(PipelineError::Io(to, e));
+        }
+        Ok((
+            files.page_files(&series_id, &key_owned).len(),
+            files.chapter_bytes(&series_id, &key_owned),
+        ))
+    })
+    .await?;
     Ok((Some((option, (pages, bytes))), source_use, last_reason))
 }
 
@@ -460,16 +533,11 @@ async fn download_one<C: Catalog>(
     if breaker.is_open() {
         return Err(crate::limiter::Breaker::error().into());
     }
-    let dir = files.chapter_dir(series_id, key);
-    let marker = dir.join("source.txt");
     let wanted = format!("{}:{}", option.source_id, option.chapter_id);
-    if fs::read_to_string(&marker).ok().as_deref() != Some(wanted.as_str()) {
-        // Pages from a different copy of the chapter would not line up with
-        // this one, so start clean.
-        files.remove_chapter(series_id, key).map_err(io_err(&dir))?;
+    {
+        let (files, series_id, key) = (files.clone(), series_id.to_string(), key.to_string());
+        blocking(move || prepare_chapter_dir(&files, &series_id, &key, &wanted)).await?;
     }
-    fs::create_dir_all(&dir).map_err(io_err(&dir))?;
-    fs::write(&marker, &wanted).map_err(io_err(&marker))?;
 
     let paths = with_retry_cancellable(cx.policy, cx.cancel, || {
         cx.catalog.chapter_pages(option.chapter_id)
@@ -505,7 +573,10 @@ async fn download_one<C: Catalog>(
                 return Err(PipelineError::Cancelled);
             }
             let dest = files.page_path(series_id, key, index);
-            let have = fs::metadata(&dest).map(|m| m.len() > 0).unwrap_or(false);
+            let have = tokio::fs::metadata(&dest)
+                .await
+                .map(|m| m.len() > 0)
+                .unwrap_or(false);
             if !have {
                 let bytes = fetch_page_limited(
                     cx.catalog, path, cx.policy, limiter, breaker, cx.cancel, on_limit,
@@ -521,10 +592,24 @@ async fn download_one<C: Catalog>(
                 if cx.stopped() {
                     return Err(PipelineError::Cancelled);
                 }
+                let page = index + 1;
+                if bytes.len() > MAX_PAGE_BYTES {
+                    return Err(PipelineError::Decode(format!(
+                        "page {page} is too large ({} MB; the limit is {} MB)",
+                        bytes.len() >> 20,
+                        MAX_PAGE_BYTES >> 20
+                    )));
+                }
                 // An error page or a blocked response is not a manga page.
-                image_dimensions(&bytes).map_err(|e| {
-                    PipelineError::Decode(format!("page {} is not an image ({e})", index + 1))
+                let (w, h) = image_dimensions(&bytes).map_err(|e| {
+                    PipelineError::Decode(format!("page {page} is not an image ({e})"))
                 })?;
+                if u64::from(w) * u64::from(h) > MAX_PAGE_PIXELS {
+                    return Err(PipelineError::Decode(format!(
+                        "page {page} is too large ({w} x {h} pixels; the limit is {} megapixels)",
+                        MAX_PAGE_PIXELS / 1_000_000
+                    )));
+                }
                 let bytes = if let Some(limits) = storage_limits(cx.quality) {
                     tokio::task::spawn_blocking(move || match shrink_page(&bytes, &limits) {
                         Ok(Some(small)) => Ok(small),
@@ -536,7 +621,7 @@ async fn download_one<C: Catalog>(
                 } else {
                     bytes
                 };
-                write_atomically(&dest, &bytes)?;
+                blocking(move || write_atomically(&dest, &bytes)).await?;
             }
             let n = done.fetch_add(1, Ordering::SeqCst) + 1;
             // With several sources racing, report only the one in front.
@@ -562,22 +647,67 @@ async fn download_one<C: Catalog>(
         r?;
     }
 
-    let saved = files.page_files(series_id, key).len();
+    let (files, series_id, key) = (files.clone(), series_id.to_string(), key.to_string());
+    let (saved, bytes) = blocking(move || {
+        Ok((
+            files.page_files(&series_id, &key).len(),
+            files.chapter_bytes(&series_id, &key),
+        ))
+    })
+    .await?;
     if saved != total {
         return Err(PipelineError::Decode(format!(
             "only {saved} of {total} pages were saved"
         )));
     }
-    Ok((total, files.chapter_bytes(series_id, key)))
+    Ok((total, bytes))
+}
+
+/// Get a chapter's folder ready: empty unless it already holds pages of this
+/// very copy of the chapter, with the marker written, and any half-written
+/// `.part` files left by a crash swept away (only inside this folder).
+fn prepare_chapter_dir(
+    files: &LibraryFiles,
+    series_id: &str,
+    key: &str,
+    wanted: &str,
+) -> Result<()> {
+    let dir = files.chapter_dir(series_id, key);
+    let marker = dir.join("source.txt");
+    if fs::read_to_string(&marker).ok().as_deref() != Some(wanted) {
+        // Pages from a different copy of the chapter would not line up with
+        // this one, so start clean.
+        files.remove_chapter(series_id, key).map_err(io_err(&dir))?;
+    }
+    fs::create_dir_all(&dir).map_err(io_err(&dir))?;
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|x| x == "part") && path.is_file() {
+                let _ = fs::remove_file(path);
+            }
+        }
+    }
+    fs::write(&marker, wanted).map_err(io_err(&marker))
 }
 
 /// Write to a temporary name, then rename, so a crash never leaves a
 /// half-written page that looks complete.
 fn write_atomically(dest: &Path, bytes: &[u8]) -> Result<()> {
-    let tmp: PathBuf = dest.with_extension("part");
-    fs::write(&tmp, bytes).map_err(io_err(&tmp))?;
-    fs::rename(&tmp, dest).map_err(io_err(dest))?;
-    Ok(())
+    // A name of its own, so two writers of the same page never share a file.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let tmp: PathBuf = dest.with_extension(format!(
+        "{}-{}.part",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = fs::write(&tmp, bytes)
+        .map_err(io_err(&tmp))
+        .and_then(|()| fs::rename(&tmp, dest).map_err(io_err(dest)));
+    if written.is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+    written
 }
 
 fn now_secs() -> u64 {
@@ -585,4 +715,31 @@ fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn two_writers_of_the_same_page_do_not_share_a_temp_file() {
+        let dir = std::env::temp_dir().join(format!("mangapoint-atomic-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let dest = dir.join("00001.img");
+        let threads: Vec<_> = (0..8u8)
+            .map(|t| {
+                let dest = dest.clone();
+                std::thread::spawn(move || {
+                    (0..150).all(|_| write_atomically(&dest, &[t; 4096]).is_ok())
+                })
+            })
+            .collect();
+        for t in threads {
+            assert!(t.join().unwrap(), "a writer lost its temp file to another");
+        }
+        let left: Vec<_> = fs::read_dir(&dir).unwrap().flatten().collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+        let _ = fs::remove_dir_all(dir);
+    }
 }
