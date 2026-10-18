@@ -35,7 +35,7 @@ impl ExportTarget {
                 write_file(&mount.join(sanitize_component(folder)), filename, data, true)
             }
             ExportTarget::WebDav { base_url, folder } => {
-                upload_webdav(base_url, folder, filename, data.to_vec()).await
+                upload_webdav(base_url, folder, filename, data.to_vec(), &CancelFlag::new()).await
             }
         }
     }
@@ -83,18 +83,25 @@ impl ExportTarget {
                 blocking(move || copy_file(&path, &filename_owned, &src_owned, None, &mut progress, &cancel)).await
             }
             ExportTarget::Device { mount, folder } => {
-                check_space(mount, size)?;
+                let mount = mount.clone();
                 let dir = mount.join(sanitize_component(folder));
                 blocking(move || {
+                    // Listing the disks asks the system, which can be slow.
+                    check_space(&mount, size)?;
                     copy_file(&dir, &filename_owned, &src_owned, Some(Box::new(flushing)), &mut progress, &cancel)
                 })
                 .await
             }
             ExportTarget::WebDav { base_url, folder } => {
-                let data = tokio::fs::read(src)
-                    .await
-                    .map_err(|e| PipelineError::Io(src.to_path_buf(), e))?;
-                let sent = upload_webdav(base_url, folder, filename, data).await?;
+                // (Not streamed: that needs reqwest's `stream` feature and so
+                // another dependency; the file is read whole, as before.)
+                let data = tokio::select! {
+                    data = tokio::fs::read(src) => {
+                        data.map_err(|e| PipelineError::Io(src.to_path_buf(), e))?
+                    }
+                    () = cancel.cancelled() => return Err(PipelineError::Cancelled),
+                };
+                let sent = upload_webdav(base_url, folder, filename, data, &cancel).await?;
                 // The whole body goes in one request, so this is all there is to say.
                 progress(sent.bytes);
                 Ok(sent)
@@ -138,11 +145,18 @@ fn copy_file(
             PipelineError::Io(tmp.clone(), e)
         }
     })?;
-    if let Some(flushing) = flush {
-        flushing();
-        flush_to_disk(&tmp)?;
+    // From here on a failure must not leave the temporary file on the drive.
+    let finish = || -> Result<()> {
+        if let Some(flushing) = flush {
+            flushing();
+            flush_to_disk(&tmp)?;
+        }
+        fs::rename(&tmp, &path).map_err(|e| PipelineError::Io(path.clone(), e))
+    };
+    if let Err(e) = finish() {
+        let _ = fs::remove_file(&tmp);
+        return Err(e);
     }
-    fs::rename(&tmp, &path).map_err(|e| PipelineError::Io(path.clone(), e))?;
     Ok(ExportedFile {
         location: path.display().to_string(),
         bytes,
@@ -427,10 +441,14 @@ async fn upload_webdav(
     folder: &str,
     filename: &str,
     data: Vec<u8>,
+    cancel: &CancelFlag,
 ) -> Result<ExportedFile> {
     let fail = |m: String| PipelineError::Upload(m);
     if !(base_url.starts_with("http://") || base_url.starts_with("https://")) {
         return Err(fail(format!("'{base_url}' is not an http address")));
+    }
+    if cancel.is_cancelled() {
+        return Err(PipelineError::Cancelled);
     }
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(10))
@@ -442,18 +460,42 @@ async fn upload_webdav(
         base_url.trim_end_matches('/'),
         encode_segment(&sanitize_component(folder))
     );
-    // Create the folder; a failure usually just means it already exists.
-    let mkcol = reqwest::Method::from_bytes(b"MKCOL").expect("valid method");
-    let _ = client.request(mkcol, &dir_url).send().await;
-
     let file_url = format!("{dir_url}{}", encode_segment(filename));
     let bytes = data.len() as u64;
-    let response = client
-        .put(&file_url)
-        .body(data)
-        .send()
-        .await
-        .map_err(|e| fail(e.to_string()))?;
+    // Set once the file's request may have reached the reader.
+    let put_started = std::sync::atomic::AtomicBool::new(false);
+    let work = async {
+        // Create the folder; a failure usually just means it already exists.
+        let mkcol = reqwest::Method::from_bytes(b"MKCOL").expect("valid method");
+        let _ = client.request(mkcol, &dir_url).send().await;
+        put_started.store(true, std::sync::atomic::Ordering::SeqCst);
+        client
+            .put(&file_url)
+            .body(data)
+            .send()
+            .await
+            .map_err(|e| fail(e.to_string()))
+    };
+    // Cancel drops the request, which closes the connection.
+    let response = tokio::select! {
+        response = work => response?,
+        () = cancel.cancelled() => {
+            if put_started.load(std::sync::atomic::Ordering::SeqCst) {
+                // The reader may be holding the front of the file. Ask it to
+                // throw that away, in the background so Cancel is not delayed.
+                let url = file_url.clone();
+                tokio::spawn(async move {
+                    let quick = reqwest::Client::builder()
+                        .timeout(Duration::from_secs(5))
+                        .build();
+                    if let Ok(quick) = quick {
+                        let _ = quick.delete(&url).send().await;
+                    }
+                });
+            }
+            return Err(PipelineError::Cancelled);
+        }
+    };
     let status = response.status();
     if status.is_success() {
         Ok(ExportedFile {
@@ -813,5 +855,92 @@ mod tests {
         // Nothing listening at all.
         let dead = check_webdav("http://127.0.0.1:9").await.unwrap_err();
         assert!(dead.contains("Nothing answered"), "{dead}");
+    }
+
+    /// A reader that answers MKCOL and DELETE at once but sits on a PUT for
+    /// `stall`. Returns its address and the request lines it saw.
+    fn stalling_reader(
+        stall: Duration,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = seen.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let log = log.clone();
+                std::thread::spawn(move || {
+                    let mut stream = stream;
+                    let mut buf = [0u8; 4096];
+                    let n = stream.read(&mut buf).unwrap_or(0);
+                    let line = String::from_utf8_lossy(&buf[..n])
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
+                    let put = line.starts_with("PUT");
+                    log.lock().unwrap().push(line);
+                    if put {
+                        std::thread::sleep(stall);
+                    }
+                    let _ = write!(
+                        stream,
+                        "HTTP/1.1 201 Created
+Content-Length: 0
+Connection: close
+
+"
+                    );
+                });
+            }
+        });
+        (url, seen)
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_wifi_upload_returns_at_once_and_cleans_up_the_reader() {
+        let dir = temp("webdav-cancel");
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("b.xtc");
+        fs::write(&src, vec![3u8; 1000]).unwrap();
+        let (url, seen) = stalling_reader(Duration::from_secs(4));
+        let target = ExportTarget::WebDav { base_url: url, folder: "Manga".into() };
+        let cancel = CancelFlag::new();
+        let flag = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            flag.cancel();
+        });
+        let started = std::time::Instant::now();
+        let result = target.write_file_with("b.xtc", &src, |_| {}, || {}, &cancel).await;
+        assert!(matches!(result, Err(PipelineError::Cancelled)), "{result:?}");
+        assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
+        // The half-sent file is deleted from the reader, in the background.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let seen = seen.lock().unwrap();
+        assert!(seen.iter().any(|l| l.starts_with("DELETE /Manga/b.xtc ")), "{seen:?}");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_failed_final_step_removes_the_temporary_file_from_the_drive() {
+        let mount = temp("device-rename-fails");
+        fs::create_dir_all(&mount).unwrap();
+        let src = mount.join("a.xtc");
+        fs::write(&src, b"data").unwrap();
+        let target = ExportTarget::Device { mount: mount.clone(), folder: "Manga".into() };
+        // Between the copy and the rename, put a folder where the file should go.
+        let blocker = mount.join("Manga").join("a.xtc");
+        let result = target
+            .write_file_with("a.xtc", &src, |_| {}, move || fs::create_dir_all(&blocker).unwrap(), &CancelFlag::new())
+            .await;
+        assert!(result.is_err());
+        let parts: Vec<_> = fs::read_dir(mount.join("Manga"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "part"))
+            .collect();
+        assert!(parts.is_empty(), "left behind: {parts:?}");
+        let _ = fs::remove_dir_all(mount);
     }
 }

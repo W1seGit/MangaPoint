@@ -139,4 +139,11 @@ impl CancelFlag {
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
+    /// Completes once cancelled (checked every 100 ms). Race it against slow
+    /// work with `tokio::select!`; the work is dropped when this wins.
+    pub async fn cancelled(&self) {
+        while !self.is_cancelled() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+    }
 }
