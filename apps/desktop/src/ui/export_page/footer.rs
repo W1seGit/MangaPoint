@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 pub(super) fn ExportFooter() -> Element {
     let state = use_context::<AppState>();
     let plan = state.export_plan.read().clone();
-    let library = state.library.read().clone();
+    let library = state.library.read();
     let opts = state.export_opts.read().clone();
     // Whether something runs, not how far it has got: the footer is not drawn
     // again for every page.

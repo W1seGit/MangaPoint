@@ -50,9 +50,12 @@ pub fn LibraryPage() -> Element {
             }
         }
     });
-    let mut library = state.library.read().clone();
-    library.series.retain(|s| !s.is_sample());
-    let total = library.total_bytes();
+    // Read in place: copying the whole library for every change to it was
+    // costly once it was big.
+    let db = state.library.read();
+    let series: Vec<&library::DownloadedSeries> =
+        db.series.iter().filter(|s| !s.is_sample()).collect();
+    let total: u64 = series.iter().map(|s| s.bytes()).sum();
     let exported: HashSet<String> = state
         .exports
         .read()
@@ -60,13 +63,12 @@ pub fn LibraryPage() -> Element {
         .iter()
         .map(|r| r.series_id.clone())
         .collect();
-    let order = library_order(&library.series, view(), sort(), &filter.read(), &exported);
-    let downloaded_count = library
-        .series
+    let order = library_order(&series, view(), sort(), &filter.read(), &exported);
+    let downloaded_count = series
         .iter()
         .filter(|s| !s.chapters.is_empty())
         .count();
-    let saved_count = library.series.len() - downloaded_count;
+    let saved_count = series.len() - downloaded_count;
     // Which series have work, and nothing of how far it has got: the posters
     // are not drawn again for every page of a download.
     let working_series = use_memo(move || state.queue.read().series_with_work())();
@@ -74,7 +76,7 @@ pub fn LibraryPage() -> Element {
     // The ticked series that are still shown, in the order shown.
     let chosen: Vec<&library::DownloadedSeries> = order
         .iter()
-        .map(|&i| &library.series[i])
+        .map(|&i| series[i])
         .filter(|s| picked.read().contains(&s.id))
         .collect();
     let chosen_ids: Vec<String> = chosen.iter().map(|s| s.id.clone()).collect();
@@ -87,7 +89,7 @@ pub fn LibraryPage() -> Element {
     let selecting = !chosen.is_empty();
     let all_shown: Vec<String> = order
         .iter()
-        .map(|&i| library.series[i].id.clone())
+        .map(|&i| series[i].id.clone())
         .collect();
     let all_ticked = selecting && chosen.len() == all_shown.len();
 
@@ -134,7 +136,7 @@ pub fn LibraryPage() -> Element {
             div { class: "grow",
                 h1 { "Library" }
                 p { class: "muted",
-                    if library.series.is_empty() {
+                    if series.is_empty() {
                         "Series you keep, to read now or later."
                     } else {
                         "{downloaded_count} downloaded · {human_bytes(total)} on this computer"
@@ -153,7 +155,7 @@ pub fn LibraryPage() -> Element {
             }
         }
 
-        if library.series.is_empty() {
+        if series.is_empty() {
             EmptyState {
                 title: "Your library is empty",
                 message: "Find a series and add it to your library. You can download its chapters now or whenever you like.",
@@ -214,7 +216,7 @@ pub fn LibraryPage() -> Element {
             div { class: if selecting { "poster-grid selecting" } else { "poster-grid" },
                 for &i in order.iter() {
                     {
-                        let s = &library.series[i];
+                        let s = series[i];
                         let open_id = s.id.clone();
                         let tick_id = s.id.clone();
                         let on = picked.read().contains(&s.id);
