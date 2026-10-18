@@ -3,6 +3,7 @@
 //! One file per topic; everything is re-exported here, so the rest of the app
 //! says `logic::name` whichever file the name lives in.
 
+mod busy;
 mod chapters;
 mod export;
 mod format;
@@ -11,6 +12,7 @@ mod progress;
 mod search_results;
 mod series_info;
 
+pub use busy::*;
 pub use chapters::*;
 pub use export::*;
 pub use format::*;

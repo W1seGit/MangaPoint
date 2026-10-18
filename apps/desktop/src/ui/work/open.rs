@@ -460,7 +460,9 @@ pub fn ensure_series_info(state: AppState, series_id: &str) {
                     .await
                     .ok()
                     .flatten();
-                if let Some(small) = small {
+                // The series may have been removed while the picture came in.
+                let still_here = state.library.peek().find(&id).is_some();
+                if let Some(small) = small.filter(|_| still_here) {
                     let target = files.cover_path(&id);
                     if let Some(dir) = target.parent() {
                         let _ = std::fs::create_dir_all(dir);

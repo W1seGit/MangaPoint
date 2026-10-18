@@ -2,21 +2,66 @@
 
 use super::*;
 
+/// How long deleting waits for a download or an export to let go of a series.
+const STOP_WAIT: Duration = Duration::from_secs(60);
+
+/// The series of the export that is running (not a paused one), if any.
+fn running_export_series(state: AppState) -> Option<String> {
+    state
+        .job
+        .peek()
+        .as_ref()
+        .filter(|v| v.kind == JobKind::Export && v.result.is_none() && !v.paused)
+        .map(|v| v.series_id.clone())
+}
+
+fn any_busy(state: AppState, series_ids: &[String]) -> bool {
+    let running = running_export_series(state);
+    let queue = state.queue.peek();
+    series_ids
+        .iter()
+        .any(|id| logic::series_busy(&queue, running.as_deref(), id).any())
+}
+
+/// Stop the downloads and the export working on these series and wait until
+/// they have really stopped, so nothing writes to a folder that is being
+/// deleted or records a chapter of a series that is gone. Says so and returns
+/// false if they do not stop in time; then nothing should be deleted.
+pub(super) async fn stop_work_for(state: AppState, series_ids: &[String]) -> bool {
+    for id in series_ids {
+        state.edit_queue(|q| q.cancel_series(id));
+        remove_waiting_export(state, id);
+    }
+    if let Some(running) = running_export_series(state) {
+        if series_ids.contains(&running) {
+            let mut job = state.job;
+            let mut guard = job.write();
+            if let Some(view) = guard.as_mut() {
+                view.paused = false;
+                view.cancel.cancel();
+                view.progress.stopping = true;
+            }
+        }
+    }
+    let started = Instant::now();
+    while any_busy(state, series_ids) {
+        if started.elapsed() > STOP_WAIT {
+            state.error(
+                "A download or export of this series would not stop, so nothing was deleted.                  Cancel it and try again."
+                    .to_string(),
+            );
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    true
+}
+
 /// Delete every downloaded page of a series. Exported files are kept.
 pub fn remove_from_library(state: AppState, series_ids: Vec<String>) {
-    // Stop anything downloading for them, and give that a moment to let go.
-    for id in &series_ids {
-        state.edit_queue(|q| q.cancel_series(id));
-    }
     spawn_forever(async move {
-        for _ in 0..40 {
-            if !series_ids
-                .iter()
-                .any(|id| state.queue.peek().series_has_work(id))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        if !stop_work_for(state, &series_ids).await {
+            return;
         }
         let mut removed = 0;
         for series_id in series_ids {
@@ -112,6 +157,9 @@ pub(super) async fn delete_chapter_files(
 /// Delete some downloaded chapters of a series; the series stays in the library.
 pub fn delete_chapters(state: AppState, series_id: String, keys: Vec<String>) {
     spawn_forever(async move {
+        if !stop_work_for(state, std::slice::from_ref(&series_id)).await {
+            return;
+        }
         let deleted = delete_chapter_files(state, &series_id, keys).await;
         if deleted == 0 {
             return;
@@ -122,18 +170,9 @@ pub fn delete_chapters(state: AppState, series_id: String, keys: Vec<String>) {
 
 /// Delete every downloaded chapter of these series; they stay in the library.
 pub fn delete_downloads(state: AppState, series_ids: Vec<String>) {
-    for id in &series_ids {
-        state.edit_queue(|q| q.cancel_series(id));
-    }
     spawn_forever(async move {
-        for _ in 0..40 {
-            if !series_ids
-                .iter()
-                .any(|id| state.queue.peek().series_has_work(id))
-            {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        if !stop_work_for(state, &series_ids).await {
+            return;
         }
         let mut total = 0;
         for id in series_ids {

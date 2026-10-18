@@ -393,6 +393,9 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
         Some(tx),
         &batch.cancel,
     );
+    // Was the series in the library when this started (or has this download
+    // recorded a chapter of it)? Then its absence later means it was removed.
+    let known = std::cell::Cell::new(state.library.peek().find(&batch.series_id).is_some());
     let watch = async {
         let mut logged = HashMap::new();
         while let Some(first) = rx.recv().await {
@@ -406,6 +409,16 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
             for event in &events {
                 log_event(event, &mut logged);
                 if let JobEvent::ChapterSaved { chapter } = event {
+                    // The series was removed while this was still downloading:
+                    // recording would bring it back, so stop instead.
+                    let exists = state.library.peek().find(&batch.series_id).is_some();
+                    if !logic::may_record_chapter(known.get(), exists) {
+                        state.edit_queue(|q| {
+                            q.cancel(id);
+                        });
+                        continue;
+                    }
+                    known.set(true);
                     // Record each chapter as soon as it is safe on disk, so
                     // cancelling or failing later never loses it.
                     let mut library = state.library;
