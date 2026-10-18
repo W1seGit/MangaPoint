@@ -11,10 +11,11 @@
 //!   spine, rotated, or fitted, as the settings say.
 //! * Webtoon chapters: every image is scaled to the screen width and joined.
 //!   A chapter is one when its images are tall, or when they are short slices
-//!   that carry on from one another. Pages are cut at the blank gutters between scenes when there is one near
-//!   the bottom of the screen. When there is not, the cut is made at the
-//!   quietest row near the bottom (or, in the older way, at the full screen
-//!   height with the last rows repeated on the next page).
+//!   that carry on from one another. With the quiet cut, all the pages are
+//!   chosen together (see `cuts`): each nearly fills the screen and ends in a
+//!   blank gutter or a quiet row. With the older cut, a page ends at the
+//!   latest gutter near the bottom of the screen, or else at the full screen
+//!   height with the last rows repeated on the next page.
 //!
 //! Positions in a strip are also given in *units* (the strip scaled to 1000
 //! wide), which do not depend on the device.
@@ -27,6 +28,7 @@ use crate::process::{
 };
 use crate::xtc::ReadDirection;
 
+mod cuts;
 mod seams;
 
 /// The width a strip has in unit coordinates.
@@ -298,7 +300,10 @@ fn to_units(px: u32, width: u32) -> u32 {
 pub fn plan(prepared: &Prepared, opts: &ProcessOptions) -> ChapterPlan {
     match &prepared.kind {
         Kind::Paged(images) => plan_paged(images, opts),
-        Kind::Strip(strip) => plan_strip(strip, opts),
+        Kind::Strip(strip) => match opts.strip_cut {
+            StripCut::Quiet => cuts::plan_quiet(strip, opts),
+            StripCut::Overlap => plan_overlap(strip, opts),
+        },
     }
 }
 
@@ -363,7 +368,9 @@ fn plan_paged(images: &[GrayImage], opts: &ProcessOptions) -> ChapterPlan {
     }
 }
 
-fn plan_strip(strip: &Strip, opts: &ProcessOptions) -> ChapterPlan {
+/// Pages cut at a blank gap near the bottom of the screen, or else at the full
+/// screen height with the last rows repeated on the next page.
+fn plan_overlap(strip: &Strip, opts: &ProcessOptions) -> ChapterPlan {
     let screen = opts.height;
     let overlap = screen * opts.overlap_percent.min(50) as u32 / 100;
     let min_fill = screen * 55 / 100;
@@ -385,14 +392,7 @@ fn plan_strip(strip: &Strip, opts: &ProcessOptions) -> ChapterPlan {
                 let end = (a + pad).min(ideal_end);
                 (end, b.saturating_sub(pad).max(end))
             }
-            None => match opts.strip_cut {
-                // The quietest row near the bottom; nothing is repeated.
-                StripCut::Quiet => {
-                    let cut = quietest_row(strip, start + min_fill, ideal_end);
-                    (cut, cut)
-                }
-                StripCut::Overlap => (ideal_end, ideal_end - overlap),
-            },
+            None => (ideal_end, ideal_end - overlap),
         };
         spans.push((start, end - start));
         start = next.max(start + 1);
@@ -435,34 +435,6 @@ fn row_activity(strip: &Strip, y: u32) -> u32 {
         .windows(2)
         .map(|pair| (pair[0] as i32 - pair[1] as i32).unsigned_abs())
         .sum()
-}
-
-/// Where to cut a page that has no blank gap: the quietest row in
-/// `[from, to)`, which is the row the next page starts with. Rows nearly as
-/// quiet as the quietest are all as good, so the latest of them is taken, to
-/// keep the page as full as it can be.
-fn quietest_row(strip: &Strip, from: u32, to: u32) -> u32 {
-    let to = to.min(strip.total);
-    if from + 1 >= to {
-        return to;
-    }
-    // Each row's own activity and its neighbours', so a single quiet row
-    // between two lines of lettering does not win.
-    let activity: Vec<f32> = (from.saturating_sub(1)..=to.min(strip.total - 1))
-        .map(|y| row_activity(strip, y) as f32 / strip.width.max(1) as f32)
-        .collect();
-    let base = from.saturating_sub(1);
-    let at = |y: u32| (y - base) as usize;
-    let cost = |y: u32| {
-        let (a, b, c) = (activity[at(y) - 1], activity[at(y)], activity[at(y) + 1]);
-        (a + b + c) / 3.0
-    };
-    let lowest = (from..to - 1).map(cost).fold(f32::MAX, f32::min);
-    let allowed = lowest + 0.5 + lowest * 0.25;
-    (from..to - 1)
-        .rev()
-        .find(|&y| cost(y) <= allowed)
-        .unwrap_or(to)
 }
 
 /// The last run of at least `min_len` blank rows that lies inside
@@ -949,7 +921,7 @@ mod manual_crop_tests {
             o.auto_levels = false;
             o.contrast = 50;
             o.dither = Dither::Threshold;
-            let source = GrayImage::from_fn(40, 100, |x, _| if x < 20 { 0 } else { 170 }).unwrap();
+            let source = GrayImage::from_fn(40, 120, |x, _| if x < 20 { 0 } else { 170 }).unwrap();
             let prepared = prepare(&[source], &o);
             let p = plan(&prepared, &o);
             let page = &p.pages[0];
