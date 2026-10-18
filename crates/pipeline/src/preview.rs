@@ -115,12 +115,16 @@ pub struct OriginalPreview {
 pub fn render_original(gray: &GrayImage, opts: &ProcessOptions) -> OriginalPreview {
     let scale = (ORIGINAL_MAX_WIDTH as f64 / gray.width as f64)
         .min(ORIGINAL_MAX_HEIGHT as f64 / gray.height as f64);
+    // Only a shrunk copy is made; an original shown as it is is encoded from
+    // the decoded image itself, not from a copy of it.
+    let shrunk;
     let shown = if scale < 1.0 {
         let w = ((gray.width as f64 * scale).round() as u32).max(1);
         let h = ((gray.height as f64 * scale).round() as u32).max(1);
-        resize(gray, w, h)
+        shrunk = resize(gray, w, h);
+        &shrunk
     } else {
-        gray.clone()
+        gray
     };
     let (x, y, w, h) = crop_bounds(gray, opts);
     let (gw, gh) = (gray.width as f32, gray.height as f32);
@@ -177,6 +181,17 @@ pub struct ChapterPreview {
 /// Prepare and plan a whole decoded chapter, the way the export does.
 pub fn prepare_chapter(grays: &[GrayImage], opts: &ProcessOptions) -> ChapterPreview {
     let prepared = Arc::new(converter::plan::prepare(grays, opts));
+    let plan = converter::plan::plan(&prepared, opts);
+    ChapterPreview { prepared, plan }
+}
+
+/// [`prepare_chapter`] for a caller that no longer needs the decoded images:
+/// each is let go as soon as its cropped or stitched copy exists, so the
+/// chapter is not held twice while it is prepared.
+pub fn prepare_chapter_owned(grays: Vec<GrayImage>, opts: &ProcessOptions) -> ChapterPreview {
+    let prepared = Arc::new(
+        converter::plan::prepare_owned(grays, opts, &|| false).expect("nothing cancels it"),
+    );
     let plan = converter::plan::plan(&prepared, opts);
     ChapterPreview { prepared, plan }
 }
@@ -330,6 +345,26 @@ mod tests {
             levels_to_previews(&exported),
             "preview and export draw the same pixels"
         );
+    }
+
+    #[test]
+    fn preparing_a_chapter_by_value_gives_the_same_preview_as_by_reference() {
+        let images: Vec<GrayImage> = (0..4)
+            .map(|i| GrayImage::from_fn(500, 900 + i * 50, |x, y| ((x * 3 + y * 5) % 251) as u8).unwrap())
+            .collect();
+        for layout in [converter::Layout::Webtoon, converter::Layout::Manga] {
+            let mut o = opts(Depth::Two);
+            o.layout = layout;
+            let by_ref = prepare_chapter(&images, &o);
+            let by_value = prepare_chapter_owned(images.clone(), &o);
+            assert_eq!(by_ref.plan, by_value.plan, "{layout:?}");
+            for page in &by_ref.plan.pages {
+                assert_eq!(
+                    render_planned(&by_ref.prepared, page, &o),
+                    render_planned(&by_value.prepared, page, &o)
+                );
+            }
+        }
     }
 
     #[test]

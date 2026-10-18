@@ -609,13 +609,25 @@ pub(crate) fn trim_bounds(
     pad: u8,
 ) -> Option<(u32, u32, u32, u32)> {
     let (w, h) = (img.width, img.height);
-    let bg = border_median(img);
-    let differs = |x: u32, y: u32| (img.get(x, y) as i16 - bg as i16).abs() > threshold;
-    let row_has = |y: u32| (0..w).filter(|&x| differs(x, y)).count() as u32 > (w / 200).max(1);
-    let col_has = |x: u32| (0..h).filter(|&y| differs(x, y)).count() as u32 > (h / 200).max(1);
-
+    let bg = border_median(img) as i16;
+    let row_limit = (w / 200).max(1);
+    let col_limit = (h / 200).max(1);
+    let width = w as usize;
+    let row_has = |y: u32| {
+        let row = &img.pixels[y as usize * width..(y as usize + 1) * width];
+        row.iter().filter(|&&p| (p as i16 - bg).abs() > threshold).count() as u32 > row_limit
+    };
     let top = (0..h).find(|&y| row_has(y))?;
     let bottom = (0..h).rev().find(|&y| row_has(y))?;
+    // Columns are counted in one pass over the rows (reading down a column
+    // one pixel at a time strides through the whole image).
+    let mut ink = vec![0u32; width];
+    for row in img.pixels.chunks_exact(width) {
+        for (n, &p) in ink.iter_mut().zip(row) {
+            *n += ((p as i16 - bg).abs() > threshold) as u32;
+        }
+    }
+    let col_has = |x: u32| ink[x as usize] > col_limit;
     let left = (0..w).find(|&x| col_has(x))?;
     let right = (0..w).rev().find(|&x| col_has(x))?;
     let pad = pad as u32;
@@ -649,9 +661,24 @@ pub(crate) fn border_median(img: &GrayImage) -> u8 {
 
 // ---- Geometry --------------------------------------------------------------
 
+/// The rectangle `crop_rect` really cuts: a corner outside the image is held
+/// to its last pixel and the size is held inside the image, never empty.
+pub(crate) fn clamp_rect(
+    (iw, ih): (u32, u32),
+    x: u32,
+    y: u32,
+    w: u32,
+    h: u32,
+) -> (u32, u32, u32, u32) {
+    let x = x.min(iw - 1);
+    let y = y.min(ih - 1);
+    let w = w.min(iw - x).max(1);
+    let h = h.min(ih - y).max(1);
+    (x, y, w, h)
+}
+
 pub fn crop_rect(img: &GrayImage, x: u32, y: u32, w: u32, h: u32) -> GrayImage {
-    let w = w.min(img.width.saturating_sub(x)).max(1);
-    let h = h.min(img.height.saturating_sub(y)).max(1);
+    let (x, y, w, h) = clamp_rect((img.width, img.height), x, y, w, h);
     let mut out = Vec::with_capacity(w as usize * h as usize);
     for yy in y..y + h {
         let start = yy as usize * img.width as usize + x as usize;
@@ -695,11 +722,17 @@ pub(crate) fn letterbox_top(img: &GrayImage, w: u32, h: u32) -> GrayImage {
     canvas
 }
 
-fn blit(dst: &mut GrayImage, src: &GrayImage, x0: u32, y0: u32) {
-    for y in 0..src.height.min(dst.height.saturating_sub(y0)) {
-        for x in 0..src.width.min(dst.width.saturating_sub(x0)) {
-            dst.set(x0 + x, y0 + y, src.get(x, y));
-        }
+pub(crate) fn blit(dst: &mut GrayImage, src: &GrayImage, x0: u32, y0: u32) {
+    let rows = src.height.min(dst.height.saturating_sub(y0)) as usize;
+    let cols = src.width.min(dst.width.saturating_sub(x0)) as usize;
+    if cols == 0 {
+        return;
+    }
+    let (sw, dw) = (src.width as usize, dst.width as usize);
+    for y in 0..rows {
+        let from = y * sw;
+        let to = (y0 as usize + y) * dw + x0 as usize;
+        dst.pixels[to..to + cols].copy_from_slice(&src.pixels[from..from + cols]);
     }
 }
 
@@ -709,27 +742,42 @@ pub fn resize(img: &GrayImage, w: u32, h: u32) -> GrayImage {
     if (img.width, img.height) == (w, h) {
         return img.clone();
     }
-    // Horizontal pass into f32, then vertical pass.
-    let horizontal: Vec<f32> = {
-        let weights = axis_weights(img.width, w);
-        let mut out = vec![0f32; w as usize * img.height as usize];
-        for y in 0..img.height as usize {
-            let row = &img.pixels[y * img.width as usize..(y + 1) * img.width as usize];
-            for (x, taps) in weights.iter().enumerate() {
-                out[y * w as usize + x] = taps.iter().map(|&(i, k)| row[i] as f32 * k).sum();
+    let (sw, dw, dh) = (img.width as usize, w as usize, h as usize);
+    let across = axis_weights(img.width, w);
+    let down = axis_weights(img.height, h);
+    // Horizontally resized rows are made when an output row needs them and
+    // kept only while the rows after it do. A whole-image intermediate would
+    // be as wide as the output and as tall as the source: gigabytes for a
+    // very tall narrow image.
+    let span = down
+        .iter()
+        .filter_map(|taps| Some(taps.last()?.0 - taps.first()?.0 + 1))
+        .max()
+        .unwrap_or(1);
+    let mut ring = vec![0f32; span * dw];
+    let mut held = vec![usize::MAX; span];
+    let mut out = vec![0u8; dw * dh];
+    let mut acc = vec![0f32; dw];
+    for (y, taps) in down.iter().enumerate() {
+        for &(i, _) in taps {
+            let slot = i % span;
+            if held[slot] != i {
+                held[slot] = i;
+                let row = &img.pixels[i * sw..(i + 1) * sw];
+                for (x, xtaps) in across.iter().enumerate() {
+                    ring[slot * dw + x] = xtaps.iter().map(|&(s, k)| row[s] as f32 * k).sum();
+                }
             }
         }
-        out
-    };
-    let weights = axis_weights(img.height, h);
-    let mut out = vec![0u8; w as usize * h as usize];
-    for (y, taps) in weights.iter().enumerate() {
-        for x in 0..w as usize {
-            let v: f32 = taps
-                .iter()
-                .map(|&(i, k)| horizontal[i * w as usize + x] * k)
-                .sum();
-            out[y * w as usize + x] = v.round().clamp(0.0, 255.0) as u8;
+        acc.fill(0.0);
+        for &(i, k) in taps {
+            let row = &ring[(i % span) * dw..(i % span + 1) * dw];
+            for (a, &v) in acc.iter_mut().zip(row) {
+                *a += v * k;
+            }
+        }
+        for (o, &v) in out[y * dw..(y + 1) * dw].iter_mut().zip(&acc) {
+            *o = v.round().clamp(0.0, 255.0) as u8;
         }
     }
     GrayImage {
@@ -741,7 +789,7 @@ pub fn resize(img: &GrayImage, w: u32, h: u32) -> GrayImage {
 
 /// For each output index, the contributing input indices and their weights
 /// (summing to 1).
-fn axis_weights(src: u32, dst: u32) -> Vec<Vec<(usize, f32)>> {
+pub(crate) fn axis_weights(src: u32, dst: u32) -> Vec<Vec<(usize, f32)>> {
     let scale = src as f64 / dst as f64;
     (0..dst)
         .map(|o| {
@@ -1166,3 +1214,7 @@ mod tests {
         assert_eq!(flat, before);
     }
 }
+
+#[cfg(test)]
+#[path = "process_audit_tests.rs"]
+mod audit_tests;
