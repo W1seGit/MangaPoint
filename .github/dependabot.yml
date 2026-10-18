@@ -1,5 +1,7 @@
 version: 2
 updates:
+  # One pull request a week with every Rust dependency that has a new version,
+  # major ones included, so they are tested and merged together.
   - package-ecosystem: cargo
     directory: /
     schedule:
@@ -8,10 +10,13 @@ updates:
       prefix: "build"
     groups:
       rust-dependencies:
-        update-types: [minor, patch]
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
     commit-message:
       prefix: "ci"
+    groups:
+      github-actions:
+        patterns: ["*"]

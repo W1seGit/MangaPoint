@@ -36,7 +36,7 @@ jobs:
             target: x86_64-apple-darwin
             label: macos-x86_64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Linux system packages
         if: runner.os == 'Linux'
@@ -53,7 +53,7 @@ jobs:
         with:
           key: ${{ matrix.target }}
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -104,7 +104,7 @@ jobs:
           bash tools/package-macos.sh "target/${{ matrix.target }}/release/mangapoint" "${{ steps.version.outputs.value }}" "dist/$name"
           (cd dist && shasum -a 256 "$name" > "$name.sha256")
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MangaPoint-${{ matrix.label }}
           path: dist/*
