@@ -23,6 +23,34 @@ pub struct SuwayomiClient {
     http: Client,
     base: String,
     credentials: Option<Credentials>,
+    limits: Limits,
+}
+
+/// How long each kind of call may take, and how much a body may hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    /// Time to open a connection (the server is on this computer).
+    pub connect: Duration,
+    /// Quick GraphQL queries: about, sources, installed, status.
+    pub query: Duration,
+    /// Calls where the server scrapes a website: chapter lists, pages, searches.
+    pub scrape: Duration,
+    /// Fetching a page image or cover.
+    pub bytes: Duration,
+    /// The most a page image or cover may be.
+    pub max_body: u64,
+}
+
+impl Default for Limits {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(5),
+            query: Duration::from_secs(30),
+            scrape: Duration::from_secs(90),
+            bytes: Duration::from_secs(60),
+            max_body: 64 * 1024 * 1024,
+        }
+    }
 }
 
 // ---- Response types ---------------------------------------------------------
@@ -156,14 +184,25 @@ pub fn literal(s: &str) -> String {
 
 impl SuwayomiClient {
     pub fn new(base_url: impl Into<String>, credentials: Option<Credentials>) -> Result<Self> {
-        let http = Client::builder()
-            .timeout(Duration::from_secs(180))
-            .build()?;
+        Self::with_limits(base_url, credentials, Limits::default())
+    }
+
+    pub fn with_limits(
+        base_url: impl Into<String>,
+        credentials: Option<Credentials>,
+        limits: Limits,
+    ) -> Result<Self> {
+        let http = Client::builder().connect_timeout(limits.connect).build()?;
         Ok(Self {
             http,
             base: base_url.into().trim_end_matches('/').to_string(),
             credentials,
+            limits,
         })
+    }
+
+    pub fn limits(&self) -> Limits {
+        self.limits
     }
 
     pub fn base_url(&self) -> &str {
@@ -180,9 +219,28 @@ impl SuwayomiClient {
 
     /// Send a GraphQL document and decode `data`. Any GraphQL error becomes a
     /// specific [`CatalogError`] where we recognise the message.
+    /// Uses the long (scraping) time allowance; see [`SuwayomiClient::query`]
+    /// and [`SuwayomiClient::graphql_within`] for shorter ones.
     pub async fn graphql<T: DeserializeOwned>(&self, query: &str) -> Result<T> {
+        self.graphql_within(query, self.limits.scrape).await
+    }
+
+    /// A GraphQL call that should be quick (status, lists); gives up after
+    /// [`Limits::query`].
+    pub async fn query<T: DeserializeOwned>(&self, query: &str) -> Result<T> {
+        self.graphql_within(query, self.limits.query).await
+    }
+
+    /// Like [`SuwayomiClient::graphql`] with the caller's own time limit
+    /// for the whole call.
+    pub async fn graphql_within<T: DeserializeOwned>(
+        &self,
+        query: &str,
+        timeout: Duration,
+    ) -> Result<T> {
         let response = self
             .request(reqwest::Method::POST, format!("{}/api/graphql", self.base))
+            .timeout(timeout)
             .json(&json!({ "query": query }))
             .send()
             .await?
@@ -211,12 +269,28 @@ impl SuwayomiClient {
         } else {
             format!("{}/{}", self.base, path.trim_start_matches('/'))
         };
-        let response = self
+        let limit = self.limits.max_body;
+        let mut response = self
             .request(reqwest::Method::GET, url)
+            .timeout(self.limits.bytes)
             .send()
             .await?
             .error_for_status()?;
-        Ok(response.bytes().await?.to_vec())
+        if response.content_length().is_some_and(|n| n > limit) {
+            return Err(CatalogError::TooLarge { limit });
+        }
+        let mut body = Vec::with_capacity(
+            response
+                .content_length()
+                .map_or(0, |n| n.min(limit) as usize),
+        );
+        while let Some(chunk) = response.chunk().await? {
+            if body.len() as u64 + chunk.len() as u64 > limit {
+                return Err(CatalogError::TooLarge { limit });
+            }
+            body.extend_from_slice(&chunk);
+        }
+        Ok(body)
     }
 
     pub async fn about(&self) -> Result<ServerInfo> {
@@ -226,7 +300,7 @@ impl SuwayomiClient {
             about_server: ServerInfo,
         }
         let r: R = self
-            .graphql("{ aboutServer { name version buildType } }")
+            .query("{ aboutServer { name version buildType } }")
             .await?;
         Ok(r.about_server)
     }
@@ -242,7 +316,7 @@ impl SuwayomiClient {
         struct R {
             settings: S,
         }
-        let r: R = self.graphql("{ settings { kcefEnabled } }").await?;
+        let r: R = self.query("{ settings { kcefEnabled } }").await?;
         Ok(r.settings.kcef_enabled)
     }
 
@@ -315,7 +389,7 @@ impl SuwayomiClient {
             sources: Nodes,
         }
         let r: R = self
-            .graphql("{ sources(first:1000) { nodes { id name lang isNsfw } } }")
+            .query("{ sources(first:1000) { nodes { id name lang isNsfw } } }")
             .await?;
         Ok(r.sources.nodes)
     }
@@ -379,7 +453,7 @@ impl SuwayomiClient {
             chapter: Inner,
         }
         let q = format!("{{ chapter(id:{chapter_id}) {{ manga {{ {MANGA_FIELDS} }} }} }}");
-        let known: MangaDetails = self.graphql::<R>(&q).await?.chapter.manga;
+        let known: MangaDetails = self.query::<R>(&q).await?.chapter.manga;
         self.fill_in_details(known).await
     }
 
@@ -391,7 +465,7 @@ impl SuwayomiClient {
             manga: MangaDetails,
         }
         let q = format!("{{ manga(id:{manga_id}) {{ {MANGA_FIELDS} }} }}");
-        let known: MangaDetails = self.graphql::<R>(&q).await?.manga;
+        let known: MangaDetails = self.query::<R>(&q).await?.manga;
         self.fill_in_details(known).await
     }
 
@@ -473,7 +547,7 @@ impl SuwayomiClient {
             download_status: DownloadStatus,
         }
         let r: R = self
-            .graphql("{ downloadStatus { state queue { progress tries chapter { id } } } }")
+            .query("{ downloadStatus { state queue { progress tries chapter { id } } } }")
             .await?;
         Ok(r.download_status)
     }
@@ -484,7 +558,7 @@ impl SuwayomiClient {
             chapter: ChapterStatus,
         }
         let q = format!("{{ chapter(id:{chapter_id}) {{ isDownloaded pageCount }} }}");
-        let r: R = self.graphql(&q).await?;
+        let r: R = self.query(&q).await?;
         Ok(r.chapter)
     }
 }
@@ -519,5 +593,112 @@ mod tests {
         .unwrap();
         assert_eq!(b.upload_date, 0);
         assert_eq!(b.scanlator.as_deref(), Some("grp"));
+    }
+
+    /// A one-shot local HTTP server: reads the request, then runs `serve`.
+    async fn serve_once<F, Fut>(serve: F) -> String
+    where
+        F: Fn(tokio::net::TcpStream) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        tokio::spawn(async move {
+            while let Ok((s, _)) = listener.accept().await {
+                tokio::spawn(serve(s));
+            }
+        });
+        url
+    }
+
+    fn limits(ms: u64, max_body: u64) -> Limits {
+        let d = Duration::from_millis(ms);
+        Limits {
+            connect: d,
+            query: d,
+            scrape: d * 4,
+            bytes: d,
+            max_body,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_stopped_server_is_reported_as_unreachable() {
+        let port = {
+            let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let c = SuwayomiClient::new(format!("http://127.0.0.1:{port}"), None).unwrap();
+        let err = c.about().await.unwrap_err();
+        assert!(matches!(err, CatalogError::Unreachable(_)), "{err:?}");
+        let err = c.get_bytes("/x").await.unwrap_err();
+        assert!(matches!(err, CatalogError::Unreachable(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn quick_queries_time_out_sooner_than_scrapes() {
+        use tokio::io::AsyncReadExt;
+        let url = serve_once(|mut s| async move {
+            let mut buf = [0u8; 4096];
+            let _ = s.read(&mut buf).await;
+            tokio::time::sleep(Duration::from_secs(30)).await;
+        })
+        .await;
+        let c = SuwayomiClient::with_limits(url, None, limits(300, 1000)).unwrap();
+        let t = std::time::Instant::now();
+        let err = c.about().await.unwrap_err();
+        assert!(matches!(&err, CatalogError::Http(e) if e.is_timeout()), "{err:?}");
+        assert!(t.elapsed() < Duration::from_millis(1100), "{:?}", t.elapsed());
+        // A scrape gets the longer allowance (4x here).
+        let t = std::time::Instant::now();
+        let _ = c.graphql::<Value>("{ x }").await.unwrap_err();
+        assert!(t.elapsed() >= Duration::from_millis(1000), "{:?}", t.elapsed());
+        // The caller can ask for less.
+        let t = std::time::Instant::now();
+        let _ = c
+            .graphql_within::<Value>("{ x }", Duration::from_millis(100))
+            .await
+            .unwrap_err();
+        assert!(t.elapsed() < Duration::from_millis(600));
+    }
+
+    const CRLF: &str = "\r\n";
+
+    async fn body_server(len: usize, declare: bool) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        serve_once(move |mut s| async move {
+            let mut buf = [0u8; 4096];
+            let _ = s.read(&mut buf).await;
+            let head = if declare {
+                format!("HTTP/1.1 200 OK{CRLF}Content-Length: {len}{CRLF}Connection: close{CRLF}{CRLF}")
+            } else {
+                format!("HTTP/1.1 200 OK{CRLF}Connection: close{CRLF}{CRLF}")
+            };
+            let _ = s.write_all(head.as_bytes()).await;
+            for _ in 0..len / 100 {
+                if s.write_all(&[7u8; 100]).await.is_err() {
+                    return;
+                }
+            }
+            let _ = s.shutdown().await;
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn bodies_over_the_cap_are_refused_but_smaller_ones_pass() {
+        let c_big = SuwayomiClient::with_limits(body_server(5000, true).await, None, limits(2000, 1000))
+            .unwrap();
+        let err = c_big.get_bytes("/p").await.unwrap_err();
+        assert!(matches!(err, CatalogError::TooLarge { limit: 1000 }), "{err:?}");
+        // No Content-Length: caught while streaming.
+        let c_chunked =
+            SuwayomiClient::with_limits(body_server(5000, false).await, None, limits(2000, 1000))
+                .unwrap();
+        let err = c_chunked.get_bytes("/p").await.unwrap_err();
+        assert!(matches!(err, CatalogError::TooLarge { limit: 1000 }), "{err:?}");
+        let ok = SuwayomiClient::with_limits(body_server(800, true).await, None, limits(2000, 1000))
+            .unwrap();
+        assert_eq!(ok.get_bytes("/p").await.unwrap().len(), 800);
     }
 }
