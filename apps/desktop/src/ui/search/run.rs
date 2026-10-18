@@ -1,6 +1,7 @@
 //! Running a search across the sources and publishing the results as they come in.
 
 use crate::ui::widgets::{cover_key, load_cover_race};
+use crate::logic;
 use crate::state::now_secs;
 use crate::state::spawn_forever;
 use crate::state::{AppState, SearchView};
@@ -13,6 +14,9 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tracing::{info, warn};
 use super::enrich::enrich_remembered;
+
+/// How often a running search looks whether a newer one has replaced it.
+const STALE_POLL: Duration = Duration::from_millis(100);
 
 /// Run a search across all installed sources, filling the results in as
 /// each source answers.
@@ -42,10 +46,20 @@ pub fn run_search(state: AppState, query: String) {
             ..Default::default()
         });
 
-        let installed = SourceManager::new(&*client)
-            .installed(&lang)
-            .await
-            .unwrap_or_default();
+        // Everything below that waits is given up the moment a newer search
+        // starts, so an old one neither keeps the sources busy nor writes over
+        // the newer one's results.
+        let stale = || !logic::is_current(state.search.peek().generation, generation);
+        let Some(installed) = logic::unless_stale(
+            SourceManager::new(&*client).installed(&lang),
+            stale,
+            STALE_POLL,
+        )
+        .await
+        else {
+            return;
+        };
+        let installed = installed.unwrap_or_default();
         let excluded = state.settings.peek().search_excluded_sources.clone();
         let all: Vec<_> = installed.into_iter().map(|i| i.source).collect();
         let none_installed = all.is_empty();
@@ -54,6 +68,9 @@ pub fn run_search(state: AppState, query: String) {
             .filter(|s| !excluded.contains(&s.id))
             .collect();
         if !none_installed && sources.is_empty() {
+            if stale() {
+                return;
+            }
             view.set(SearchView {
                 query,
                 none_selected: true,
@@ -63,6 +80,9 @@ pub fn run_search(state: AppState, query: String) {
             return;
         }
         if sources.is_empty() {
+            if stale() {
+                return;
+            }
             view.set(SearchView {
                 query,
                 no_sources: true,
@@ -83,7 +103,12 @@ pub fn run_search(state: AppState, query: String) {
             Duration::from_secs(20),
             8,
         ));
-        while let Some(event) = stream.next().await {
+        loop {
+            let Some(next) = logic::unless_stale(stream.next(), stale, STALE_POLL).await else {
+                info!("Search for \"{query}\" was replaced by a newer search");
+                return;
+            };
+            let Some(event) = next else { break };
             match &event {
                 SearchEvent::Done { source, mangas, ms } => {
                     info!("  {}: {} result(s) in {ms} ms", source.name, mangas.len());
@@ -134,7 +159,12 @@ pub fn run_search(state: AppState, query: String) {
             search.candidates().len(),
             started.elapsed().as_secs_f32()
         );
-        enrichment = enrich_remembered(&client, &top).await;
+        let Some(found) =
+            logic::unless_stale(enrich_remembered(&client, &top), stale, STALE_POLL).await
+        else {
+            return;
+        };
+        enrichment = found;
         let current = publish(
             state,
             generation,
@@ -181,7 +211,7 @@ fn publish(
     preferred: &[String],
     phase: Phase,
 ) -> bool {
-    if state.search.peek().generation != generation {
+    if !logic::is_current(state.search.peek().generation, generation) {
         return false;
     }
     let health = state.health.read().clone();

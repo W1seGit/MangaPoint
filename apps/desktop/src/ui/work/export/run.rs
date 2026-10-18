@@ -2,6 +2,7 @@
 
 use crate::ui::work::*;
 use super::*;
+use crate::state::{Modal, ModalAction};
 use library::JsonFile;
 
 /// A series of the saved plan, as it is listed while it waits its turn.
@@ -32,6 +33,9 @@ fn take_next_waiting(state: AppState) -> Option<WaitingExport> {
 /// The one running is the first of the plan; the others wait behind it, like
 /// downloads, and each is finished (and announced) on its own.
 pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
+    // An export can take long and be cut short; what is waiting to be saved
+    // is written first.
+    state.flush_saves();
     // The ones behind the first, in order, ready before the first starts.
     let mut waiting = state.export_waiting;
     let mut entries = saved
@@ -142,8 +146,55 @@ pub fn pause_export(state: AppState) {
     }
 }
 
-/// Carry on with a paused export.
+/// Carry on with a paused export. If it was sending to a reader and the drive
+/// under that letter is not the one it began on (the letter was given to
+/// another card or stick meanwhile), ask before writing anything to it.
 pub fn resume_export(state: AppState) {
+    let paused = state.job.peek().as_ref().is_some_and(|v| v.paused);
+    if !paused {
+        return;
+    }
+    let saved = JsonFile::<SavedExport>::new(paths().export_job_file()).load();
+    let place = match (&saved.target, &saved.drive) {
+        (Some(ExportTarget::Device { mount, .. }), Some(_)) => Some(mount.clone()),
+        _ => None,
+    };
+    let Some(place) = place else {
+        resume_export_unchecked(state);
+        return;
+    };
+    spawn_forever(async move {
+        let drives = tokio::task::spawn_blocking(pipeline::export::removable_drives)
+            .await
+            .unwrap_or_default();
+        match logic::check_drive(saved.drive.as_ref(), &place, &drives) {
+            logic::DriveCheck::Unchecked | logic::DriveCheck::Same => resume_export_unchecked(state),
+            logic::DriveCheck::Missing(was) => state.error(format!(
+                "The reader drive ({}) is not connected. Plug it in, then carry on.",
+                was.describe()
+            )),
+            logic::DriveCheck::Changed { was, now } => {
+                let mut modal = state.modal;
+                modal.set(Some(Modal {
+                    title: "Is this the same drive?".into(),
+                    body: format!(
+                        "This export began on {}. The drive at {} now is {}. Send the files there anyway?",
+                        was.describe(),
+                        place.display(),
+                        now.describe()
+                    ),
+                    confirm: "Send anyway".into(),
+                    cancel: "Not yet".into(),
+                    danger: true,
+                    action: ModalAction::ResumeExportAnyway,
+                }));
+            }
+        }
+    });
+}
+
+/// Carry on with a paused export without looking at the drive.
+pub fn resume_export_unchecked(state: AppState) {
     let paused = state.job.peek().as_ref().is_some_and(|v| v.paused);
     if !paused {
         return;

@@ -294,6 +294,14 @@ pub fn start_export_plan(state: AppState) {
             return;
         }
     };
+    // Which drive the reader is on now, so a resume after a restart can tell
+    // if another drive has taken its letter.
+    let drive = match &target {
+        ExportTarget::Device { mount, .. } => {
+            logic::identity_of(mount, &pipeline::export::removable_drives())
+        }
+        _ => None,
+    };
     let saved = SavedExport {
         items: list
             .iter()
@@ -304,6 +312,7 @@ pub fn start_export_plan(state: AppState) {
             .collect(),
         grouping: SavedGrouping::from(grouping_of(&opts)),
         target: Some(target),
+        drive,
         next: 0,
     };
     save_export_plan(&saved);

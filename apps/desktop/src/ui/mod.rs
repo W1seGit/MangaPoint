@@ -73,13 +73,46 @@ pub fn App() -> Element {
         crate::updates::clear_leftovers();
         spawn_forever(update_dialog::check_at_startup(state));
     });
-    // Stop it when the window closes, so no process is left behind.
-    use_wry_event_handler(|event, _| {
+    // Changes to the library and the queue are written in the background.
+    use_hook(|| state.start_saver());
+    // When the window closes: ask first if a download or export is running;
+    // otherwise write what is still waiting to be saved and stop the server,
+    // so no process is left behind.
+    use_wry_event_handler(move |event, _| {
         if let Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
         } = event
         {
+            let download = state.queue.peek().running().is_some();
+            let export = state
+                .job
+                .peek()
+                .as_ref()
+                .is_some_and(|v| v.result.is_none() && !v.paused);
+            if let Some(warning) = crate::logic::quit_warning(download, export) {
+                // The window would close (or hide) once this returns. Make it
+                // only hide, then show it again at once with the question.
+                let window = dioxus::desktop::window();
+                window.set_close_behavior(dioxus::desktop::WindowCloseBehaviour::WindowHides);
+                spawn_forever(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                    window.window.set_visible(true);
+                    window.window.set_focus();
+                    window.set_close_behavior(dioxus::desktop::WindowCloseBehaviour::WindowCloses);
+                });
+                let mut modal = state.modal;
+                modal.set(Some(Modal {
+                    title: "Quit while work is running?".into(),
+                    body: warning.into(),
+                    confirm: "Quit anyway".into(),
+                    cancel: "Keep working".into(),
+                    danger: true,
+                    action: ModalAction::QuitApp,
+                }));
+                return;
+            }
+            state.flush_saves();
             backend::shutdown();
         }
     });
@@ -386,6 +419,12 @@ fn run_action(state: AppState, action: ModalAction) {
             }
             ModalAction::ClearFinishedDownloads => state.edit_queue(|q| q.clear_finished()),
             ModalAction::CancelAllDownloads => work::cancel_all_downloads(state),
+            ModalAction::ResumeExportAnyway => work::resume_export_unchecked(state),
+            ModalAction::QuitApp => {
+                state.flush_saves();
+                backend::shutdown();
+                dioxus::desktop::window().close();
+            }
             ModalAction::LoadPreset { series_id, preset_id, settings } => {
                 presets::apply_to_series(state, &series_id, preset_id, settings)
             }

@@ -14,14 +14,9 @@ use std::time::Duration;
 /// A drive that was found goes into the box that says where the reader is, but
 /// only when the place chosen is not there (nothing chosen yet, or it was
 /// unplugged): a drive picked by hand is never replaced by what turns up.
-fn adopt_found(state: AppState, found: &[pipeline::export::Drive]) {
-    let chosen_is_there = state
-        .settings
-        .peek()
-        .reader_setup()
-        .reader_dir
-        .as_ref()
-        .is_some_and(|d| d.exists());
+/// `chosen_is_there` was worked out off the UI thread, as a drive that sleeps
+/// can take seconds to answer.
+fn adopt_found(state: AppState, found: &[pipeline::export::Drive], chosen_is_there: bool) {
     if chosen_is_there {
         return;
     }
@@ -30,6 +25,34 @@ fn adopt_found(state: AppState, found: &[pipeline::export::Drive]) {
         let mut settings = state.settings;
         settings.write().update_reader_setup(|r| r.reader_dir = Some(mount));
         state.save_settings();
+    }
+}
+
+/// Look at the drives plugged in and whether the place chosen for the reader
+/// is there, off the UI thread, and show what was found. The screen is drawn
+/// from these results and never touches the disk itself.
+async fn look_for_reader(
+    state: AppState,
+    mut drives: Signal<Vec<pipeline::export::Drive>>,
+    mut place_there: Signal<bool>,
+) {
+    let chosen = state.settings.peek().reader_setup().reader_dir.clone();
+    let looked = tokio::task::spawn_blocking(move || {
+        let there = chosen.as_ref().is_some_and(|d| d.exists());
+        (removable_drives(), there, chosen.is_none())
+    })
+    .await;
+    let Ok((now, there, nothing_chosen)) = looked else {
+        return;
+    };
+    adopt_found(state, &now, there);
+    if *drives.peek() != now {
+        drives.set(now);
+    }
+    // Nothing chosen is not "gone"; the status says it is still being looked for.
+    let shown = there || nothing_chosen;
+    if *place_there.peek() != shown {
+        place_there.set(shown);
     }
 }
 
@@ -46,12 +69,19 @@ enum UsbStatus {
     Looking,
 }
 
-fn usb_status(chosen: Option<&std::path::Path>, found: &[pipeline::export::Drive]) -> UsbStatus {
+/// `chosen_exists` says whether the chosen place is there; it is looked at
+/// elsewhere (see [`look_for_reader`]), as a sleeping drive would stall the
+/// screen.
+fn usb_status(
+    chosen: Option<&std::path::Path>,
+    found: &[pipeline::export::Drive],
+    chosen_exists: bool,
+) -> UsbStatus {
     match chosen {
         None => UsbStatus::Looking,
         Some(path) => match found.iter().position(|d| d.mount == path) {
             Some(i) => UsbStatus::Found(i),
-            None if path.exists() => UsbStatus::Elsewhere,
+            None if chosen_exists => UsbStatus::Elsewhere,
             None => UsbStatus::Gone,
         },
     }
@@ -73,27 +103,29 @@ fn format_help(output: OutputFormat) -> &'static str {
 #[component]
 pub(super) fn SendPanel() -> Element {
     let state = use_context::<AppState>();
-    let starts_on_usb = matches!(state.export_opts.peek().target, TargetChoice::Usb);
-    let mut drives = use_signal(move || if starts_on_usb { removable_drives() } else { Vec::new() });
+    let drives = use_signal(Vec::<pipeline::export::Drive>::new);
+    // Shown as present until the first look says otherwise.
+    let place_there = use_signal(|| true);
     // Drives are only looked for while the reader is sent to by USB, every
     // couple of seconds, and not at all once this screen is left (the loop ends
-    // with it).
+    // with it). The first look is made at once, so a drive that is already
+    // plugged in is taken as soon as the screen opens.
     use_future(move || async move {
         loop {
+            if matches!(state.export_opts.peek().target, TargetChoice::Usb) {
+                look_for_reader(state, drives, place_there).await;
+            }
             tokio::time::sleep(Duration::from_secs(2)).await;
-            if !matches!(state.export_opts.peek().target, TargetChoice::Usb) {
-                continue;
-            }
-            if let Ok(now) = tokio::task::spawn_blocking(removable_drives).await {
-                adopt_found(state, &now);
-                if *drives.peek() != now {
-                    drives.set(now);
-                }
-            }
         }
     });
-    // A drive that is already plugged in when the screen opens is taken at once.
-    use_hook(move || adopt_found(state, &drives.peek()));
+    // A new place chosen for the reader is checked at once, not at the next look.
+    let chosen_place = use_memo(move || state.settings.read().reader_setup().reader_dir.clone());
+    use_effect(move || {
+        let _ = chosen_place();
+        if matches!(state.export_opts.peek().target, TargetChoice::Usb) {
+            spawn(look_for_reader(state, drives, place_there));
+        }
+    });
     let mut testing = use_signal(|| false);
     let mut choosing = use_signal(|| false);
     let opts = state.export_opts.read().clone();
@@ -111,7 +143,7 @@ pub(super) fn SendPanel() -> Element {
     // Read here, not only in the menu, so the screen follows a drive being
     // plugged in or pulled out.
     let found = drives.read().clone();
-    let usb = usb_status(reader_dir.as_deref(), &found);
+    let usb = usb_status(reader_dir.as_deref(), &found, *place_there.read());
     let on_reader = !matches!(opts.target, TargetChoice::Folder);
     // The way of reaching the reader: the one chosen if this reader takes it.
     let via = match opts.target {
@@ -168,12 +200,7 @@ pub(super) fn SendPanel() -> Element {
                     onclick: move |_| {
                         if !on_reader {
                             export_opts.write().target = if setup.usb { TargetChoice::Usb } else { TargetChoice::WiFi };
-                            spawn(async move {
-                                if let Ok(now) = tokio::task::spawn_blocking(removable_drives).await {
-                                    adopt_found(state, &now);
-                                    drives.set(now);
-                                }
-                            });
+                            spawn(look_for_reader(state, drives, place_there));
                         }
                     },
                     Icon { name: "hard-drive", size: 16 } "On my reader"
@@ -416,11 +443,11 @@ mod tests {
     fn the_reader_place_is_told_apart_as_found_elsewhere_gone_or_not_yet_looked_for() {
         let here = std::env::temp_dir();
         let gone = PathBuf::from("/mangapoint-no-such-reader");
-        assert_eq!(usb_status(None, &[]), UsbStatus::Looking);
-        assert_eq!(usb_status(Some(&here), &[drive(&gone), drive(&here)]), UsbStatus::Found(1));
-        assert_eq!(usb_status(Some(&here), &[]), UsbStatus::Elsewhere);
-        assert_eq!(usb_status(Some(&gone), &[]), UsbStatus::Gone);
+        assert_eq!(usb_status(None, &[], true), UsbStatus::Looking);
+        assert_eq!(usb_status(Some(&here), &[drive(&gone), drive(&here)], true), UsbStatus::Found(1));
+        assert_eq!(usb_status(Some(&here), &[], true), UsbStatus::Elsewhere);
+        assert_eq!(usb_status(Some(&gone), &[], false), UsbStatus::Gone);
         // Unplugged: the drive is no longer listed and its place is not there.
-        assert_eq!(usb_status(Some(&gone), &[drive(&here)]), UsbStatus::Gone);
+        assert_eq!(usb_status(Some(&gone), &[drive(&here)], false), UsbStatus::Gone);
     }
 }
