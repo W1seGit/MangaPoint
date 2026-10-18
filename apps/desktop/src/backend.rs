@@ -103,7 +103,6 @@ async fn boot_with(state: AppState, install: bool, first_message: &str) {
             if let Some(mut server) = SERVER.lock().unwrap().take() {
                 server.kill_now();
             }
-            return;
         }
         Ok(svc) => {
             crate::covers::set_client(Some(svc.client.clone()));
