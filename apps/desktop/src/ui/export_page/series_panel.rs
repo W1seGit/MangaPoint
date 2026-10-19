@@ -12,7 +12,7 @@ use library::DownloadedSeries;
 pub(super) fn SeriesPanel(on_add: EventHandler<()>) -> Element {
     let state = use_context::<AppState>();
     let plan = state.export_plan.read().clone();
-    let library = state.library.read().clone();
+    let library = state.library.read();
     rsx! {
         Panel {
             title: "Series",
@@ -72,7 +72,7 @@ pub(super) fn SeriesPanel(on_add: EventHandler<()>) -> Element {
 pub(super) fn AddSeries(on_close: EventHandler<()>) -> Element {
     let state = use_context::<AppState>();
     let plan = state.export_plan.read().clone();
-    let library = state.library.read().clone();
+    let library = state.library.read();
     let available: Vec<&DownloadedSeries> = library
         .series
         .iter()

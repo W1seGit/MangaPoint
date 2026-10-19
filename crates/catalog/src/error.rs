@@ -4,7 +4,18 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum CatalogError {
     #[error("network error: {0}")]
-    Http(#[from] reqwest::Error),
+    Http(reqwest::Error),
+    /// The connection was refused or could not be made. For a call to the
+    /// local catalog engine this means it has stopped (or was never started):
+    /// retrying cannot help until it is restarted.
+    #[error("could not connect ({0})")]
+    Unreachable(String),
+    /// A page or cover was larger than the allowed size.
+    #[error("the response was larger than the {limit} byte limit")]
+    TooLarge { limit: u64 },
+    /// A download received no data for too long.
+    #[error("the download stalled: {0}")]
+    Stalled(String),
     #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
     #[error("checksum mismatch for {asset}: expected {expected}, got {actual}")]
@@ -38,6 +49,16 @@ pub enum CatalogError {
     Graphql(String),
     #[error("unexpected response from the server: {0}")]
     BadResponse(String),
+}
+
+impl From<reqwest::Error> for CatalogError {
+    fn from(e: reqwest::Error) -> Self {
+        if e.is_connect() {
+            CatalogError::Unreachable(e.to_string())
+        } else {
+            CatalogError::Http(e)
+        }
+    }
 }
 
 pub type Result<T> = std::result::Result<T, CatalogError>;

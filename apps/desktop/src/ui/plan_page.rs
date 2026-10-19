@@ -115,7 +115,7 @@ fn PlanSection(series_id: String) -> Element {
         .find(&series_id)
         .map(|s| s.chapters.clone())
         .unwrap_or_default();
-    let queue = state.queue.read().clone();
+    let queue = state.queue.read();
 
     let loaded = match &entry.chapters {
         PlanChapters::Ready(loaded) => Some(loaded.clone()),

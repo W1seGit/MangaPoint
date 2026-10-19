@@ -339,6 +339,39 @@ fn ExportedFiles() -> Element {
     let now = now_secs();
     // The export whose menu is open.
     let mut menu = use_signal(|| None::<String>);
+    // Which of the files are still on disk is looked at in the background, when
+    // the list changes and every few seconds, never while drawing: a file on a
+    // sleeping drive can take seconds to answer. Until the first answer every
+    // file is taken to be there.
+    let listed = use_memo(move || {
+        state
+            .exports
+            .read()
+            .records
+            .iter()
+            .flat_map(|r| r.files.iter().map(|f| f.path.clone()))
+            .filter(|p| !p.starts_with("http"))
+            .collect::<Vec<String>>()
+    });
+    let mut present = use_resource(move || async move {
+        let paths = listed();
+        tokio::task::spawn_blocking(move || {
+            paths
+                .into_iter()
+                .filter(|p| std::path::Path::new(p).is_file())
+                .collect::<std::collections::HashSet<String>>()
+        })
+        .await
+        .ok()
+    });
+    use_future(move || async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            present.restart();
+        }
+    });
+    let present = present.read().clone().flatten();
+    let is_there = move |path: &str| path.starts_with("http") || present.as_ref().is_none_or(|set| set.contains(path));
     rsx! {
         if records.is_empty() {
             p { class: "muted small", style: "margin: 4px 0 0",
@@ -356,7 +389,7 @@ fn ExportedFiles() -> Element {
                     )
                 };
                 let first = r.files.first().map(|f| f.path.clone()).unwrap_or_default();
-                let can_open = !first.is_empty() && !first.starts_with("http") && std::path::Path::new(&first).exists();
+                let can_open = !first.is_empty() && !first.starts_with("http") && is_there(&first);
                 let total: u64 = r.files.iter().map(|f| f.bytes).sum();
                 let place_full = r.target.strip_prefix("folder ").unwrap_or(&r.target).to_string();
                 let place = place_full.clone();
@@ -399,7 +432,7 @@ fn ExportedFiles() -> Element {
                                 for f in r.files.iter() {
                                     {
                                         let path = f.path.clone();
-                                        let missing = !path.starts_with("http") && !std::path::Path::new(&path).is_file();
+                                        let missing = !is_there(&path);
                                         let name = std::path::Path::new(&path)
                                             .file_name()
                                             .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());

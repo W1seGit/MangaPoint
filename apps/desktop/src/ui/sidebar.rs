@@ -40,14 +40,46 @@ fn JobCover(series_id: String) -> Element {
     }
 }
 
+/// What the card shows of the batch that is downloading.
+struct RunningDownload {
+    title: String,
+    series_id: String,
+    chapters_done: usize,
+    chapter_count: usize,
+    pages_per_second: Option<f32>,
+    fraction: f32,
+    progress: crate::logic::JobProgress,
+}
+
 /// The download in progress, or the queue when it is paused.
 #[component]
 fn DownloadCard() -> Element {
     let state = use_context::<AppState>();
-    let queue = state.queue.read().clone();
-    let running = queue.running().cloned();
-    let (_, waiting, chapters_left) = queue.counts();
-    let paused = queue.paused;
+    // Only what is drawn is taken from the queue: it holds every request and
+    // plan of every batch, and this is drawn again for each progress tick.
+    let (running, waiting, chapters_left, paused, first_active) = {
+        let queue = state.queue.read();
+        let (_, waiting, chapters_left) = queue.counts();
+        (
+            queue.running().map(|b| RunningDownload {
+                title: b.title.clone(),
+                series_id: b.series_id.clone(),
+                chapters_done: b.chapters_done(),
+                chapter_count: b.chapter_count(),
+                pages_per_second: b.progress.pages_per_second(),
+                fraction: b.progress.fraction(),
+                progress: b.progress.clone(),
+            }),
+            waiting,
+            chapters_left,
+            queue.paused,
+            queue
+                .batches
+                .iter()
+                .find(|b| b.status.is_active())
+                .map(|b| b.series_id.clone()),
+        )
+    };
     if running.is_none() && !(paused && waiting > 0) {
         return rsx! {};
     }
@@ -60,13 +92,7 @@ fn DownloadCard() -> Element {
     let cover_of = running
         .as_ref()
         .map(|b| b.series_id.clone())
-        .or_else(|| {
-            queue
-                .batches
-                .iter()
-                .find(|b| b.status.is_active())
-                .map(|b| b.series_id.clone())
-        })
+        .or(first_active)
         .unwrap_or_default();
     rsx! {
         div { class: "side-job", onclick: move |_| state.go(Page::Tasks),
@@ -92,8 +118,8 @@ fn DownloadCard() -> Element {
                     }
                     if let Some(batch) = &running {
                         div { class: "side-job-meta",
-                            span { "{batch.chapters_done()} of {plural(batch.chapter_count(), \"chapter\")}" }
-                            if let Some(v) = batch.progress.pages_per_second() { span { "{v:.1} pages/s" } }
+                            span { "{batch.chapters_done} of {plural(batch.chapter_count, \"chapter\")}" }
+                            if let Some(v) = batch.pages_per_second { span { "{v:.1} pages/s" } }
                         }
                     } else {
                         div { class: "side-job-meta", "{plural(chapters_left, \"chapter\")} waiting" }
@@ -101,7 +127,7 @@ fn DownloadCard() -> Element {
                 }
             }
             if let Some(batch) = &running {
-                ProgressBar { fraction: Some(batch.progress.fraction()) }
+                ProgressBar { fraction: Some(batch.fraction) }
                 ActiveChapters { progress: batch.progress.clone(), limit: 3 }
                 if waiting > 0 { div { class: "side-job-meta", "{waiting} more in line" } }
             }

@@ -10,6 +10,8 @@ use tokio::process::{Child, Command};
 
 const CONFIG_PREFIX: &str = "-Dsuwayomi.tachidesk.config.server";
 const START_TIMEOUT: Duration = Duration::from_secs(180);
+/// One readiness probe may take this long, so the start-up bound is real.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Debug)]
 pub struct ServerConfig {
@@ -58,22 +60,19 @@ impl RunningServer {
         let mut child = cmd.spawn()?;
 
         let client = SuwayomiClient::new(format!("http://127.0.0.1:{port}"), Some(credentials))?;
-        let started = Instant::now();
-        loop {
-            if let Some(status) = child.try_wait()? {
-                return Err(CatalogError::ServerExited(
+        let waited = wait_until_ready(&client, START_TIMEOUT, PROBE_TIMEOUT, || {
+            match child.try_wait()? {
+                Some(status) => Err(CatalogError::ServerExited(
                     status.to_string(),
                     log_path.display().to_string(),
-                ));
+                )),
+                None => Ok(()),
             }
-            if client.about().await.is_ok() {
-                break;
-            }
-            if started.elapsed() > START_TIMEOUT {
-                let _ = child.kill().await;
-                return Err(CatalogError::StartTimeout(START_TIMEOUT));
-            }
-            tokio::time::sleep(Duration::from_millis(500)).await;
+        })
+        .await;
+        if let Err(e) = waited {
+            let _ = child.kill().await;
+            return Err(e);
         }
         Ok(Self {
             child,
@@ -96,6 +95,11 @@ impl RunningServer {
         self.child.id()
     }
 
+    /// Has the server process ended (crashed, killed, out of memory)?
+    pub fn has_exited(&mut self) -> bool {
+        !matches!(self.child.try_wait(), Ok(None))
+    }
+
     /// Ask the OS to end the server without waiting. For use where `async`
     /// is not available, such as a window-close handler.
     pub fn kill_now(&mut self) {
@@ -105,6 +109,34 @@ impl RunningServer {
     /// The last part of the server log, for progress and diagnostics.
     pub fn log_tail(&self, max_bytes: usize) -> String {
         read_tail(&self.log_path, max_bytes)
+    }
+}
+
+/// Poll the server until it answers, `check_alive` reports it died, or
+/// `total` has passed. Each probe is cut short at `probe` (and at what is
+/// left of `total`), so a server that accepts but never answers cannot make
+/// this run longer than `total`.
+pub(crate) async fn wait_until_ready(
+    client: &SuwayomiClient,
+    total: Duration,
+    probe: Duration,
+    mut check_alive: impl FnMut() -> Result<()>,
+) -> Result<()> {
+    let started = Instant::now();
+    loop {
+        check_alive()?;
+        let left = total.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            return Err(CatalogError::StartTimeout(total));
+        }
+        let ping = client.graphql_within::<serde_json::Value>(
+            "{ aboutServer { name version buildType } }",
+            probe.min(left),
+        );
+        if ping.await.is_ok() {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(500).min(left)).await;
     }
 }
 
@@ -199,6 +231,42 @@ mod tests {
         let on = java_args(&config(true), 1, &creds());
         assert!(off.iter().any(|a| a.ends_with("kcefEnabled=false")));
         assert!(on.iter().any(|a| a.ends_with("kcefEnabled=true")));
+    }
+
+    #[tokio::test]
+    async fn a_server_that_never_answers_still_times_out_on_schedule() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Accept and hold every connection without ever replying.
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((s, _)) = listener.accept().await {
+                held.push(s);
+            }
+        });
+        let client = SuwayomiClient::new(format!("http://127.0.0.1:{port}"), None).unwrap();
+        let started = Instant::now();
+        let err = wait_until_ready(
+            &client,
+            Duration::from_millis(900),
+            Duration::from_millis(200),
+            || Ok(()),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(err, CatalogError::StartTimeout(_)), "{err:?}");
+        assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+    }
+
+    #[tokio::test]
+    async fn waiting_stops_when_the_process_has_died() {
+        let client = SuwayomiClient::new("http://127.0.0.1:1", None).unwrap();
+        let err = wait_until_ready(&client, Duration::from_secs(30), Duration::from_secs(1), || {
+            Err(CatalogError::ServerExited("1".into(), "log".into()))
+        })
+        .await
+        .unwrap_err();
+        assert!(matches!(err, CatalogError::ServerExited(..)));
     }
 
     #[test]

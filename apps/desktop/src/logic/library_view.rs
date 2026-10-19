@@ -87,13 +87,14 @@ impl LibrarySort {
 
 /// The library's series to show, as positions in `series`: those in the view
 /// that match the filter text (in the title, the author or a genre), in order.
-pub fn library_order(
-    series: &[library::DownloadedSeries],
+pub fn library_order<S: std::borrow::Borrow<library::DownloadedSeries>>(
+    series: &[S],
     view: LibraryView,
     sort: LibrarySort,
     filter: &str,
     exported: &std::collections::HashSet<String>,
 ) -> Vec<usize> {
+    let at = |i: usize| -> &library::DownloadedSeries { series[i].borrow() };
     let needle = filter.trim().to_lowercase();
     let matches = |s: &library::DownloadedSeries| {
         needle.is_empty()
@@ -104,17 +105,17 @@ pub fn library_order(
             })
     };
     let mut order: Vec<usize> = (0..series.len())
-        .filter(|&i| view.includes(&series[i], exported.contains(&series[i].id)) && matches(&series[i]))
+        .filter(|&i| view.includes(at(i), exported.contains(&at(i).id)) && matches(at(i)))
         .collect();
     match sort {
         LibrarySort::Recent => {
-            order.sort_by_key(|&i| std::cmp::Reverse(series[i].updated_at.max(series[i].added_at)))
+            order.sort_by_key(|&i| std::cmp::Reverse(at(i).updated_at.max(at(i).added_at)))
         }
-        LibrarySort::Title => order.sort_by_key(|&i| series[i].title.to_lowercase()),
+        LibrarySort::Title => order.sort_by_key(|&i| at(i).title.to_lowercase()),
         LibrarySort::MostChapters => {
-            order.sort_by_key(|&i| std::cmp::Reverse(series[i].chapters.len()))
+            order.sort_by_key(|&i| std::cmp::Reverse(at(i).chapters.len()))
         }
-        LibrarySort::Size => order.sort_by_key(|&i| std::cmp::Reverse(series[i].bytes())),
+        LibrarySort::Size => order.sort_by_key(|&i| std::cmp::Reverse(at(i).bytes())),
     }
     order
 }

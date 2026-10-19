@@ -63,10 +63,6 @@ impl AppState {
         let _ = JsonFile::new(paths().health_file()).save(&*self.health.read());
     }
 
-    pub fn save_library(&self) {
-        let _ = JsonFile::new(paths().library_file()).save(&*self.library.read());
-    }
-
     /// Change the presets. (A signal can only be written through a mutable
     /// binding, which `&self` does not give.)
     pub fn edit_presets<R>(&self, edit: impl FnOnce(&mut PresetsDb) -> R) -> R {
@@ -80,8 +76,10 @@ impl AppState {
         let mut queue = self.queue;
         let mut guard = queue.write();
         let result = edit(&mut guard);
-        // Kept on disk, so what is waiting and what has finished survive a restart.
-        let _ = JsonFile::new(paths().queue_file()).save(&guard.to_saved());
+        drop(guard);
+        // Kept on disk, so what is waiting and what has finished survive a
+        // restart; the saver writes it soon, and when the window closes.
+        self.mark_queue_changed();
         result
     }
 
