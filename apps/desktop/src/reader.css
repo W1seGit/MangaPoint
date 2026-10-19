@@ -2,18 +2,24 @@
 /* Over the whole window (the side menu included), under dialogs and menus. */
 .reader {
   position: fixed; inset: 0; z-index: 18; display: flex; flex-direction: column;
-  background: #000; color: var(--text); --zoom: 1;
+  background: #000; color: var(--text); --zoom: 1; --bar-h: 56px;
 }
+/* A page shown alone starts below the bar, so the bar never covers it. */
+.reader[data-mode="paged"] .reader-stage { padding-top: var(--bar-h); }
+.reader[data-mode="paged"] .reader-page-wrap { min-height: calc(100vh - var(--bar-h)); }
 .reader-bar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 3;
-  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 8px 14px;
+  display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; padding: 8px 12px; height: var(--bar-h);
+  white-space: nowrap;
   background: rgba(10, 10, 10, 0.95); border-bottom: 1px solid var(--line);
   transform: translateY(-101%); transition: transform 0.18s ease; pointer-events: none;
 }
 .reader.show-bar .reader-bar { transform: none; pointer-events: auto; }
-.reader-bar .btn { min-height: 36px; padding: 6px 12px; }
-.reader-bar .seg button { padding: 7px 11px; }
-.reader-title { min-width: 0; }
+.reader-bar .btn { min-height: 36px; padding: 6px 10px; flex: none; }
+.reader-bar .seg { flex: none; }
+.reader-bar .seg button { padding: 7px 9px; white-space: nowrap; }
+.reader-title { min-width: 40px; flex: 1 1 0; }
+.reader-bar .menu-anchor, .reader-counter, .reader-zoom { flex: none; }
 .reader-title strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader-counter { min-width: 64px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
 .reader-zoom { display: flex; align-items: center; gap: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -37,6 +43,7 @@
 /* Fit to the window's width, its height, or show the picture as it is; the zoom multiplies each. */
 .reader[data-fit="width"] .reader-tile { width: calc(100% * var(--zoom)); }
 .reader[data-fit="height"] .reader-tile { height: calc(100vh * var(--zoom)); }
+.reader[data-mode="paged"][data-fit="height"] .reader-tile { height: calc((100vh - var(--bar-h)) * var(--zoom)); }
 .reader[data-fit="original"] .reader-tile { width: calc(var(--w, 800px) * var(--zoom)); max-width: none; }
 .reader[data-mode="paged"][data-fit="height"] .reader-tile { max-width: none; }
 .reader-strip { display: flex; flex-direction: column; align-items: flex-start; min-height: 100%; }
