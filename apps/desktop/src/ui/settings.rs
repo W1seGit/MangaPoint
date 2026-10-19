@@ -185,6 +185,14 @@ pub fn SettingsPage() -> Element {
                                 }
                             }
                         }
+                        Row {
+                            label: "Keep colors (uses more space)",
+                            desc: "Saves shrunk pages in color instead of gray, so a color reader can show them in color. Pages are bigger, and only new downloads change: a page already saved gray cannot get its color back. Has no effect with Full, which keeps pages as downloaded.",
+                            Toggle {
+                                on: s.download.keep_color,
+                                onchange: move |on: bool| update(|s, v| s.download.keep_color = v == "true", on.to_string()),
+                            }
+                        }
                         Group { title: "Browser" }
                         Row {
                             label: "Browser support",

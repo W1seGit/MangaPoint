@@ -29,10 +29,10 @@ use tokio::sync::mpsc::UnboundedSender;
 
 /// What to do to a page before it is stored at each quality; `None` keeps the
 /// bytes exactly as downloaded.
-fn storage_limits(quality: PageQuality) -> Option<StorageLimits> {
+fn storage_limits(quality: PageQuality, keep_color: bool) -> Option<StorageLimits> {
     match quality {
-        PageQuality::Ultra => Some(StorageLimits::ULTRA),
-        PageQuality::Save => Some(StorageLimits::SAVE),
+        PageQuality::Ultra => Some(StorageLimits::ULTRA.keeping_color(keep_color)),
+        PageQuality::Save => Some(StorageLimits::SAVE.keeping_color(keep_color)),
         PageQuality::Full => None,
     }
 }
@@ -137,6 +137,8 @@ struct Context<'a, C> {
     files: &'a LibraryFiles,
     series_id: &'a str,
     quality: PageQuality,
+    /// Shrunk pages keep their colour.
+    keep_color: bool,
     policy: &'a RetryPolicy,
     limiters: &'a LimiterSet,
     balancer: &'a Balancer,
@@ -208,6 +210,7 @@ pub async fn download_chapters<C: Catalog>(
         files,
         series_id,
         quality,
+        keep_color: limits.keep_color,
         policy,
         limiters: &limiters,
         balancer: &balancer,
@@ -612,7 +615,7 @@ async fn download_one<C: Catalog>(
                         MAX_PAGE_PIXELS / 1_000_000
                     )));
                 }
-                let bytes = if let Some(limits) = storage_limits(cx.quality) {
+                let bytes = if let Some(limits) = storage_limits(cx.quality, cx.keep_color) {
                     tokio::task::spawn_blocking(move || match shrink_page(&bytes, &limits) {
                         Ok(Some(small)) => Ok(small),
                         Ok(None) => Ok(bytes),

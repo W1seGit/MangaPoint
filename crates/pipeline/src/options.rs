@@ -35,8 +35,13 @@ pub fn process_options_for(
         zoom: conversion.zoom.clamped(),
         zoom_mode: conversion.zoom_mode,
         guide_arrows: conversion.guide_arrows,
+        color: conversion.keeps_color(device),
     }
 }
+
+// Whether pages are kept in colour is decided by `ConversionSettings::keeps_color`
+// and nowhere else: only an EPUB or CBZ, only for a colour screen, and only
+// when the user did not choose black and white. An XTC or XTCH can never get it.
 
 /// How many grays the pages are made with. An XTC or XTCH book is as its
 /// format says. An EPUB follows the reader's screen: four grays (dithered the
@@ -140,6 +145,31 @@ mod tests {
         assert_eq!(output_depth(&kindle, &c), Depth::One);
         c.set_output(library::OutputFormat::Xtch);
         assert_eq!(output_depth(&kindle, &c), Depth::Two);
+    }
+
+    #[test]
+    fn colour_is_asked_of_the_converter_only_for_pictures_on_a_colour_screen() {
+        use library::OutputFormat;
+        let colour = device_profiles::known("kobo-libra-colour").unwrap();
+        let gray = device_profiles::known("kobo-libra-2").unwrap();
+        for output in OutputFormat::ALL {
+            let mut c = ConversionSettings::default();
+            c.set_output(output);
+            let pictures = matches!(output, OutputFormat::Epub | OutputFormat::Cbz);
+            assert_eq!(process_options_for(&colour, &c).color, pictures, "{output:?} on a colour reader");
+            assert!(!process_options_for(&gray, &c).color, "{output:?} on a gray reader");
+            assert!(!process_options_for(&device_profiles::x4_pro(), &c).color);
+            // However it is asked for, an XTC or XTCH never gets it.
+            c.black_and_white = true;
+            assert!(!process_options_for(&colour, &c).color, "{output:?} in black and white");
+        }
+        // Not a gray screen that was marked by hand and then switched to XTC.
+        let mut marked = gray.clone();
+        marked.color = true;
+        let mut c = ConversionSettings::default();
+        assert!(!process_options_for(&marked, &c).color, "XTC");
+        c.set_output(OutputFormat::Epub);
+        assert!(process_options_for(&marked, &c).color);
     }
 
     #[test]

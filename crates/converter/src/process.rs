@@ -178,6 +178,12 @@ pub struct ProcessOptions {
     /// on from it (the first half of a split double page, a screen of a
     /// zoomed page), pointing the way the next one lies.
     pub guide_arrows: bool,
+    /// The pages are kept in colour: the caller decodes the chapter with
+    /// `decode_to_ycc`, prepares it with `prepare_owned_color` and draws pages
+    /// with `render_page_color`, which does no tone tuning, dithering or guide
+    /// arrows. The gray functions of this crate ignore it. Only pictures (EPUB,
+    /// CBZ) can carry colour, so the app sets it for nothing else.
+    pub color: bool,
 }
 
 impl ProcessOptions {
@@ -214,6 +220,7 @@ impl ProcessOptions {
             zoom: PageZoom::Fit,
             zoom_mode: ZoomMode::Tile,
             guide_arrows: false,
+            color: false,
         }
     }
 }
@@ -416,10 +423,15 @@ pub(crate) fn screens(
 
 /// A page on one screen: fitted, or at its zoom with the middle kept.
 pub(crate) fn show(img: &GrayImage, opts: &ProcessOptions) -> GrayImage {
+    show_fill(img, opts, 255)
+}
+
+/// [`show`] with the bars drawn in `fill` instead of white (128 for a chroma plane).
+pub(crate) fn show_fill(img: &GrayImage, opts: &ProcessOptions, fill: u8) -> GrayImage {
     if !opts.zoom.is_fit() && opts.zoom_mode == ZoomMode::Crop {
-        centre(img, opts)
+        centre(img, opts, fill)
     } else {
-        fit(img, opts.width, opts.height)
+        fit_fill(img, opts.width, opts.height, fill)
     }
 }
 
@@ -427,22 +439,33 @@ pub(crate) fn show(img: &GrayImage, opts: &ProcessOptions) -> GrayImage {
 /// is smaller than the display (the pieces of a page are equal, so none is
 /// a sliver) is centred on white.
 pub(crate) fn tile(img: &GrayImage, opts: &ProcessOptions, col: u32, row: u32) -> GrayImage {
+    tile_fill(img, opts, col, row, 255)
+}
+
+/// [`tile`] with the bars drawn in `fill`.
+pub(crate) fn tile_fill(
+    img: &GrayImage,
+    opts: &ProcessOptions,
+    col: u32,
+    row: u32,
+    fill: u8,
+) -> GrayImage {
     let grid = zoom_grid(img.width, img.height, opts);
     let (col, row) = (col.min(grid.cols - 1), row.min(grid.rows - 1));
     let x0 = grid.width * col / grid.cols;
     let x1 = grid.width * (col + 1) / grid.cols;
     let y0 = grid.height * row / grid.rows;
     let y1 = grid.height * (row + 1) / grid.rows;
-    zoomed_region(img, opts, &grid, (x0, y0, x1, y1))
+    zoomed_region(img, opts, &grid, (x0, y0, x1, y1), fill)
 }
 
 /// The middle of a zoomed page, as large as the screen shows.
-fn centre(img: &GrayImage, opts: &ProcessOptions) -> GrayImage {
+fn centre(img: &GrayImage, opts: &ProcessOptions, fill: u8) -> GrayImage {
     let grid = zoom_grid(img.width, img.height, opts);
     let (w, h) = (grid.width.min(opts.width), grid.height.min(opts.height));
     let x0 = (grid.width - w) / 2;
     let y0 = (grid.height - h) / 2;
-    zoomed_region(img, opts, &grid, (x0, y0, x0 + w, y0 + h))
+    zoomed_region(img, opts, &grid, (x0, y0, x0 + w, y0 + h), fill)
 }
 
 /// The rectangle `(x0, y0, x1, y1)` of the zoomed page, drawn on a screen.
@@ -452,6 +475,7 @@ fn zoomed_region(
     opts: &ProcessOptions,
     grid: &Grid,
     (x0, y0, x1, y1): (u32, u32, u32, u32),
+    fill: u8,
 ) -> GrayImage {
     let source = |a: u32, b: u32, limit: u32| {
         let from = ((a as f64 / grid.scale).floor() as u32).min(limit - 1);
@@ -462,7 +486,7 @@ fn zoomed_region(
     let (sy, sh) = source(y0, y1, img.height);
     let region = crop_rect(img, sx, sy, sw, sh);
     let piece = resize(&region, (x1 - x0).max(1), (y1 - y0).max(1));
-    letterbox(&piece, opts.width, opts.height)
+    letterbox_fill(&piece, opts.width, opts.height, fill)
 }
 
 /// Scale a tall strip to the screen width and cut it into overlapping slices.
@@ -699,14 +723,23 @@ pub fn rotate_cw(img: &GrayImage) -> GrayImage {
 
 /// Scale to fit inside `w` x `h`, keep the aspect ratio, centre on white.
 pub fn fit(img: &GrayImage, w: u32, h: u32) -> GrayImage {
+    fit_fill(img, w, h, 255)
+}
+
+/// [`fit`] with the bars drawn in `fill` instead of white.
+pub fn fit_fill(img: &GrayImage, w: u32, h: u32, fill: u8) -> GrayImage {
     let scale = (w as f64 / img.width as f64).min(h as f64 / img.height as f64);
     let nw = ((img.width as f64 * scale).round() as u32).clamp(1, w);
     let nh = ((img.height as f64 * scale).round() as u32).clamp(1, h);
-    letterbox(&resize(img, nw, nh), w, h)
+    letterbox_fill(&resize(img, nw, nh), w, h, fill)
 }
 
 fn letterbox(img: &GrayImage, w: u32, h: u32) -> GrayImage {
-    let mut canvas = GrayImage::new(w, h, 255).expect("non-zero size");
+    letterbox_fill(img, w, h, 255)
+}
+
+fn letterbox_fill(img: &GrayImage, w: u32, h: u32, fill: u8) -> GrayImage {
+    let mut canvas = GrayImage::new(w, h, fill).expect("non-zero size");
     blit(
         &mut canvas,
         img,
@@ -717,7 +750,11 @@ fn letterbox(img: &GrayImage, w: u32, h: u32) -> GrayImage {
 }
 
 pub(crate) fn letterbox_top(img: &GrayImage, w: u32, h: u32) -> GrayImage {
-    let mut canvas = GrayImage::new(w, h, 255).expect("non-zero size");
+    letterbox_top_fill(img, w, h, 255)
+}
+
+pub(crate) fn letterbox_top_fill(img: &GrayImage, w: u32, h: u32, fill: u8) -> GrayImage {
+    let mut canvas = GrayImage::new(w, h, fill).expect("non-zero size");
     blit(&mut canvas, img, (w - img.width.min(w)) / 2, 0);
     canvas
 }
