@@ -40,6 +40,7 @@ pub fn DevicesEditor() -> Element {
     let s = state.settings.read().clone();
     let devices = s.devices();
     let current = s.device_profile();
+    let phone_chosen = device_profiles::is_original(&current.id);
     let form_key = format!("{}-{}", current.id, revision());
     let mut adding = use_signal(|| false);
     let devices_empty = s.devices().is_empty();
@@ -78,11 +79,14 @@ pub fn DevicesEditor() -> Element {
                 }
             }
         }
-        if devices_empty {
+        if phone_chosen {
+            p { class: "sx-note", "\"Phone or tablet · original quality\" is chosen on the Export screen. Pick one of your readers above to change its settings." }
+        }
+        if devices_empty && !phone_chosen {
             p { class: "sx-note", "No reader yet. Add one so pages are made at the right size for it." }
         }
         // Keyed, so choosing another reader (or saving) starts the form afresh.
-        if !devices_empty {
+        if !devices_empty && !phone_chosen {
             for key in [form_key] {
                 ReaderForm { key: "{key}", revision }
             }
@@ -127,6 +131,31 @@ fn ReaderItem(id: String, on: bool) -> Element {
     }
 }
 
+/// The built-in entry for a phone or tablet: no reader to make pages for, the
+/// pages go out as they were saved, in color.
+#[component]
+fn PhoneItem(on: bool) -> Element {
+    let state = use_context::<AppState>();
+    rsx! {
+        div {
+            id: "reader-phone-original", class: if on { "px-preset on" } else { "px-preset" },
+            role: "button", "aria-pressed": "{on}",
+            onclick: move |_| {
+                if !on {
+                    let mut settings = state.settings;
+                    settings.write().device = device_profiles::PHONE_ORIGINAL_ID.to_string();
+                    state.save_settings();
+                }
+            },
+            div { class: "px-preset-head",
+                span { class: "grow px-item-name", "Phone or tablet · original quality" }
+                if on { Icon { name: "check", size: 14 } }
+            }
+            div { class: "muted small", "Color pages exactly as downloaded, as a CBZ or a PDF." }
+        }
+    }
+}
+
 /// The readers as a short scrollable list, and a way to Settings to add one.
 #[component]
 pub fn ReaderPicker() -> Element {
@@ -135,6 +164,7 @@ pub fn ReaderPicker() -> Element {
     let chosen = s.device_profile().id;
     rsx! {
         div { class: "px-list px-scroll",
+            PhoneItem { on: device_profiles::is_original(&chosen) }
             for d in s.devices() {
                 ReaderItem { key: "{d.id}", id: d.id.clone(), on: d.id == chosen }
             }

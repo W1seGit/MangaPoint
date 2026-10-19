@@ -21,7 +21,7 @@ use futures_util::future::join;
 use futures_util::stream::{self, StreamExt};
 use library::{chapter_key, ExportRecord, ExportedFileRecord};
 use pipeline::{
-    download_chapters, export_series, requests_from_merged, CancelFlag, ExportJob, ExportTarget,
+    download_chapters_as, export_series, requests_from_merged, CancelFlag, ExportJob, ExportTarget,
     Grouping, JobEvent, PipelineError, PreviewImage, RetryPolicy, SourceChoice,
 };
 use search::{merge_chapters, RankedSeries, ScoredMember};

@@ -67,6 +67,25 @@ where
     Ok(out)
 }
 
+/// Like [`lenient_vec`] for a map: entries that do not parse are skipped.
+pub fn lenient_map<'de, D, T>(d: D) -> Result<std::collections::BTreeMap<String, T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let raw = std::collections::BTreeMap::<String, serde_json::Value>::deserialize(d)?;
+    let mut out = std::collections::BTreeMap::new();
+    for (k, v) in raw {
+        match serde_json::from_value::<T>(v.clone()) {
+            Ok(t) => {
+                out.insert(k, t);
+            }
+            Err(_) => SKIPPED.with(|s| s.borrow_mut().push(v)),
+        }
+    }
+    Ok(out)
+}
+
 fn locks() -> &'static Mutex<HashMap<PathBuf, Arc<Mutex<()>>>> {
     static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
     LOCKS.get_or_init(Default::default)

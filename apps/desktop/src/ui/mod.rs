@@ -19,6 +19,7 @@ mod pixels;
 mod placeholder;
 mod plan_page;
 mod presets;
+mod reader;
 mod scenes;
 mod search;
 mod settings;
@@ -133,6 +134,7 @@ pub fn App() -> Element {
         style { "{CSS}" }
         style { {include_str!("../page-editor.css")} }
         style { {include_str!("../editor-controls.css")} }
+        style { {include_str!("../reader.css")} }
         div { class: "app", "data-motion": if snappy { "snappy" } else { "clean" },
             {match boot {
                 BootState::Failed(message) => rsx! { Failed { message } },
@@ -235,6 +237,7 @@ fn Shell() -> Element {
                     Page::Export => rsx! { export_page::ExportPage {} },
                     Page::Sources => rsx! { sources_page::SourcesPage {} },
                     Page::Settings => rsx! { settings::SettingsPage {} },
+                    Page::Reader => rsx! { reader::ReaderPage {} },
                 }}
             }
         }
@@ -507,13 +510,14 @@ fn ToastHost() -> Element {
 
 #[cfg(test)]
 mod script_tests {
-    const SCRIPTS: [(&str, &str); 6] = [
+    const SCRIPTS: [(&str, &str); 7] = [
         ("crop-drag.js", include_str!("../js/crop-drag.js")),
         ("export-split.js", include_str!("../js/export-split.js")),
         ("preview-editor.js", include_str!("../js/preview-editor.js")),
         ("tooltip.js", include_str!("../js/tooltip.js")),
         ("keys.js", include_str!("../js/keys.js")),
         ("scroll.js", include_str!("../js/scroll.js")),
+        ("reader.js", include_str!("../js/reader.js")),
     ];
 
     /// `cropBound` as it is written in HTML: `data-crop-bound`.

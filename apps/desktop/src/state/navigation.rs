@@ -18,6 +18,8 @@ pub enum Page {
     Plan,
     Sources,
     Settings,
+    /// Reading a downloaded series, full window.
+    Reader,
 }
 
 /// Where the user was going when unsaved reader settings stopped them: asked

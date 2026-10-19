@@ -6,7 +6,7 @@ use super::work::{
     ensure_series_info, fill_chapter_totals, load_saved_cover, open_export, open_plan, open_series_from_library,
     saved_cover_key,
 };
-use crate::logic::{human_bytes, library_order, plural, LibrarySort, LibraryView};
+use crate::logic::{human_bytes, library_order_read, plural, read_button, LibrarySort, LibraryView};
 use crate::state::{library_files, AppState, Modal, ModalAction, Page};
 use dioxus::prelude::*;
 use std::collections::HashSet;
@@ -63,7 +63,9 @@ pub fn LibraryPage() -> Element {
         .iter()
         .map(|r| r.series_id.clone())
         .collect();
-    let order = library_order(&series, view(), sort(), &filter.read(), &exported);
+    let order = library_order_read(&series, view(), sort(), &filter.read(), &exported, &|id| {
+        db.reading_of(id).map_or(0, |p| p.last_read_at)
+    });
     let downloaded_count = series
         .iter()
         .filter(|s| !s.chapters.is_empty())
@@ -243,6 +245,9 @@ pub fn LibraryPage() -> Element {
                             })
                             .unwrap_or_default();
                         let is_exported = exported.contains(&s.id);
+                        // "Read" (or "Continue · Ch. N" with how far) for a series with pages.
+                        let reading = read_button(s, db.reading_of(&s.id));
+                        let read_id = s.id.clone();
                         let queued = working_series.contains(&s.id);
                         let menu_id = s.id.clone();
                         let text_id = s.id.clone();
@@ -365,6 +370,20 @@ pub fn LibraryPage() -> Element {
                                         }
                                         if is_exported {
                                             Chip { text: "Exported", kind: Some("accent".to_string()) }
+                                        }
+                                    }
+                                }
+                                if let Some(reading) = reading {
+                                    button {
+                                        class: "btn poster-read", id: "read-{s.id}", "data-series": "{s.id}",
+                                        "aria-label": "{reading.label} {s.title}", title: "Read {s.title} in MangaPoint",
+                                        onclick: move |_| state.open_reader(&read_id, None),
+                                        Icon { name: "book-open", size: 15 } "{reading.label}"
+                                    }
+                                    if let Some(done) = reading.fraction {
+                                        div { class: "progress poster-read-progress", "aria-label": "Read so far",
+                                            title: "{(done * 100.0).round()}% read",
+                                            div { style: "width: {(done * 100.0).round()}%" }
                                         }
                                     }
                                 }

@@ -13,6 +13,7 @@ pub mod health;
 pub mod json;
 pub mod paths;
 pub mod presets;
+pub mod reading;
 pub mod settings;
 pub mod sources;
 pub mod speeds;
@@ -34,6 +35,7 @@ pub use settings::{
     Settings,
     SetupStep,
 };
+pub use reading::{ChapterRead, PageDirection, ReadFit, ReadMode, ReadProgress, ReaderPrefs};
 pub use sources::{Choice, SourceState};
 pub use speeds::{SourceSpeed, SpeedDb};
 pub mod crops;

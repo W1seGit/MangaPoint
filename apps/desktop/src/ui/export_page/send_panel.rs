@@ -100,6 +100,14 @@ fn format_help(output: OutputFormat) -> &'static str {
     }
 }
 
+/// What a format of the pages-as-they-are books is.
+fn original_format_help(format: pipeline::OriginalFormat) -> &'static str {
+    match format {
+        pipeline::OriginalFormat::Cbz => "A comic book archive of the pages exactly as downloaded, in color, with the series, author, genres, reading direction and chapters. Comic readers on phones and tablets open it.",
+        pipeline::OriginalFormat::Pdf => "One PDF of the pages exactly as downloaded, in color, each page the size of its picture, with a list of chapters. Any phone, tablet or computer opens it. JPEG pages go in untouched.",
+    }
+}
+
 #[component]
 pub(super) fn SendPanel() -> Element {
     let state = use_context::<AppState>();
@@ -183,6 +191,9 @@ pub(super) fn SendPanel() -> Element {
     // What the book is made as, and which of the three the reader lists.
     let current_output = active_series(state).map_or(OutputFormat::Xtc, |s| s.settings.output());
     let reader_formats = setup.formats.clone();
+    // A phone or tablet takes the pages as they are, in a CBZ or a PDF.
+    let phone = device_profiles::is_original(&settings.device);
+    let phone_format = opts.original_format;
 
     rsx! {
         Panel { title: "Send to", icon: "file-down", id: "send", height: 740,
@@ -372,6 +383,20 @@ pub(super) fn SendPanel() -> Element {
             // three if it lists none, so there is always something to pick). Each
             // has its explanation behind a question mark.
             div { class: "px-label", style: "margin-top: 16px", "Format" }
+            if phone {
+                div { class: "seg", id: "original-format", role: "group", "aria-label": "Format",
+                    for format in pipeline::OriginalFormat::ALL {
+                        button {
+                            key: "{format.label()}", id: "original-format-{format.extension()}",
+                            class: if format == phone_format { "on" } else { "" },
+                            "aria-pressed": "{format == phone_format}",
+                            onclick: move |_| export_opts.write().original_format = format,
+                            "{format.label()}"
+                            Help { text: original_format_help(format) }
+                        }
+                    }
+                }
+            } else {
             div { class: "seg",
                 for output in OutputFormat::ALL
                     .into_iter()
@@ -389,6 +414,7 @@ pub(super) fn SendPanel() -> Element {
                         }
                     }
                 }
+            }
             }
 
             div { class: "px-label", style: "margin-top: 16px", "Files" }

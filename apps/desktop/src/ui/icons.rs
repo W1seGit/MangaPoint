@@ -17,6 +17,17 @@ pub fn body(name: &str) -> Option<&'static str> {
         "layers" => Some(
             r#"<path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" /> <path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" /> <path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" />"#,
         ),
+        "chevron-left" => Some(r#"<path d="m15 18-6-6 6-6" />"#),
+        "arrow-right" => Some(r#"<path d="M5 12h14" /> <path d="m12 5 7 7-7 7" />"#),
+        "zoom-out" => Some(
+            r#"<circle cx="11" cy="11" r="8" /> <line x1="21" x2="16.65" y1="21" y2="16.65" /> <line x1="8" x2="14" y1="11" y2="11" />"#,
+        ),
+        "maximize" => Some(
+            r#"<path d="M8 3H5a2 2 0 0 0-2 2v3" /> <path d="M21 8V5a2 2 0 0 0-2-2h-3" /> <path d="M3 16v3a2 2 0 0 0 2 2h3" /> <path d="M16 21h3a2 2 0 0 0 2-2v-3" />"#,
+        ),
+        "minimize" => Some(
+            r#"<path d="M8 3v3a2 2 0 0 1-2 2H3" /> <path d="M21 8h-3a2 2 0 0 1-2-2V3" /> <path d="M3 16h3a2 2 0 0 1 2 2v3" /> <path d="M16 21v-3a2 2 0 0 1 2-2h3" />"#,
+        ),
         "clock" => Some(r#"<circle cx="12" cy="12" r="10" /> <path d="M12 6v6l4 2" />"#),
         "check" => Some(r#"<path d="M20 6 9 17l-5-5" />"#),
         "x" => Some(r#"<path d="M18 6 6 18" /> <path d="m6 6 12 12" />"#),

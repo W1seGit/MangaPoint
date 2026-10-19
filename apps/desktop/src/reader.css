@@ -1,0 +1,83 @@
+/* ---- the reader: a downloaded series read in the app ---- */
+/* Over the whole window (the side menu included), under dialogs and menus. */
+.reader {
+  position: fixed; inset: 0; z-index: 18; display: flex; flex-direction: column;
+  background: #000; color: var(--text); --zoom: 1;
+}
+.reader-bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 3;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 8px 14px;
+  background: rgba(10, 10, 10, 0.95); border-bottom: 1px solid var(--line);
+  transform: translateY(-101%); transition: transform 0.18s ease; pointer-events: none;
+}
+.reader.show-bar .reader-bar { transform: none; pointer-events: auto; }
+.reader-bar .btn { min-height: 36px; padding: 6px 12px; }
+.reader-bar .seg button { padding: 7px 11px; }
+.reader-title { min-width: 0; }
+.reader-title strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-counter { min-width: 64px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+.reader-zoom { display: flex; align-items: center; gap: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.reader-zoom .btn { padding: 6px 8px; }
+.reader-zoom span { min-width: 44px; text-align: center; }
+.reader-menu { max-height: 60vh; overflow-y: auto; min-width: 200px; right: auto; left: 0; }
+.reader-chapter-item.on { background: var(--panel-3); }
+.reader-read { color: var(--ok); display: inline-flex; }
+.reader .menu-anchor { position: relative; }
+
+/* ---- the pages ---- */
+.reader-stage { flex: 1; min-height: 0; overflow: auto; position: relative; background: #000; }
+.reader-stage > .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.reader-page-wrap { min-height: 100%; display: flex; }
+.reader-tile {
+  position: relative; display: block; margin: 0 auto; flex: none; aspect-ratio: var(--ar, 2 / 3);
+  background: #0c0c0c;
+}
+.reader-tile img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+.reader-page-wrap .reader-tile { margin: auto; }
+/* Fit to the window's width, its height, or show the picture as it is; the zoom multiplies each. */
+.reader[data-fit="width"] .reader-tile { width: calc(100% * var(--zoom)); }
+.reader[data-fit="height"] .reader-tile { height: calc(100vh * var(--zoom)); }
+.reader[data-fit="original"] .reader-tile { width: calc(var(--w, 800px) * var(--zoom)); max-width: none; }
+.reader[data-mode="paged"][data-fit="height"] .reader-tile { max-width: none; }
+.reader-strip { display: flex; flex-direction: column; align-items: flex-start; min-height: 100%; }
+.reader-strip .reader-chapter { width: 100%; display: flex; flex-direction: column; }
+.reader-divider {
+  align-self: center; margin: 28px auto; padding: 6px 16px; border: 1px solid var(--line-strong);
+  border-radius: 999px; color: var(--muted); background: var(--panel); font-size: 0.9rem;
+}
+.reader-fail {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 16px; text-align: center; color: var(--muted); background: var(--panel);
+  border: 1px dashed var(--line-strong);
+}
+.reader-tile.failed { min-height: 160px; }
+
+/* ---- the end of a chapter ---- */
+.reader-end {
+  width: min(520px, 92%); margin: 0 auto; padding: 56px 0 72px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.reader-end h2 { font-size: 1.25rem; }
+.reader-end .btn { margin-top: 12px; }
+.reader-gone { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; }
+
+/* ---- the note about pages saved small ---- */
+.reader-banner {
+  position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 4;
+  width: min(760px, 94vw); align-items: center; margin: 0; background: var(--panel-2);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6);
+}
+
+/* ---- on the Library cards and the chapter table ---- */
+.poster-read {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 8px;
+  min-height: 34px; padding: 6px 10px; font-size: 0.9rem;
+}
+.poster-read-progress { height: 3px; margin-top: 6px; }
+.chapter-read { margin-left: 8px; padding: 3px 9px !important; min-height: 28px !important; font-size: 0.82rem; }
+
+/* ---- the Export screen's preview for a phone or tablet ---- */
+.original-preview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.original-pages { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; }
+.original-page { margin: 0; width: min(100%, 760px); aspect-ratio: var(--ar, 2 / 3); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.original-page img { width: 100%; height: 100%; display: block; object-fit: contain; }

@@ -7,6 +7,7 @@
 mod chapters_panel;
 mod edit_panel;
 mod footer;
+mod original_preview;
 mod presets_panel;
 mod send_panel;
 mod series_panel;
@@ -79,6 +80,7 @@ pub fn ExportPage() -> Element {
     let mut adding = use_signal(|| false);
     let mut closing = use_signal(|| false);
     let plan = state.export_plan.read().clone();
+    let original = device_profiles::is_original(&state.settings.read().device);
 
     // Nothing chosen to export: show the sample pages.
     use_effect(move || {
@@ -163,14 +165,30 @@ pub fn ExportPage() -> Element {
             onmounted: move |_| { spawn(async move { let _ = document::eval(SPLIT_SCRIPT).await; }); },
             div { class: "export-body",
                 aside { class: "export-side left",
-                    PresetsPanel {}
-                    Split { target: "presets", dir: 1 }
-                    EditPanel {}
-                    Split { target: "series", dir: -1 }
+                    // The e-ink controls have nothing to do for a phone or tablet:
+                    // its pages go out as they are.
+                    if !original {
+                        PresetsPanel {}
+                        Split { target: "presets", dir: 1 }
+                        EditPanel {}
+                        Split { target: "series", dir: -1 }
+                    } else {
+                        div { class: "banner", id: "original-note",
+                            Icon { name: "info", size: 16 }
+                            div { class: "grow",
+                                strong { "Original quality" }
+                                p { class: "muted small", style: "margin: 4px 0 0",
+                                    "Nothing is resized, grayed, dithered or split. Each page goes into the file exactly as it was downloaded."
+                                }
+                            }
+                        }
+                    }
                     SeriesPanel { on_add: move |_| adding.set(true) }
                     div { class: "px-split-v", "data-split": "left", title: "Drag to make this column wider or narrower" }
                 }
-                main { class: "export-center", PreviewTab {} }
+                main { class: "export-center",
+                    if original { original_preview::OriginalPreview {} } else { PreviewTab {} }
+                }
                 aside { class: "export-side right",
                     div { class: "px-split-v", "data-split": "right", title: "Drag to make this column wider or narrower" }
                     ChaptersPanel {}

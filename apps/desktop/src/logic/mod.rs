@@ -12,6 +12,7 @@ mod format;
 mod generation;
 mod library_view;
 mod progress;
+mod reader;
 mod search_results;
 mod series_info;
 
@@ -24,5 +25,6 @@ pub use format::*;
 pub use generation::*;
 pub use library_view::*;
 pub use progress::*;
+pub use reader::*;
 pub use search_results::*;
 pub use series_info::*;

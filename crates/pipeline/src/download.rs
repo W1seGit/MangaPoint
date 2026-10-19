@@ -114,6 +114,55 @@ impl Drop for StageGuard {
     }
 }
 
+/// Removes the folders a replacing download works in, unless it finished (also
+/// when the download is cancelled and the future is dropped half way).
+struct ReplaceGuard {
+    files: LibraryFiles,
+    series_id: String,
+    stages: Vec<String>,
+    armed: bool,
+}
+
+impl ReplaceGuard {
+    fn clone_parts(&self) -> (LibraryFiles, String, Vec<String>) {
+        (self.files.clone(), self.series_id.clone(), self.stages.clone())
+    }
+}
+
+impl Drop for ReplaceGuard {
+    fn drop(&mut self) {
+        if self.armed {
+            for stage in &self.stages {
+                let _ = self.files.remove_chapter(&self.series_id, stage);
+            }
+        }
+    }
+}
+
+/// Put the finished copy in `stage` in place of the chapter `key`. The old copy
+/// is moved aside first and put back if the swap fails, so there is always one
+/// complete copy.
+fn swap_in(files: &LibraryFiles, series_id: &str, stage: &str, key: &str) -> Result<(usize, u64)> {
+    let (new_dir, dir) = (files.chapter_dir(series_id, stage), files.chapter_dir(series_id, key));
+    let old_dir = files.chapter_dir(series_id, &format!("{key}-old"));
+    let had_old = dir.exists();
+    if had_old {
+        let _ = files.remove_chapter(series_id, &format!("{key}-old"));
+        fs::rename(&dir, &old_dir).map_err(io_err(&dir))?;
+    }
+    if let Err(e) = fs::rename(&new_dir, &dir) {
+        if had_old {
+            let _ = fs::rename(&old_dir, &dir);
+        }
+        let _ = files.remove_chapter(series_id, stage);
+        return Err(PipelineError::Io(dir, e));
+    }
+    if had_old {
+        let _ = files.remove_chapter(series_id, &format!("{key}-old"));
+    }
+    Ok((files.page_files(series_id, key).len(), files.chapter_bytes(series_id, key)))
+}
+
 fn send(events: &Events, event: JobEvent) {
     if let Some(tx) = events {
         let _ = tx.send(event);
@@ -137,6 +186,10 @@ struct Context<'a, C> {
     files: &'a LibraryFiles,
     series_id: &'a str,
     quality: PageQuality,
+    /// The chapters already exist: each is downloaded beside the old copy and
+    /// swapped in only once it is complete, so a failure or a cancel leaves the
+    /// old copy as it was.
+    replace: bool,
     policy: &'a RetryPolicy,
     limiters: &'a LimiterSet,
     balancer: &'a Balancer,
@@ -191,6 +244,29 @@ pub async fn download_chapters<C: Catalog>(
     events: Option<UnboundedSender<JobEvent>>,
     cancel: &CancelFlag,
 ) -> Result<DownloadOutcome> {
+    download_chapters_as(
+        catalog, files, series_id, requests, quality, false, limits, policy, events, cancel,
+    )
+    .await
+}
+
+/// As [`download_chapters`]. With `replace`, the chapters are ones already in
+/// the library that are downloaded again (for example at a better quality):
+/// each new copy is built beside the old one and swaps in only when complete,
+/// so a failed or cancelled attempt leaves the existing chapter untouched.
+#[allow(clippy::too_many_arguments)]
+pub async fn download_chapters_as<C: Catalog>(
+    catalog: &C,
+    files: &LibraryFiles,
+    series_id: &str,
+    requests: &[ChapterRequest],
+    quality: PageQuality,
+    replace: bool,
+    limits: DownloadLimits,
+    policy: &RetryPolicy,
+    events: Option<UnboundedSender<JobEvent>>,
+    cancel: &CancelFlag,
+) -> Result<DownloadOutcome> {
     if requests.is_empty() {
         return Err(PipelineError::EmptyJob);
     }
@@ -208,6 +284,7 @@ pub async fn download_chapters<C: Catalog>(
         files,
         series_id,
         quality,
+        replace,
         policy,
         limiters: &limiters,
         balancer: &balancer,
@@ -311,11 +388,42 @@ async fn download_request<C: Catalog>(
         )
     });
 
-    let (saved, source_use, last_reason) = if cx.race && request.options.len() > 1 {
-        race_sources(cx, &key, &request.options, index).await?
+    // A chapter that is replaced is built under another name first.
+    let work_key = if cx.replace { format!("{key}-replacing") } else { key.clone() };
+    let mut replacing = if cx.replace {
+        let (files, series_id, stage) = (cx.files.clone(), cx.series_id.to_string(), work_key.clone());
+        // Leftovers of an attempt that was cut short do not belong to this one.
+        let guard = ReplaceGuard { files, series_id, stages: vec![stage, format!("{key}-old")], armed: true };
+        let for_clean = guard.clone_parts();
+        blocking(move || {
+            for stage in &for_clean.2 {
+                let _ = for_clean.0.remove_chapter(&for_clean.1, stage);
+            }
+            Ok(())
+        })
+        .await?;
+        Some(guard)
     } else {
-        try_in_turn(cx, &key, &request.options, index).await?
+        None
     };
+
+    let (mut saved, source_use, last_reason) = if cx.race && request.options.len() > 1 {
+        race_sources(cx, &work_key, &request.options, index).await?
+    } else {
+        try_in_turn(cx, &work_key, &request.options, index).await?
+    };
+    if let (Some(guard), Some((_, counts))) = (replacing.as_mut(), saved.as_mut()) {
+        // Complete: now, and only now, the old copy gives way.
+        let (files, series_id, stage, key) = (
+            cx.files.clone(),
+            cx.series_id.to_string(),
+            work_key.clone(),
+            key.clone(),
+        );
+        *counts = blocking(move || swap_in(&files, &series_id, &stage, &key)).await?;
+        guard.armed = false;
+    }
+    drop(replacing);
 
     let result = match saved {
         Some((option, (pages, bytes))) => {
@@ -328,6 +436,7 @@ async fn download_request<C: Catalog>(
                 pages,
                 bytes,
                 downloaded_at: now_secs(),
+                quality: Some(cx.quality),
             };
             send(
                 cx.events,

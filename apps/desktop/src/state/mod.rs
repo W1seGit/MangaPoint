@@ -11,6 +11,7 @@ mod job;
 mod navigation;
 mod notices;
 mod preview;
+mod reader;
 mod saver;
 mod search_view;
 mod storage;
@@ -23,6 +24,7 @@ pub use job::*;
 pub use navigation::*;
 pub use notices::*;
 pub use preview::*;
+pub use reader::*;
 pub use search_view::*;
 pub use storage::*;
 pub use workspace::*;
@@ -90,6 +92,8 @@ pub struct AppState {
     pub update_phase: Signal<UpdatePhase>,
     /// Series whose details are being fetched right now.
     pub info_busy: Signal<HashSet<String>>,
+    /// The series open in the reader, if it is open.
+    pub reader: Signal<Option<ReaderOpen>>,
     pub workspace: Signal<Option<Workspace>>,
     /// The series that was open when the Export screen took the workspace over,
     /// put back when the screen is left.
@@ -191,6 +195,7 @@ impl AppState {
             update_prompt: sig(None),
             update_phase: sig(UpdatePhase::Idle),
             info_busy: sig(HashSet::new()),
+            reader: sig(None),
             workspace: sig(None),
             parked_workspace: sig(None),
             chapters: sig(ChaptersState::Idle),

@@ -49,14 +49,17 @@ pub enum LibrarySort {
     Title,
     MostChapters,
     Size,
+    /// The ones read most recently first; the ones never read follow.
+    LastRead,
 }
 
 impl LibrarySort {
-    pub const ALL: [LibrarySort; 4] = [
+    pub const ALL: [LibrarySort; 5] = [
         LibrarySort::Recent,
         LibrarySort::Title,
         LibrarySort::MostChapters,
         LibrarySort::Size,
+        LibrarySort::LastRead,
     ];
 
     pub fn label(self) -> &'static str {
@@ -65,6 +68,7 @@ impl LibrarySort {
             LibrarySort::Title => "Title A to Z",
             LibrarySort::MostChapters => "Most chapters",
             LibrarySort::Size => "Biggest on disk",
+            LibrarySort::LastRead => "Recently read",
         }
     }
 
@@ -74,6 +78,7 @@ impl LibrarySort {
             LibrarySort::Title => "title",
             LibrarySort::MostChapters => "chapters",
             LibrarySort::Size => "size",
+            LibrarySort::LastRead => "read",
         }
     }
 
@@ -87,12 +92,26 @@ impl LibrarySort {
 
 /// The library's series to show, as positions in `series`: those in the view
 /// that match the filter text (in the title, the author or a genre), in order.
+#[cfg(test)]
 pub fn library_order<S: std::borrow::Borrow<library::DownloadedSeries>>(
     series: &[S],
     view: LibraryView,
     sort: LibrarySort,
     filter: &str,
     exported: &std::collections::HashSet<String>,
+) -> Vec<usize> {
+    library_order_read(series, view, sort, filter, exported, &|_| 0)
+}
+
+/// As [`library_order`], with when each series was last read (by series id; 0
+/// for never) for [`LibrarySort::LastRead`].
+pub fn library_order_read<S: std::borrow::Borrow<library::DownloadedSeries>>(
+    series: &[S],
+    view: LibraryView,
+    sort: LibrarySort,
+    filter: &str,
+    exported: &std::collections::HashSet<String>,
+    last_read: &dyn Fn(&str) -> u64,
 ) -> Vec<usize> {
     let at = |i: usize| -> &library::DownloadedSeries { series[i].borrow() };
     let needle = filter.trim().to_lowercase();
@@ -116,6 +135,13 @@ pub fn library_order<S: std::borrow::Borrow<library::DownloadedSeries>>(
             order.sort_by_key(|&i| std::cmp::Reverse(at(i).chapters.len()))
         }
         LibrarySort::Size => order.sort_by_key(|&i| std::cmp::Reverse(at(i).bytes())),
+        // Those never read keep the order of the most recently touched.
+        LibrarySort::LastRead => order.sort_by_key(|&i| {
+            (
+                std::cmp::Reverse(last_read(&at(i).id)),
+                std::cmp::Reverse(at(i).updated_at.max(at(i).added_at)),
+            )
+        }),
     }
     order
 }
@@ -135,6 +161,7 @@ mod tests {
             pages: 10,
             bytes,
             downloaded_at: 0,
+            quality: None,
         }
     }
 
@@ -206,6 +233,25 @@ mod tests {
             by(LibrarySort::Size),
             [0, 2, 1, 3],
             "300 bytes, 50, then the empty ones"
+        );
+    }
+
+    #[test]
+    fn recently_read_puts_what_was_read_last_first_and_never_read_after() {
+        let s = shelf();
+        let none = std::collections::HashSet::new();
+        let reads = |id: &str| match id {
+            "zeta" => 900,
+            "alpha" => 100,
+            _ => 0,
+        };
+        let order = library_order_read(&s, LibraryView::All, LibrarySort::LastRead, "", &none, &reads);
+        // Zeta (900), alpha (100), then the unread by when they were touched: Berserk 50, Delta 5.
+        assert_eq!(order, [2, 1, 0, 3]);
+        // Without reading times it is the recently-touched order.
+        assert_eq!(
+            library_order(&s, LibraryView::All, LibrarySort::LastRead, "", &none),
+            library_order(&s, LibraryView::All, LibrarySort::Recent, "", &none)
         );
     }
 

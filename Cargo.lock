@@ -3722,6 +3722,7 @@ dependencies = [
  "catalog",
  "converter",
  "device-profiles",
+ "flate2",
  "futures-util",
  "image",
  "library",

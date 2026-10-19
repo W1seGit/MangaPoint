@@ -14,7 +14,9 @@
 //! inside the library.
 
 use crate::presets::PresetsDb;
-use crate::settings::{ConversionField, ConversionSettings};
+use crate::reading::ReadProgress;
+use crate::settings::{ConversionField, ConversionSettings, PageQuality};
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
@@ -78,6 +80,10 @@ pub struct DownloadedChapter {
     /// Size of the saved pages on disk.
     pub bytes: u64,
     pub downloaded_at: u64,
+    /// The page quality these pages were saved with. Chapters downloaded
+    /// before it was recorded are `None`: not known.
+    #[serde(default)]
+    pub quality: Option<PageQuality>,
 }
 
 /// A source's copy of a series, saved with it so the series can be opened and
@@ -196,9 +202,41 @@ impl DownloadedSeries {
 pub struct LibraryDb {
     #[serde(deserialize_with = "crate::json::lenient_vec")]
     pub series: Vec<DownloadedSeries>,
+    /// Where the user is in each series they read, by series id. Entries for
+    /// series that are gone are dropped with them; see [`LibraryDb::reading_of`].
+    #[serde(default, deserialize_with = "crate::json::lenient_map")]
+    pub reading: BTreeMap<String, ReadProgress>,
 }
 
 impl LibraryDb {
+    /// How far the user has read a series, if at all.
+    pub fn reading_of(&self, series_id: &str) -> Option<&ReadProgress> {
+        self.reading.get(series_id).filter(|_| self.find(series_id).is_some())
+    }
+
+    /// Change a series' reading progress (made if there is none). Nothing
+    /// happens, and `None` comes back, for a series that is not in the library.
+    pub fn with_reading<R>(
+        &mut self,
+        series_id: &str,
+        change: impl FnOnce(&mut ReadProgress) -> R,
+    ) -> Option<R> {
+        self.find(series_id)?;
+        Some(change(self.reading.entry(series_id.to_string()).or_default()))
+    }
+
+    /// Drop progress that points at nothing: series that are gone, and chapters
+    /// a series no longer has.
+    pub fn prune_reading(&mut self) {
+        let series = &self.series;
+        self.reading.retain(|id, _| series.iter().any(|s| &s.id == id));
+        for s in &self.series {
+            if let Some(p) = self.reading.get_mut(&s.id) {
+                p.retain_chapters(|k| s.chapters.iter().any(|c| c.key == k));
+            }
+        }
+    }
+
     pub fn find(&self, series_id: &str) -> Option<&DownloadedSeries> {
         self.series.iter().find(|s| s.id == series_id)
     }
@@ -278,7 +316,11 @@ impl LibraryDb {
         };
         let before = s.chapters.len();
         s.chapters.retain(|c| c.key != key);
-        s.chapters.len() != before
+        let removed = s.chapters.len() != before;
+        if let Some(p) = self.reading.get_mut(series_id) {
+            p.forget_chapter(key);
+        }
+        removed
     }
 
     /// Put a series in the library without downloading anything. If it is
@@ -320,6 +362,7 @@ impl LibraryDb {
 
     pub fn remove_series(&mut self, series_id: &str) -> Option<DownloadedSeries> {
         let i = self.series.iter().position(|s| s.id == series_id)?;
+        self.reading.remove(series_id);
         Some(self.series.remove(i))
     }
 
@@ -481,6 +524,11 @@ impl LibraryFiles {
         &self.root
     }
 
+    /// Every folder series are kept in: the one new series go to, then the others.
+    pub fn roots(&self) -> impl Iterator<Item = &Path> {
+        std::iter::once(self.root.as_path()).chain(self.others.iter().map(PathBuf::as_path))
+    }
+
     /// The folder a series is kept in: the one it is already in, or else the
     /// one new series go to.
     fn series_root(&self, series_id: &str) -> &Path {
@@ -603,6 +651,7 @@ mod tests {
             pages: 10,
             bytes: 1000,
             downloaded_at: 5,
+            quality: None,
         }
     }
 
@@ -983,5 +1032,75 @@ mod tests {
         assert!(!old.join("kept-series").exists());
         assert!(old.exists(), "the folder itself is left alone");
         let _ = fs::remove_dir_all(&base);
+    }
+    #[test]
+    fn reading_progress_survives_a_restart_exactly() {
+        let dir = temp("reading");
+        let path = dir.join("library.json");
+        let mut db = LibraryDb::default();
+        let id = db.record_chapter("Solo", &ConversionSettings::default(), chapter(Some(1.0), 1, "a"), 1);
+        db.record_chapter_if_present("Solo", chapter(Some(2.0), 2, "b"), 2);
+        db.with_reading(&id, |p| {
+            p.record("c2", 7, 0.3125, 20, 1234);
+            p.mark_read("c1", 10, 1200);
+            p.prefs.mode = Some(crate::ReadMode::Scroll);
+            p.prefs.direction = Some(crate::PageDirection::RightToLeft);
+            p.prefs.fit = Some(crate::ReadFit::Height);
+        })
+        .unwrap();
+        let file = crate::JsonFile::<LibraryDb>::new(&path);
+        file.save(&db).unwrap();
+        let back = file.load();
+        assert_eq!(back, db);
+        let p = back.reading_of(&id).unwrap();
+        assert_eq!((p.chapter.as_deref(), p.page, p.scroll, p.last_read_at), (Some("c2"), 7, 0.3125, 1234));
+        assert!(p.is_read("c1") && !p.is_read("c2"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_old_library_file_without_reading_or_quality_loads() {
+        let old = r#"{"series":[{"id":"a","title":"A","chapters":[{"key":"c1","pages":3}]}]}"#;
+        let db: LibraryDb = serde_json::from_str(old).unwrap();
+        assert!(db.reading.is_empty());
+        assert_eq!(db.series[0].chapters[0].quality, None);
+        // One bad progress entry does not cost the others.
+        let mixed = r#"{"series":[{"id":"a","title":"A"}],"reading":{"a":{"page":4},"b":{"page":"x"}}}"#;
+        let db: LibraryDb = serde_json::from_str(mixed).unwrap();
+        assert_eq!(db.reading_of("a").unwrap().page, 4);
+        assert!(!db.reading.contains_key("b"));
+    }
+
+    #[test]
+    fn deleting_a_chapter_or_series_cleans_its_progress() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.record_chapter("Solo", &defaults, chapter(Some(1.0), 1, "a"), 1);
+        db.record_chapter_if_present("Solo", chapter(Some(2.0), 2, "b"), 2);
+        db.with_reading(&id, |p| {
+            p.record("c1", 1, 0.0, 5, 10);
+            p.mark_read("c2", 5, 11);
+        });
+        db.remove_chapter(&id, "c1");
+        let p = db.reading_of(&id).unwrap();
+        assert!(p.chapter.is_none() && !p.chapters.contains_key("c1") && p.is_read("c2"));
+        // Progress for a chapter that is no longer there is ignored and can be pruned.
+        db.with_reading(&id, |p| p.mark_read("c9", 3, 12));
+        db.prune_reading();
+        assert!(!db.reading_of(&id).unwrap().chapters.contains_key("c9"));
+        db.remove_series(&id);
+        assert!(db.reading.is_empty(), "no dangling entry");
+        // A series that is not in the library cannot get progress.
+        assert!(db.with_reading("nope", |_| ()).is_none());
+        assert!(db.reading.is_empty());
+    }
+
+    #[test]
+    fn the_quality_a_chapter_was_saved_with_round_trips() {
+        let mut c = chapter(Some(1.0), 1, "a");
+        c.quality = Some(PageQuality::Full);
+        let json = serde_json::to_string(&c).unwrap();
+        let back: DownloadedChapter = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.quality, Some(PageQuality::Full));
     }
 }
