@@ -2,7 +2,7 @@
 // survives a reload, Continue, and removing a book.
 //   node tools/web-e2e/e2e-read.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { fx, openApp, nav, importBooks, titles, openBook, counter, chapterLabel, pageNo, hScroll, closeReader } from './helpers.mjs';
+import { fx, openApp, nav, importBooks, titles, openBook, counter, chapterLabel, pageNo, hScroll, closeReader, readerSetting } from './helpers.mjs';
 
 const viewport = process.argv[2] || 'desktop';
 const touch = viewport !== 'desktop';
@@ -87,14 +87,7 @@ try {
 
   // ---- direction: right to left ----
   await showBar();
-  if (touch) {
-    await page.tap('#reader-view-button');
-    await sleep(250);
-    await page.tap('#reader-view-menu #reader-dir-rtl');
-    await page.tap('.menu-scrim');
-  } else {
-    await page.click('#reader-dir-rtl');
-  }
+  await readerSetting(page, '#reader-dir-rtl', touch);
   await sleep(250);
   r.check('right to left is on', (await page.eval("document.querySelector('#reader').dataset.dir")) === 'rtl');
   await hideBar();
@@ -121,14 +114,7 @@ try {
   await showBar();
 
   // ---- scroll mode ----
-  if (touch) {
-    await page.tap('#reader-view-button');
-    await sleep(250);
-    await page.tap('#reader-view-menu #reader-mode-scroll');
-    await page.tap('.menu-scrim');
-  } else {
-    await page.click('#reader-mode-scroll');
-  }
+  await readerSetting(page, '#reader-mode-scroll', touch);
   await sleep(1200);
   r.check('scroll mode shows a strip', !!(await page.rect('#reader-strip')) || (await page.eval("!!document.querySelector('#reader-strip')")));
   const live0 = await page.eval("document.querySelectorAll('.reader-tile img').length");

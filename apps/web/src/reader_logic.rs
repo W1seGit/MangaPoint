@@ -160,13 +160,10 @@ pub fn zone_action(zone: Zone, direction: PageDirection) -> Action {
     }
 }
 
-/// A tap in the strip: the sides scroll a screen, the middle toggles the bar.
-pub fn strip_tap_action(zone: Zone) -> Action {
-    match zone {
-        Zone::Middle => Action::ToggleBar,
-        Zone::Left => Action::ScrollPages(-1),
-        Zone::Right => Action::ScrollPages(1),
-    }
+/// A tap in the strip: anywhere shows or hides the bars (the strip scrolls by
+/// itself, so the sides need no page-turn).
+pub fn strip_tap_action(_zone: Zone) -> Action {
+    Action::ToggleBar
 }
 
 /// What a swipe along the page does: dragging the page away turns to the next
@@ -253,6 +250,87 @@ pub fn preload_pages(book: &Book, chapter: usize, page: usize) -> Vec<usize> {
     out
 }
 
+/// The one zoom setting the visitor sees: how the page is fitted, or a
+/// percentage of that fit. It is stored as the fit plus the zoom factor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZoomChoice {
+    Fit,
+    Width,
+    Original,
+    Percent(u16),
+}
+
+impl ZoomChoice {
+    /// What the zoom box shows.
+    pub fn label(self) -> String {
+        match self {
+            ZoomChoice::Fit => "Fit page".to_string(),
+            ZoomChoice::Width => "Fit width".to_string(),
+            ZoomChoice::Original => "Original size".to_string(),
+            ZoomChoice::Percent(p) => format!("{p}%"),
+        }
+    }
+
+    /// What was typed in the box: "125", "125%", "fit", "fit width", "original".
+    pub fn parse(text: &str) -> Option<ZoomChoice> {
+        let text = text.trim().to_lowercase();
+        if text.contains("width") {
+            return Some(ZoomChoice::Width);
+        }
+        if text.starts_with("orig") {
+            return Some(ZoomChoice::Original);
+        }
+        if text.starts_with("fit") || text.starts_with("page") || text.starts_with("height") {
+            return Some(ZoomChoice::Fit);
+        }
+        let number: u32 = text.trim_end_matches('%').trim().parse().ok()?;
+        Some(ZoomChoice::Percent(number.clamp(u32::from(ZOOM_MIN), u32::from(ZOOM_MAX)) as u16))
+    }
+}
+
+/// The choice that describes this fit and zoom.
+pub fn zoom_choice(fit: ReadFit, zoom: u16) -> ZoomChoice {
+    if zoom == 100 {
+        match fit {
+            ReadFit::Height => ZoomChoice::Fit,
+            ReadFit::Width => ZoomChoice::Width,
+            ReadFit::Original => ZoomChoice::Original,
+        }
+    } else {
+        ZoomChoice::Percent(zoom)
+    }
+}
+
+/// The fit and zoom a choice stands for. A percentage keeps the current fit.
+pub fn apply_zoom_choice(choice: ZoomChoice, current_fit: ReadFit) -> (ReadFit, u16) {
+    match choice {
+        ZoomChoice::Fit => (ReadFit::Height, 100),
+        ZoomChoice::Width => (ReadFit::Width, 100),
+        ZoomChoice::Original => (ReadFit::Original, 100),
+        ZoomChoice::Percent(p) => (current_fit, p.clamp(ZOOM_MIN, ZOOM_MAX)),
+    }
+}
+
+/// How much of the chapter is behind the reader, in whole percent. `page` is
+/// the zero-based page (`count` or more is the end card); `along` is how far
+/// down the strip the reader is, 0 to 1.
+pub fn percent_finished(paged: bool, page: usize, count: usize, along: f32) -> u32 {
+    if count == 0 {
+        return 0;
+    }
+    if paged {
+        ((page.min(count) + 1).min(count) * 100 / count) as u32
+    } else {
+        (along.clamp(0.0, 1.0) * 100.0).round() as u32
+    }
+}
+
+/// A swipe that starts at the left edge of the screen and goes right leaves
+/// the book (the back gesture of phones).
+pub fn is_edge_back(start_x: f64, dx: f64, dy: f64) -> bool {
+    start_x.is_finite() && start_x <= 28.0 && dx > 70.0 && dx > dy.abs() * 1.5
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -336,8 +414,8 @@ mod tests {
         assert_eq!(zone_action(Zone::Right, Rtl), Action::Prev);
         assert_eq!(zone_action(Zone::Left, Rtl), Action::Next);
         assert_eq!(zone_action(Zone::Middle, Rtl), Action::ToggleBar);
-        assert_eq!(strip_tap_action(Zone::Right), Action::ScrollPages(1));
-        assert_eq!(strip_tap_action(Zone::Left), Action::ScrollPages(-1));
+        assert_eq!(strip_tap_action(Zone::Right), Action::ToggleBar);
+        assert_eq!(strip_tap_action(Zone::Left), Action::ToggleBar);
     }
 
     #[test]
@@ -382,5 +460,49 @@ mod tests {
         assert_eq!(preload_pages(&b, 0, 0), vec![0, 1, 2]);
         assert_eq!(preload_pages(&b, 1, 0), vec![3, 4, 2]);
         assert_eq!(preload_pages(&b, 1, 2), vec![4], "on the end card only the page behind");
+    }
+
+    #[test]
+    fn one_zoom_setting_covers_fit_and_percent() {
+        assert_eq!(zoom_choice(ReadFit::Height, 100), ZoomChoice::Fit);
+        assert_eq!(zoom_choice(ReadFit::Width, 100), ZoomChoice::Width);
+        assert_eq!(zoom_choice(ReadFit::Original, 100), ZoomChoice::Original);
+        assert_eq!(zoom_choice(ReadFit::Width, 150), ZoomChoice::Percent(150));
+        assert_eq!(apply_zoom_choice(ZoomChoice::Fit, ReadFit::Width), (ReadFit::Height, 100));
+        assert_eq!(apply_zoom_choice(ZoomChoice::Width, ReadFit::Height), (ReadFit::Width, 100));
+        assert_eq!(apply_zoom_choice(ZoomChoice::Percent(125), ReadFit::Width), (ReadFit::Width, 125));
+        assert_eq!(apply_zoom_choice(ZoomChoice::Percent(9000), ReadFit::Height), (ReadFit::Height, ZOOM_MAX));
+        assert_eq!(ZoomChoice::Percent(125).label(), "125%");
+        assert_eq!(ZoomChoice::Fit.label(), "Fit page");
+    }
+
+    #[test]
+    fn typed_zooms_are_understood() {
+        assert_eq!(ZoomChoice::parse("fit"), Some(ZoomChoice::Fit));
+        assert_eq!(ZoomChoice::parse("Fit width"), Some(ZoomChoice::Width));
+        assert_eq!(ZoomChoice::parse("original size"), Some(ZoomChoice::Original));
+        assert_eq!(ZoomChoice::parse(" 150 % "), Some(ZoomChoice::Percent(150)));
+        assert_eq!(ZoomChoice::parse("10"), Some(ZoomChoice::Percent(ZOOM_MIN)));
+        assert_eq!(ZoomChoice::parse("nonsense"), None);
+    }
+
+    #[test]
+    fn percent_finished_of_a_chapter() {
+        assert_eq!(percent_finished(true, 0, 20, 0.0), 5);
+        assert_eq!(percent_finished(true, 9, 20, 0.0), 50);
+        assert_eq!(percent_finished(true, 19, 20, 0.0), 100);
+        assert_eq!(percent_finished(true, 20, 20, 0.0), 100); // the end card
+        assert_eq!(percent_finished(true, 0, 0, 0.0), 0);
+        assert_eq!(percent_finished(false, 3, 20, 0.426), 43);
+        assert_eq!(percent_finished(false, 0, 20, 7.0), 100);
+    }
+
+    #[test]
+    fn the_back_swipe_starts_at_the_left_edge() {
+        assert!(is_edge_back(6.0, 120.0, 10.0));
+        assert!(!is_edge_back(200.0, 120.0, 10.0));
+        assert!(!is_edge_back(6.0, 40.0, 0.0));
+        assert!(!is_edge_back(6.0, 100.0, 90.0));
+        assert!(!is_edge_back(6.0, -120.0, 0.0));
     }
 }

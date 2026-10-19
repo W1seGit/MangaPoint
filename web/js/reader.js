@@ -277,6 +277,9 @@ function onPointerUp(e) {
   const rect = stage.getBoundingClientRect();
   if (!g.moved && dt < 600) {
     emit({ t: 'tap', x: e.clientX - rect.left, y: e.clientY - rect.top, w: rect.width, h: rect.height });
+  } else if (g.x - rect.left <= 28 && dx > 70 && dx > Math.abs(dy) * 1.5 && dt < 900) {
+    // A swipe in from the left edge leaves the book, like the back gesture of a phone.
+    emit({ t: 'edge_back' });
   } else if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 900) {
     // Only turns the page when the page is not zoomed past the window.
     const zoomed = stage.scrollWidth > stage.clientWidth + 4;
@@ -294,6 +297,12 @@ function onWheel(e) {
 
 let posTimer = 0;
 let lastPos = '';
+let lastTop = 0;
+let lastUp = null;
+let quietUntil = 0;
+const quiet = (ms = 700) => {
+  quietUntil = performance.now() + ms;
+};
 
 function reportPosition(stage) {
   posTimer = 0;
@@ -324,6 +333,19 @@ function reportPosition(stage) {
 
 function onScroll(e) {
   const stage = e.currentTarget;
+  // Scrolling down gets the bars out of the way, scrolling up brings them back.
+  const top = stage.scrollTop;
+  const delta = top - lastTop;
+  if (performance.now() >= quietUntil && Math.abs(delta) >= 6) {
+    const up = delta < 0 || top < 24;
+    if (up !== lastUp) {
+      lastUp = up;
+      emit({ t: 'scroll', up });
+    }
+    lastTop = top;
+  } else if (Math.abs(delta) >= 6) {
+    lastTop = top;
+  }
   if (!posTimer) posTimer = setTimeout(() => reportPosition(stage), 150);
 }
 
@@ -335,6 +357,9 @@ let ignorePop = false;
 export const commands = {
   /** The reader opened: the system Back button should close it, not leave the site. */
   opened() {
+    lastTop = 0;
+    lastUp = null;
+    quiet(1000);
     if (!pushed) {
       history.pushState({ reader: 1 }, '');
       pushed = true;
@@ -358,6 +383,7 @@ export const commands = {
   },
   /** Put page `index` at the top of the strip (retrying while pages above settle). */
   scrollToPage(index, frac) {
+    quiet(1000);
     let tries = 0;
     const go = () => {
       const stage = document.querySelector('.reader-stage');
@@ -371,6 +397,7 @@ export const commands = {
     requestAnimationFrame(go);
   },
   scrollTop() {
+    quiet();
     document.querySelector('.reader-stage')?.scrollTo({ top: 0 });
   },
   pin,
@@ -384,6 +411,8 @@ export const commands = {
 export function installReader(emitter) {
   emit = emitter;
   window.addEventListener('keydown', onKey);
+  // Anything the visitor does by hand may show or hide the bars: the next scroll decides afresh.
+  window.addEventListener('pointerdown', () => { lastUp = null; }, true);
   window.addEventListener('popstate', () => {
     if (ignorePop) {
       ignorePop = false;

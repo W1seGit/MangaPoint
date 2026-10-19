@@ -76,6 +76,11 @@ export async function closeReader(page) {
     const [x, y, w, h] = await page.rect('#reader-stage');
     await page.clickAt(x + w / 2, y + h * 0.55); // the middle third shows the bar
     await sleep(250);
+    // A tap can land on the end card (which takes no taps): scrolling up shows the bars too.
+    if (!(await page.eval("document.querySelector('#reader')?.classList.contains('show-bar')"))) {
+      await page.eval("document.querySelector('#reader-stage')?.scrollBy(0, -160)");
+      await sleep(400);
+    }
   }
   await page.click('#reader-back');
   await page.waitFor("!document.querySelector('#reader')", 10, 'the reader to close');
@@ -86,4 +91,16 @@ export async function closeReader(page) {
 export async function clearToasts(page) {
   await page.eval("document.querySelectorAll('.toast-x').forEach((b) => b.click())");
   await sleep(600);
+}
+
+/** Open the reading settings page, press one thing in it and close it again. */
+export async function readerSetting(page, selector, touch = false) {
+  const press = (sel) => (touch ? page.tap(sel) : page.click(sel));
+  await press('#reader-view-button');
+  await page.waitFor("!!document.querySelector('#reader-settings')", 5, 'the reading settings');
+  await sleep(250);
+  await press(selector);
+  await sleep(250);
+  await press('#reader-settings-close');
+  await sleep(300);
 }

@@ -78,6 +78,12 @@ pub enum Event {
     Zoom { pct: f64 },
     #[serde(rename = "wheel")]
     Wheel { dy: f64 },
+    /// The page was scrolled: up shows the bars, down hides them.
+    #[serde(rename = "scroll")]
+    Scrolled { up: bool },
+    /// A swipe from the left edge: back to the library.
+    #[serde(rename = "edge_back")]
+    EdgeBack,
     #[serde(rename = "pos")]
     Pos {
         chapter: String,

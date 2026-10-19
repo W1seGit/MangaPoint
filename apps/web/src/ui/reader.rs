@@ -2,11 +2,11 @@
 //! left, with keys, taps, swipes and pinch. The page pictures are filled in by
 //! the browser's glue (`web/js/reader.js`) only while they are near the screen.
 
-use super::widgets::{EmptyState, Icon};
+use super::widgets::{EmptyState, Icon, SettingRow};
 use crate::app::{Ctx, Reading};
 use crate::bridge::{self, Event};
 use crate::model::Book;
-use crate::reader_logic::{self as logic, Action, ReaderLook, Zone};
+use crate::reader_logic::{self as logic, Action, ReaderLook, Zone, ZoomChoice};
 use dioxus::prelude::*;
 use library::{PageDirection, ReadFit, ReadMode};
 use serde_json::json;
@@ -264,6 +264,13 @@ pub fn handle_reader_event(ctx: Ctx, ev: Event) {
             let z = logic::zoom_from_pinch(pct);
             set_prefs(ctx, |p| p.zoom = Some(z));
         }
+        Event::Scrolled { up } => {
+            // Scrolling down gets the bars out of the way, scrolling up brings them back.
+            if r.bar != up {
+                set_reading(ctx, |r| r.bar = up);
+            }
+        }
+        Event::EdgeBack => close_reader(ctx),
         Event::Wheel { dy } => {
             let z = logic::zoom_wheel(look.zoom, dy);
             set_prefs(ctx, |p| p.zoom = Some(z));
@@ -393,6 +400,7 @@ fn ReaderScreen(opened: u64) -> Element {
             style: "--zoom: {zoom};",
             ReaderBar {
                 title: book.title.clone(), chapter_label: label.clone(), items, current, look,
+                percent: logic::percent_finished(look.mode == ReadMode::Paged, page, chapter.count, r.scroll),
                 page: if look.mode == ReadMode::Paged { Some((page.min(chapter.count.saturating_sub(1)) + 1, chapter.count)) } else { None },
                 strip_page: if look.mode == ReadMode::Scroll { Some((r.page + 1, chapter.count)) } else { None },
             }
@@ -485,7 +493,9 @@ fn EndCard(title: String, note: String, next: Option<String>, on_next: EventHand
     }
 }
 
-/// The bar across the top: it hides while reading and shows on a tap in the middle.
+/// Chrome over the page: arrows and the chapter across the top, the way out,
+/// the title and how far along you are at the bottom, and the settings button.
+/// Both bars fade into the page, and slide away while reading.
 #[component]
 fn ReaderBar(
     title: String,
@@ -493,26 +503,31 @@ fn ReaderBar(
     items: Vec<(usize, String, bool)>,
     current: usize,
     look: ReaderLook,
+    percent: u32,
     page: Option<(usize, usize)>,
     strip_page: Option<(usize, usize)>,
 ) -> Element {
     let ctx = use_context::<Ctx>();
     let mut menu = use_signal(|| false);
-    let mut view = use_signal(|| false);
+    let mut settings = use_signal(|| false);
     let counter = page.or(strip_page);
+    let rtl = look.direction == PageDirection::RightToLeft && look.mode == ReadMode::Paged;
+    // The left arrow is always on the left: in right-to-left reading it goes on.
+    let (left_action, left_label, right_action, right_label) = if rtl {
+        (Action::Next, "Next page", Action::Prev, "Previous page")
+    } else {
+        (Action::Prev, "Previous page", Action::Next, "Next page")
+    };
     rsx! {
-        header { class: "reader-bar",
-            button { class: "btn", id: "reader-back", "aria-label": "Back to library", title: "Back (Esc)",
-                onclick: move |_| close_reader(ctx),
-                Icon { name: "arrow-left", size: 16 } span { class: "reader-back-text", "Back" }
+        header { class: "reader-bar reader-top",
+            button { class: "reader-arrow", id: "reader-arrow-left", "aria-label": "{left_label}", title: "{left_label}",
+                onclick: move |_| { apply_action(ctx, left_action); set_reading(ctx, |r| r.bar = true); },
+                Icon { name: "chevron-left", size: 26 }
             }
-            div { class: "reader-title grow",
-                strong { id: "reader-title", title: "{title}", "{title}" }
-            }
-            div { class: "menu-anchor",
-                button { class: "btn", id: "reader-chapter-picker", "aria-label": "Chapter", title: "Choose a chapter ( [ and ] )",
+            div { class: "menu-anchor reader-chapter-anchor",
+                button { class: "reader-chapter-link", id: "reader-chapter-picker", "aria-label": "Chapter", title: "Choose a chapter ( [ and ] )",
                     onclick: move |_| menu.set(!menu()),
-                    "{chapter_label}" Icon { name: "chevron-down", size: 14 }
+                    span { class: "reader-chapter-text", "{chapter_label}" } Icon { name: "chevron-down", size: 14 }
                 }
                 if menu() {
                     div { class: "menu-scrim", onclick: move |_| menu.set(false) }
@@ -529,21 +544,73 @@ fn ReaderBar(
                     }
                 }
             }
-            span { class: "reader-counter", id: "reader-page-counter", "aria-label": "Page", "aria-live": "polite",
-                {match counter { Some((p, n)) => format!("{p} / {n}"), None => "\u{2013}".to_string() }}
+            button { class: "reader-arrow", id: "reader-arrow-right", "aria-label": "{right_label}", title: "{right_label}",
+                onclick: move |_| { apply_action(ctx, right_action); set_reading(ctx, |r| r.bar = true); },
+                Icon { name: "chevron-right", size: 26 }
             }
-            div { class: "reader-inline",
-                ViewControls { look }
+        }
+        footer { class: "reader-bar reader-bottom",
+            button { class: "reader-round", id: "reader-back", "aria-label": "Back to library", title: "Back to library (Esc)",
+                onclick: move |_| close_reader(ctx),
+                Icon { name: "arrow-left", size: 20 }
             }
-            div { class: "menu-anchor reader-view",
-                button { class: "btn", id: "reader-view-button", "aria-label": "View options", title: "Mode, direction, fit and zoom",
-                    onclick: move |_| view.set(!view()),
-                    Icon { name: "sliders-horizontal", size: 16 }
+            div { class: "reader-caption",
+                strong { id: "reader-title", title: "{title}", "{title}" }
+                span { class: "reader-percent", id: "reader-percent", "{percent}%" }
+                span { class: "sr-only", id: "reader-page-counter", "aria-label": "Page", "aria-live": "polite",
+                    {match counter { Some((p, n)) => format!("{p} / {n}"), None => "\u{2013}".to_string() }}
                 }
-                if view() {
-                    div { class: "menu-scrim", onclick: move |_| view.set(false) }
-                    div { class: "menu down reader-view-menu", id: "reader-view-menu",
-                        ViewControls { look }
+            }
+            button { class: "reader-round", id: "reader-view-button", "aria-label": "Reading settings", title: "Reading settings",
+                onclick: move |_| settings.set(true),
+                Icon { name: "settings", size: 20 }
+            }
+        }
+        if settings() {
+            ReaderSettings { look, on_close: move |_| settings.set(false) }
+        }
+    }
+}
+
+/// The reading settings, full screen: how the book is shown and how it is read.
+#[component]
+fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
+    let ctx = use_context::<Ctx>();
+    rsx! {
+        div { class: "reader-settings", id: "reader-settings", role: "dialog", "aria-label": "Reading settings",
+            header { class: "reader-settings-head",
+                h2 { "Reading settings" }
+                button { class: "reader-round", id: "reader-settings-close", "aria-label": "Close", title: "Close",
+                    onclick: move |_| on_close.call(()), Icon { name: "x", size: 20 }
+                }
+            }
+            div { class: "reader-settings-body",
+                SettingRow { label: "Reading mode", help: "Paged shows one page at a time. Scroll is one long strip, best for webtoons and manhwa.",
+                    div { class: "seg", role: "group", "aria-label": "View mode",
+                        button { id: "reader-mode-paged", class: on(look.mode == ReadMode::Paged), "aria-pressed": "{look.mode == ReadMode::Paged}",
+                            onclick: move |_| set_mode(ctx, ReadMode::Paged), "Paged" }
+                        button { id: "reader-mode-scroll", class: on(look.mode == ReadMode::Scroll), "aria-pressed": "{look.mode == ReadMode::Scroll}",
+                            onclick: move |_| set_mode(ctx, ReadMode::Scroll), "Scroll" }
+                    }
+                }
+                if look.mode == ReadMode::Paged {
+                    SettingRow { label: "Reading direction", help: "Manga is read right to left: the next page is on the left.",
+                        div { class: "seg", role: "group", "aria-label": "Reading direction",
+                            button { id: "reader-dir-ltr", class: on(look.direction == PageDirection::LeftToRight),
+                                "aria-pressed": "{look.direction == PageDirection::LeftToRight}",
+                                onclick: move |_| set_prefs(ctx, |p| p.direction = Some(PageDirection::LeftToRight)), "Left to right" }
+                            button { id: "reader-dir-rtl", class: on(look.direction == PageDirection::RightToLeft),
+                                "aria-pressed": "{look.direction == PageDirection::RightToLeft}",
+                                onclick: move |_| set_prefs(ctx, |p| p.direction = Some(PageDirection::RightToLeft)), "Right to left" }
+                        }
+                    }
+                }
+                SettingRow { label: "Zoom", help: "Fit the whole page, fit its width, show it at its original size, or pick a percentage. Pinching, or Ctrl and the mouse wheel, also zoom.",
+                    ZoomMenu { look }
+                }
+                SettingRow { label: "Full screen", help: "Hide the browser's own bars while you read.",
+                    button { class: "btn", id: "reader-fullscreen", onclick: move |_| apply_action(ctx, Action::Fullscreen),
+                        Icon { name: "maximize", size: 16 } "Full screen"
                     }
                 }
             }
@@ -551,49 +618,62 @@ fn ReaderBar(
     }
 }
 
-/// Mode, direction, fit and zoom.
+/// The page zoom: a box showing it (type a percentage in it) and a list of ready-made ones,
+/// the same menu as the page preview in the desktop app.
 #[component]
-fn ViewControls(look: ReaderLook) -> Element {
+fn ZoomMenu(look: ReaderLook) -> Element {
     let ctx = use_context::<Ctx>();
+    let mut open = use_signal(|| false);
+    let selected = logic::zoom_choice(look.fit, look.zoom);
+    let mut choose = move |choice: ZoomChoice| {
+        let (fit, zoom) = logic::apply_zoom_choice(choice, look_fit(ctx));
+        set_prefs(ctx, |p| {
+            p.fit = Some(fit);
+            p.zoom = Some(zoom);
+        });
+        open.set(false);
+    };
+    let item = |c: ZoomChoice| if selected == c { "menu-item on" } else { "menu-item" };
     rsx! {
-        div { class: "reader-controls",
-            div { class: "seg", role: "group", "aria-label": "View mode",
-                button { id: "reader-mode-paged", class: on(look.mode == ReadMode::Paged), "aria-label": "Paged", "aria-pressed": "{look.mode == ReadMode::Paged}",
-                    title: "One page at a time", onclick: move |_| set_mode(ctx, ReadMode::Paged), "Paged" }
-                button { id: "reader-mode-scroll", class: on(look.mode == ReadMode::Scroll), "aria-label": "Scroll", "aria-pressed": "{look.mode == ReadMode::Scroll}",
-                    title: "One long strip", onclick: move |_| set_mode(ctx, ReadMode::Scroll), "Scroll" }
-            }
-            if look.mode == ReadMode::Paged {
-                div { class: "seg", role: "group", "aria-label": "Reading direction",
-                    button { id: "reader-dir-ltr", class: on(look.direction == PageDirection::LeftToRight), "aria-label": "Left to right",
-                        "aria-pressed": "{look.direction == PageDirection::LeftToRight}",
-                        onclick: move |_| set_prefs(ctx, |p| p.direction = Some(PageDirection::LeftToRight)), "Left to right" }
-                    button { id: "reader-dir-rtl", class: on(look.direction == PageDirection::RightToLeft), "aria-label": "Right to left",
-                        "aria-pressed": "{look.direction == PageDirection::RightToLeft}",
-                        onclick: move |_| set_prefs(ctx, |p| p.direction = Some(PageDirection::RightToLeft)), "Right to left" }
+        div { class: if open() { "zoom-menu is-open" } else { "zoom-menu" },
+            div { class: "zoom-field",
+                span { class: "zoom-icon", Icon { name: "zoom-in", size: 15 } }
+                input {
+                    id: "reader-zoom-box", r#type: "text", value: "{selected.label()}", "aria-label": "Zoom", spellcheck: "false",
+                    onfocus: move |_| open.set(true),
+                    onchange: move |e| {
+                        if let Some(choice) = ZoomChoice::parse(&e.value()) { choose(choice); }
+                    },
+                }
+                button { class: "zoom-chevron", id: "reader-zoom-toggle", "aria-label": "Zoom choices", title: "Zoom choices", onclick: move |_| open.set(!open()),
+                    Icon { name: "chevron-down", size: 15 }
                 }
             }
-            div { class: "seg", role: "group", "aria-label": "Fit",
-                button { id: "reader-fit-width", class: on(look.fit == ReadFit::Width), "aria-label": "Fit width", "aria-pressed": "{look.fit == ReadFit::Width}",
-                    onclick: move |_| set_prefs(ctx, |p| p.fit = Some(ReadFit::Width)), "Width" }
-                button { id: "reader-fit-height", class: on(look.fit == ReadFit::Height), "aria-label": "Fit height", "aria-pressed": "{look.fit == ReadFit::Height}",
-                    onclick: move |_| set_prefs(ctx, |p| p.fit = Some(ReadFit::Height)), "Height" }
-                button { id: "reader-fit-original", class: on(look.fit == ReadFit::Original), "aria-label": "Original size", "aria-pressed": "{look.fit == ReadFit::Original}",
-                    onclick: move |_| set_prefs(ctx, |p| p.fit = Some(ReadFit::Original)), "Original" }
-            }
-            div { class: "reader-zoom",
-                button { class: "btn ghost", id: "reader-zoom-out", "aria-label": "Zoom out", title: "Zoom out ( - )",
-                    onclick: move |_| apply_action(ctx, Action::ZoomOut), Icon { name: "zoom-out", size: 16 } }
-                span { id: "reader-zoom-level", "aria-label": "Zoom", "{look.zoom}%" }
-                button { class: "btn ghost", id: "reader-zoom-in", "aria-label": "Zoom in", title: "Zoom in ( + )",
-                    onclick: move |_| apply_action(ctx, Action::ZoomIn), Icon { name: "zoom-in", size: 16 } }
-            }
-            button { class: "btn ghost reader-fullscreen", id: "reader-fullscreen", "aria-label": "Full screen", title: "Full screen (F11)",
-                onclick: move |_| apply_action(ctx, Action::Fullscreen),
-                Icon { name: "maximize", size: 16 }
+            if open() {
+                div { class: "menu-scrim", onclick: move |_| open.set(false) }
+                div { class: "menu down zoom-list", id: "reader-zoom-list",
+                    button { class: item(ZoomChoice::Fit), id: "reader-fit-height", onclick: move |_| choose(ZoomChoice::Fit), "Fit page" }
+                    button { class: item(ZoomChoice::Width), id: "reader-fit-width", onclick: move |_| choose(ZoomChoice::Width), "Fit width" }
+                    button { class: item(ZoomChoice::Original), id: "reader-fit-original", onclick: move |_| choose(ZoomChoice::Original), "Original size" }
+                    div { class: "menu-sep" }
+                    for percent in [50u16, 75, 90, 100, 125, 150, 200, 300] {
+                        button {
+                            key: "{percent}", class: item(ZoomChoice::Percent(percent)),
+                            onclick: move |_| choose(ZoomChoice::Percent(percent)),
+                            "{percent}%"
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+/// The fit in use for the book being read.
+fn look_fit(ctx: Ctx) -> ReadFit {
+    let Some(r) = ctx.reading.peek().clone() else { return ReadFit::Height };
+    let Some(book) = ctx.book(&r.book_id) else { return ReadFit::Height };
+    look_of(ctx, &book).fit
 }
 
 pub fn zone_label(z: Zone) -> &'static str {

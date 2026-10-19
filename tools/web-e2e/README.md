@@ -31,6 +31,7 @@ entry zip and a 160-page 1.7 GB book. They come from
 |---|---|
 | `e2e-import` | every format, a folder, loose pictures, 7z/PDF/garbage/truncated/traversal/empty/non-picture files, 20,000 entries, page stays alive, no sideways scroll |
 | `e2e-read` | keys, taps, swipes, pinch, RTL, chapter picker, end card, scroll mode, Continue, progress after reload, restoring the scroll position, removing a book |
+| `e2e-chrome` | the reader's bars (arrows, centred chapter name, title and percentage, fades), the full-screen reading settings with the one zoom menu, bars hiding on scroll down and showing on scroll up or a tap, the swipe from the left edge |
 | `e2e-export` | engine reader list, XTC/EPUB/CBZ per chapter/PDF in the worker, progress bar, downloaded bytes, cancel |
 | `e2e-state` | `.mpstate` save, load in a fresh browser, waiting for file, re-import resumes, direct save through a fake File System Access API, offline reload |
 | `e2e-big` | the 1.7 GB book: import without loading it, scroll all 160 pages, heap and live blob URLs stay flat |

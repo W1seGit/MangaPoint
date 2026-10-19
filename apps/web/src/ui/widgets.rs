@@ -137,8 +137,23 @@ pub fn NoCover() -> Element {
 #[component]
 pub fn Help(text: String) -> Element {
     rsx! {
-        span { class: "help", tabindex: "0", "data-tip": "{text}", "aria-label": "{text}", title: "{text}",
+        span { class: "help", tabindex: "0", "data-tip": "{text}", "aria-label": "{text}",
             Icon { name: "circle-help", size: 15 }
+        }
+    }
+}
+
+/// One setting: what it is on the left (a question mark explains it, a note says what is true
+/// right now), how to change it on the right. The same row as the desktop app's settings.
+#[component]
+pub fn SettingRow(label: String, help: Option<String>, note: Option<String>, children: Element) -> Element {
+    rsx! {
+        div { class: "sx-row",
+            div { class: "sx-text",
+                div { class: "sx-label", "{label}" if let Some(text) = help { Help { text } } }
+                if let Some(text) = note.filter(|t| !t.is_empty()) { div { class: "sx-desc", "{text}" } }
+            }
+            div { class: "sx-control", {children} }
         }
     }
 }

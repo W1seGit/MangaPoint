@@ -2,7 +2,7 @@
 // scrolled end to end while the JS heap and the number of live pictures are
 // sampled. node tools/web-e2e/e2e-big.mjs [viewport]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { fx, openApp, importBooks, openBook, titles } from './helpers.mjs';
+import { fx, openApp, importBooks, openBook, titles, readerSetting } from './helpers.mjs';
 
 const viewport = process.argv[2] || 'desktop';
 const r = new Report();
@@ -27,15 +27,7 @@ try {
   r.check('it is kept in OPFS with 160 pages', /^opfs 160$/.test(stored), stored);
 
   await openBook(page, 'Big Book');
-  await page.eval("document.querySelector('#reader-mode-scroll, #reader-view-button')?.click()");
-  await sleep(300);
-  if (viewport !== 'desktop') {
-    await page.click('#reader-view-button');
-    await page.click('#reader-view-menu #reader-mode-scroll');
-    await page.click('.menu-scrim');
-  } else {
-    await page.click('#reader-mode-scroll');
-  }
+  await readerSetting(page, '#reader-mode-scroll', viewport !== 'desktop');
   await sleep(1500);
   const samples = [];
   let maxImgs = 0;

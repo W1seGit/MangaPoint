@@ -69,5 +69,8 @@ foreach ($css in 'style.css', 'import.css', 'reader.css') {
     Copy-Item (Join-Path $root "apps\desktop\src\$css") (Join-Path $dist 'css')
 }
 
+# The question-mark tips are the desktop app's own script too.
+Copy-Item (Join-Path $root 'apps\desktop\src\js\tooltip.js') (Join-Path $dist 'js')
+
 Run node @((Join-Path $root 'tools\web-precache.mjs'), $dist)
 Write-Host "built: $dist"

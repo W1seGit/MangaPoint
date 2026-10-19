@@ -1,5 +1,6 @@
 // Starts the page: the browser glue first, then the WebAssembly (the Rust UI).
 import mp from './mp.js';
+import './tooltip.js';
 
 function fail(message) {
   const boot = document.getElementById('boot') || document.getElementById('main');
