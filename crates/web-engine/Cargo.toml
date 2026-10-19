@@ -1,0 +1,26 @@
+[package]
+name = "web-engine"
+version.workspace = true
+edition.workspace = true
+description = "MangaPoint's conversion and book-keeping engine for the website: runs in the browser (WebAssembly) and natively for its tests."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# `core`: book-keeping the page itself needs (reading-state file, chapter
+# guessing, fingerprints, device list). Small.
+# `convert`: the converter and the file writers; only the worker loads this.
+default = ["core", "convert"]
+core = []
+convert = ["core", "dep:converter"]
+
+[dependencies]
+converter = { path = "../converter", features = ["serde", "decode"], optional = true }
+device-profiles = { path = "../device-profiles", features = ["serde"] }
+library = { path = "../library" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.129"
