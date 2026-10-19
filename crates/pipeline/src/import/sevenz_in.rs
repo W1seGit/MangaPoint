@@ -1,9 +1,13 @@
 //! 7Z and CB7 archives. A solid archive can only be read from the front, so
 //! the pages wanted are taken in one pass.
 
-use super::archive::{build_book, Entry};
-use super::{comicinfo, fail, is_page_name, BookSource, Format, ImportBook, MAX_ENTRIES, MAX_PAGE_BYTES};
+use super::archive::{build_book, scan_wanted, Entry};
+use super::{
+    comicinfo, fail, is_page_name, BookSource, Format, ImportBook, MAX_ENTRIES, MAX_PAGE_BYTES,
+    MAX_SCAN_ENTRY_BYTES, MAX_SCAN_TOTAL_BYTES,
+};
 use crate::error::{PipelineError, Result};
+use crate::types::CancelFlag;
 use sevenz_rust::{Password, SevenZReader};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -30,18 +34,29 @@ fn open(path: &Path) -> Result<SevenZReader<File>> {
 fn read_named(
     path: &Path,
     wanted: &HashSet<String>,
+    limit: u64,
+    cancel: &CancelFlag,
     each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
 ) -> Result<()> {
     let mut reader = open(path)?;
+    let limit = limit.min(MAX_PAGE_BYTES);
+    // The pass ends when every wanted name has been given once. An archive can
+    // hold a name twice: the first is the one used, the later ones are passed by.
     let mut remaining = wanted.len();
+    let mut given: HashSet<String> = HashSet::new();
     let mut failure: Option<PipelineError> = None;
     let outcome = reader.for_each_entries(&mut |entry: &sevenz_rust::SevenZArchiveEntry, data: &mut dyn Read| {
-        if entry.is_directory() || !wanted.contains(entry.name()) {
+        if cancel.is_cancelled() {
+            failure = Some(PipelineError::Cancelled);
+            return Ok(false);
+        }
+        if entry.is_directory() || !wanted.contains(entry.name()) || given.contains(entry.name()) {
             return Ok(true);
         }
+        given.insert(entry.name().to_string());
         let mut bytes = Vec::new();
-        let read = data.take(MAX_PAGE_BYTES + 1).read_to_end(&mut bytes);
-        let usable = read.is_ok() && bytes.len() as u64 <= MAX_PAGE_BYTES;
+        let read = data.take(limit + 1).read_to_end(&mut bytes);
+        let usable = read.is_ok() && bytes.len() as u64 <= limit;
         if let Err(e) = each(entry.name(), if usable { bytes } else { Vec::new() }) {
             failure = Some(e);
             return Ok(false);
@@ -62,7 +77,7 @@ fn read_named(
     Ok(())
 }
 
-pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
+pub(crate) fn scan(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
     let label = label_of(path);
     let reader = open(path)?;
     let entries: Vec<Entry> = reader
@@ -79,25 +94,15 @@ pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
     // One pass for the details and the cover.
     let mut pages: Vec<&Entry> = entries.iter().filter(|e| is_page_name(&e.name)).collect();
     pages.sort_by(|a, b| super::natural_cmp(&a.name, &b.name));
-    let mut wanted: HashSet<String> = HashSet::new();
-    for e in &entries {
-        let lower = e.name.to_lowercase();
-        if lower == "comicinfo.xml" || lower.ends_with("/comicinfo.xml") {
-            wanted.insert(e.name.clone());
-        }
-    }
-    if let Some(first) = pages.first() {
-        wanted.insert(first.name.clone());
-    }
-    for e in &pages {
-        let stem = e.name.rsplit('/').next().unwrap_or("").rsplit_once('.').map_or("", |(s, _)| s).to_lowercase();
-        if matches!(stem.as_str(), "cover" | "folder" | "front" | "frontcover") {
-            wanted.insert(e.name.clone());
-        }
-    }
+    let wanted = scan_wanted(&entries);
     let mut got: HashMap<String, Vec<u8>> = HashMap::new();
-    read_named(path, &wanted, &mut |name, bytes| {
-        got.insert(name.to_string(), bytes);
+    let mut kept = 0u64;
+    read_named(path, &wanted, MAX_SCAN_ENTRY_BYTES, cancel, &mut |name, bytes| {
+        // What is kept in memory for the details stays small.
+        kept += bytes.len() as u64;
+        if kept <= MAX_SCAN_TOTAL_BYTES {
+            got.insert(name.to_string(), bytes);
+        }
         Ok(())
     })?;
     if let Some(first) = pages.first() {
@@ -124,11 +129,12 @@ pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
 pub(crate) fn visit(
     path: &Path,
     keys: &[String],
+    cancel: &CancelFlag,
     each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
 ) -> Result<()> {
     let wanted: HashSet<String> = keys.iter().cloned().collect();
     let mut seen: HashSet<String> = HashSet::new();
-    read_named(path, &wanted, &mut |name, bytes| {
+    read_named(path, &wanted, MAX_PAGE_BYTES, cancel, &mut |name, bytes| {
         seen.insert(name.to_string());
         each(name, bytes)
     })?;

@@ -7,8 +7,9 @@ use super::archive::Entry;
 use super::names::{chapter_name, chapter_number, clean_name};
 use super::zip_in::{read_entry, Archive};
 use super::{fail, BookSource, Format, ImportBook, ImportChapter, PageRef};
-use crate::error::Result;
-use std::collections::HashMap;
+use crate::error::{PipelineError, Result};
+use crate::types::CancelFlag;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 /// `dir/rel` with `.` and `..` resolved and `%20`-style escapes undone.
@@ -121,15 +122,18 @@ fn pictures_of(doc_path: &str, bytes: &[u8]) -> Vec<String> {
         return found;
     }
     // Not well-formed XML: look for the tags by hand.
-    let lower = text.to_lowercase();
+    // ASCII-only lowercasing keeps every byte offset the same as in `text`
+    // (a full lowercase can change lengths, and slicing would then panic).
+    let lower = text.to_ascii_lowercase();
     for tag in ["<img", "<image"] {
         let mut from = 0;
         while let Some(at) = lower[from..].find(tag) {
             let start = from + at;
             let end = lower[start..].find('>').map_or(lower.len(), |e| start + e);
             let chunk = &text[start..end];
+            let chunk_lower = &lower[start..end];
             for attr in ["src=", "href="] {
-                if let Some(a) = chunk.to_lowercase().find(attr) {
+                if let Some(a) = chunk_lower.find(attr) {
                     let rest = &chunk[a + attr.len()..];
                     if let Some(quote) = rest.chars().next().filter(|c| *c == '"' || *c == '\'') {
                         if let Some(close) = rest[1..].find(quote) {
@@ -145,17 +149,22 @@ fn pictures_of(doc_path: &str, bytes: &[u8]) -> Vec<String> {
     found
 }
 
-pub(crate) fn scan(path: &Path, archive: &mut Archive, entries: Vec<Entry>) -> Result<ImportBook> {
+pub(crate) fn scan(
+    path: &Path,
+    archive: &mut Archive,
+    entries: Vec<Entry>,
+    cancel: &CancelFlag,
+) -> Result<ImportBook> {
     let label = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let by_lower: HashMap<String, String> = entries
         .iter()
         .map(|e| (e.name.to_lowercase(), e.name.clone()))
         .collect();
+    let names: HashSet<&str> = entries.iter().map(|e| e.name.as_str()).collect();
     let exists = |name: &str| -> Option<String> {
-        entries
-            .iter()
-            .find(|e| e.name == name)
-            .map(|e| e.name.clone())
+        names
+            .get(name)
+            .map(|n| (*n).to_string())
             .or_else(|| by_lower.get(&name.to_lowercase()).cloned())
     };
     let container = read_entry(archive, "META-INF/container.xml")?;
@@ -203,10 +212,18 @@ pub(crate) fn scan(path: &Path, archive: &mut Archive, entries: Vec<Entry>) -> R
     // The pictures, spine item by spine item.
     let mut pages: Vec<String> = Vec::new();
     let mut first_page_of: HashMap<String, usize> = HashMap::new();
+    let mut page_set: HashSet<String> = HashSet::new();
+    let media_of: HashMap<&str, &str> = manifest
+        .values()
+        .map(|i| (i.href.as_str(), i.media.as_str()))
+        .collect();
     for href in &spine {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
         let Some(name) = exists(href) else { continue };
         first_page_of.insert(href.clone(), pages.len());
-        let media = manifest.values().find(|i| i.href == *href).map(|i| i.media.as_str()).unwrap_or("");
+        let media = media_of.get(href.as_str()).copied().unwrap_or("");
         let found = if media.starts_with("image/") {
             vec![name.clone()]
         } else {
@@ -217,7 +234,7 @@ pub(crate) fn scan(path: &Path, archive: &mut Archive, entries: Vec<Entry>) -> R
         };
         for picture in found {
             if let Some(real) = exists(&picture) {
-                if !pages.contains(&real) {
+                if page_set.insert(real.clone()) {
                     pages.push(real);
                 }
             }
@@ -407,6 +424,15 @@ mod tests {
         assert_eq!(pictures_of("p.xhtml", svg), ["p2.png"]);
         let broken = b"<html><body>&nbsp;<br><img src='x/3.webp'></body>";
         assert_eq!(pictures_of("d/p.html", broken), ["d/x/3.webp"]);
+    }
+
+    #[test]
+    fn broken_markup_with_letters_that_change_length_when_lowercased_does_not_panic() {
+        // 'İ' is two bytes, and three when lowercased: offsets taken from the
+        // lowercase text must still fit the original.
+        let html = "<html><body>İİİİİİ<br><IMG SRC='x/İ.png'>İİ<img
+src=\"y.webp\"></body>".as_bytes();
+        assert_eq!(pictures_of("d/p.html", html), ["d/x/İ.png", "d/y.webp"]);
     }
 
     #[test]

@@ -361,7 +361,7 @@ fn page_bytes_estimate(opts: &ProcessOptions, pictures: bool) -> u64 {
 
 /// Whether a process with this id is running now.
 #[cfg(windows)]
-fn process_is_running(pid: u32) -> bool {
+pub(crate) fn process_is_running(pid: u32) -> bool {
     use std::ffi::c_void;
     extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
@@ -386,7 +386,7 @@ fn process_is_running(pid: u32) -> bool {
 }
 
 #[cfg(unix)]
-fn process_is_running(pid: u32) -> bool {
+pub(crate) fn process_is_running(pid: u32) -> bool {
     extern "C" {
         fn kill(pid: i32, signal: i32) -> i32;
     }

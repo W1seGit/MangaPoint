@@ -76,6 +76,22 @@ pub fn App() -> Element {
         crate::updates::clear_leftovers();
         spawn_forever(update_dialog::check_at_startup(state));
     });
+    // A staging folder an import left when the app was closed in the middle of it
+    // (only ones it marked as its own, whose process is gone) is cleared away, and
+    // a chapter that was being replaced is put back.
+    use_hook(|| {
+        spawn_forever(async move {
+            let library = state.library.peek().clone();
+            let files = crate::state::library_files();
+            let removed =
+                tokio::task::spawn_blocking(move || pipeline::import::sweep_leftovers(&files, &library))
+                    .await
+                    .unwrap_or(0);
+            if removed > 0 {
+                tracing::info!("Removed {removed} unfinished import folder(s) left by an earlier run");
+            }
+        });
+    });
     // Changes to the library and the queue are written in the background.
     use_hook(|| state.start_saver());
     // When the window closes: ask first if a download or export is running;
@@ -93,7 +109,8 @@ pub fn App() -> Element {
                 .peek()
                 .as_ref()
                 .is_some_and(|v| v.result.is_none() && !v.paused);
-            if let Some(warning) = crate::logic::quit_warning(download, export) {
+            let importing = work::import_running();
+            if let Some(warning) = crate::logic::quit_warning(download, export, importing) {
                 // The window would close (or hide) once this returns. Make it
                 // only hide, then show it again at once with the question.
                 let window = dioxus::desktop::window();

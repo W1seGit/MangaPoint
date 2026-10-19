@@ -112,7 +112,9 @@ pub fn InfoFields(
                                 let current = choose_info.clone();
                                 spawn(async move {
                                     let picked = pick_files("Choose a cover picture", None, "Pictures", &COVER_EXTENSIONS).await;
-                                    if let Some((bytes, url)) = picked.and_then(|p| p.first().cloned()).and_then(|p| cover_from_file(&p)) {
+                                    let Some(path) = picked.and_then(|p| p.first().cloned()) else { return };
+                                    // Read and shrunk off the thread the window runs on.
+                                    if let Some((bytes, url)) = cover_from_file(path).await {
                                         let mut next = current;
                                         next.cover = Some(bytes);
                                         next.cover_url = Some(url);
@@ -125,12 +127,15 @@ pub fn InfoFields(
                         if let Some(series) = first_page.clone() {
                             button { class: "btn small", r#type: "button", title: "Use the first page of the first chapter",
                                 onclick: move |_| {
-                                    if let Some((bytes, url)) = first_page_cover(&series) {
-                                        let mut next = page_info.clone();
-                                        next.cover = Some(bytes);
-                                        next.cover_url = Some(url);
-                                        onchange.call(next);
-                                    }
+                                    let (series, current) = (series.clone(), page_info.clone());
+                                    spawn(async move {
+                                        if let Some((bytes, url)) = first_page_cover(series).await {
+                                            let mut next = current;
+                                            next.cover = Some(bytes);
+                                            next.cover_url = Some(url);
+                                            onchange.call(next);
+                                        }
+                                    });
                                 },
                                 "Use the first page"
                             }
@@ -331,7 +336,8 @@ fn BookCard(index: usize, book: BookDraft, follower: bool, adding: bool, series:
                                         onclick: move |_| {
                                             spawn(async move {
                                                 let picked = pick_files("Choose a cover picture", None, "Pictures", &COVER_EXTENSIONS).await;
-                                                if let Some((bytes, url)) = picked.and_then(|p| p.first().cloned()).and_then(|p| cover_from_file(&p)) {
+                                                let Some(path) = picked.and_then(|p| p.first().cloned()) else { return };
+                                                if let Some((bytes, url)) = cover_from_file(path).await {
                                                     edit_book(state, index, |b| {
                                                         b.info.cover = Some(bytes);
                                                         b.info.cover_url = Some(url);

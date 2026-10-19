@@ -184,6 +184,9 @@ pub struct ImportInfo {
     pub files: Vec<String>,
     /// When it was first imported (seconds since the Unix epoch).
     pub at: u64,
+    /// Fingerprints of the books imported into it (path, size and time of the
+    /// file), to notice the same file being imported twice.
+    pub books: Vec<String>,
 }
 
 /// The title of the made-up series the Export screen shows when nothing has
@@ -374,23 +377,46 @@ impl LibraryDb {
         now: u64,
     ) -> String {
         let id = series_id(title);
+        self.add_imported_to(&id, title, defaults, info, files, chapters, now, true)
+            .unwrap_or(id)
+    }
+
+    /// Like [`LibraryDb::add_imported`], for the series with this id, whatever
+    /// its title is now: a series that was renamed keeps its id (and folder), and
+    /// the pages must go on landing in it, not in a second series made from the
+    /// new title. With `create` false the series is not made when it is missing
+    /// (the person deleted it while the import ran), and `None` is returned.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_imported_to(
+        &mut self,
+        id: &str,
+        title: &str,
+        defaults: &ConversionSettings,
+        info: Option<SeriesInfo>,
+        files: Vec<String>,
+        chapters: Vec<DownloadedChapter>,
+        now: u64,
+        create: bool,
+    ) -> Option<String> {
+        let id = id.to_string();
         if self.find(&id).is_none() {
+            if !create {
+                return None;
+            }
             self.series.push(DownloadedSeries {
                 id: id.clone(),
                 title: title.to_string(),
                 settings: defaults.clone(),
                 added_at: now,
                 updated_at: now,
-                imported: Some(ImportInfo { files: Vec::new(), at: now }),
+                imported: Some(ImportInfo { at: now, ..Default::default() }),
                 ..Default::default()
             });
         }
+        let series = self.series.iter_mut().find(|s| s.id == id)?;
         for chapter in chapters {
-            self.record_chapter(title, defaults, chapter, now);
+            Self::insert_chapter(series, chapter, now);
         }
-        let Some(series) = self.series.iter_mut().find(|s| s.id == id) else {
-            return id;
-        };
         if let Some(from) = series.imported.as_mut() {
             for file in files {
                 if !from.files.contains(&file) {
@@ -421,7 +447,33 @@ impl LibraryDb {
                 }
             }
         }
-        id
+        Some(id)
+    }
+
+    /// Remember which books (see `pipeline::import::book_fingerprints`) have been
+    /// imported into an imported series, so importing the same file again can
+    /// be noticed. Does nothing for a series that is not there or not imported.
+    pub fn note_imported_books(&mut self, series_id: &str, prints: Vec<String>) {
+        let Some(from) = self
+            .series
+            .iter_mut()
+            .find(|s| s.id == series_id)
+            .and_then(|s| s.imported.as_mut())
+        else {
+            return;
+        };
+        for print in prints {
+            if !from.books.contains(&print) {
+                from.books.push(print);
+            }
+        }
+    }
+
+    /// Has a book with this fingerprint been imported into the series?
+    pub fn has_imported_book(&self, series_id: &str, print: &str) -> bool {
+        self.find(series_id)
+            .and_then(|s| s.imported.as_ref())
+            .is_some_and(|i| i.books.iter().any(|b| b == print))
     }
 
     /// Change what one chapter is called and numbered. Its folder (the key)
@@ -640,6 +692,13 @@ impl LibraryFiles {
             .map_or(self.root.as_path(), PathBuf::as_path)
     }
 
+    /// Every folder series are kept in: the one new series go to, then the others.
+    pub fn roots(&self) -> Vec<&Path> {
+        std::iter::once(self.root.as_path())
+            .chain(self.others.iter().map(PathBuf::as_path))
+            .collect()
+    }
+
     pub fn series_dir(&self, series_id: &str) -> PathBuf {
         self.series_root(series_id).join(component(series_id))
     }
@@ -811,6 +870,46 @@ mod tests {
         db.record_chapter("Taken", &defaults, chapter(Some(1.0), 1, "x"), 1);
         assert_eq!(db.free_title("Taken"), "Taken (2)");
         assert_eq!(db.free_title("Fresh"), "Fresh");
+    }
+
+    #[test]
+    fn pages_imported_into_a_renamed_series_land_in_it_not_in_a_second_series() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported("Mine", &defaults, None, vec![], vec![imported(Some(1.0), -1, "One")], 5);
+        db.set_title(&id, "Renamed");
+        // The title no longer gives the id; the id is passed explicitly.
+        let got = db.add_imported_to(&id, "Renamed", &defaults, None, vec![], vec![imported(Some(2.0), -2, "Two")], 6, true);
+        assert_eq!(got.as_deref(), Some(id.as_str()));
+        assert_eq!(db.series.len(), 1, "no duplicate series: {:?}", db.series.iter().map(|s| &s.id).collect::<Vec<_>>());
+        assert_eq!(db.find(&id).unwrap().chapters.len(), 2);
+        assert_eq!(db.find(&id).unwrap().title, "Renamed");
+    }
+
+    #[test]
+    fn a_series_deleted_during_an_import_is_not_brought_back_by_its_result() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported("Mine", &defaults, None, vec![], vec![imported(Some(1.0), -1, "One")], 5);
+        db.remove_series(&id);
+        let got = db.add_imported_to(&id, "Mine", &defaults, None, vec![], vec![imported(Some(2.0), -2, "Two")], 6, false);
+        assert!(got.is_none());
+        assert!(db.series.is_empty());
+        // When the import is what makes the series, it is made.
+        assert!(db.add_imported_to(&id, "Mine", &defaults, None, vec![], vec![imported(Some(2.0), -2, "Two")], 7, true).is_some());
+        assert_eq!(db.series.len(), 1);
+    }
+
+    #[test]
+    fn imported_books_are_remembered_by_fingerprint() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported("Mine", &defaults, None, vec![], vec![imported(Some(1.0), -1, "One")], 5);
+        assert!(!db.has_imported_book(&id, "a|1|2"));
+        db.note_imported_books(&id, vec!["a|1|2".into(), "a|1|2".into()]);
+        assert!(db.has_imported_book(&id, "a|1|2"));
+        assert_eq!(db.find(&id).unwrap().imported.as_ref().unwrap().books.len(), 1);
+        assert!(!db.has_imported_book("nowhere", "a|1|2"));
     }
 
     #[test]

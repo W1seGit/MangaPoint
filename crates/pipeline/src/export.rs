@@ -295,7 +295,7 @@ pub fn removable_drives() -> Vec<Drive> {
 /// Fail early, with a clear message, if the card is too full. `mount` may be
 /// the drive itself or any folder on it; a place we cannot match to a drive is
 /// let through rather than blocked.
-fn check_space(mount: &Path, needed: u64) -> Result<()> {
+pub(crate) fn check_space(mount: &Path, needed: u64) -> Result<()> {
     let disks = Disks::new_with_refreshed_list();
     // The drive that holds the place: the deepest mount point it is under.
     let Some(disk) = disks

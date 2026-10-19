@@ -6,6 +6,14 @@
 use super::*;
 use std::io::{Cursor, Write};
 use zip::write::SimpleFileOptions;
+use library::{LibraryFiles, IMPORT_SOURCE};
+
+mod write;
+
+/// Read these, with nothing to cancel it.
+fn scan(paths: &[PathBuf]) -> ScanResult {
+    super::scan(paths, &CancelFlag::new())
+}
 
 fn temp(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("mp-import-{tag}-{}", std::process::id()));

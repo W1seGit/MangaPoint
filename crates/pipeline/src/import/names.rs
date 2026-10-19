@@ -213,7 +213,9 @@ pub fn clean_name(name: &str) -> String {
 /// name without its chapter or volume part ("One Piece - c1050" is "One Piece").
 pub fn series_title(name: &str) -> String {
     let cleaned = clean_name(name);
-    let lower = cleaned.to_lowercase();
+    // ASCII-only lowercasing keeps every byte offset the same as in `cleaned`
+    // (a full lowercase turns 'İ' into two characters and shifts them).
+    let lower = cleaned.to_ascii_lowercase();
     let chars: Vec<(usize, char)> = lower.char_indices().collect();
     for (k, &(i, _)) in chars.iter().enumerate() {
         if k > 0 && chars[k - 1].1.is_alphabetic() {

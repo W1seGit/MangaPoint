@@ -18,7 +18,7 @@ pub enum DecodeError {
 }
 
 /// Refuse absurd images (decompression bombs) before allocating for them.
-const MAX_MEGAPIXELS: u32 = 120;
+pub const MAX_MEGAPIXELS: u32 = 120;
 
 /// Decode to 8-bit luma. Transparent areas are composited onto white first,
 /// since a transparent background would otherwise read as black.

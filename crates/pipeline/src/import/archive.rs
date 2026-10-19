@@ -5,8 +5,11 @@
 
 use super::comicinfo::ComicInfo;
 use super::names::{chapter_name, chapter_number, clean_name, natural_cmp, series_title};
-use super::{fail, is_page_name, BookSource, Format, ImportBook, ImportChapter, PageRef};
+use super::{
+    fail, is_page_name, BookSource, Format, ImportBook, ImportChapter, PageRef, MAX_SCAN_ENTRY_BYTES,
+};
 use crate::error::Result;
+use std::collections::HashSet;
 
 /// One file inside an archive.
 #[derive(Clone, Debug)]
@@ -59,6 +62,12 @@ pub(crate) fn build_book(
         .iter()
         .filter(|e| is_page_name(&e.name) && e.size > 0)
         .collect();
+    // Two files of one name cannot be told apart by name: the first one is the
+    // page (every kind of archive is read this way), and the person is told.
+    let mut seen: HashSet<&str> = HashSet::new();
+    let before = pages.len();
+    pages.retain(|e| seen.insert(e.name.as_str()));
+    let duplicates = before - pages.len();
     pages.sort_by(|a, b| natural_cmp(&norm(&a.name), &norm(&b.name)));
     if pages.is_empty() {
         return Err(fail(format!(
@@ -66,6 +75,11 @@ pub(crate) fn build_book(
         )));
     }
     let mut book = ImportBook::new(label, format, source);
+    if duplicates > 0 {
+        book.warnings.push(format!(
+            "{duplicates} page(s) have the same name as an earlier one in the archive, and are left out."
+        ));
+    }
     let info = comic.unwrap_or_default();
 
     // A cover that sits alone in the top folder, beside folders of chapters,
@@ -182,8 +196,40 @@ pub(crate) fn build_book(
         .or(apart)
         .or_else(|| entries.iter().find(|e| is_page_name(&e.name) && named_cover(&e.name) && e.size > 0))
         .unwrap_or(pages[0]);
-    book.cover = read(&cover.name);
+    // A cover too big to be one is not read (a page is still a page).
+    book.cover = if cover.size <= MAX_SCAN_ENTRY_BYTES { read(&cover.name) } else { None };
     Ok(book)
+}
+
+/// The most cover-named pictures an archive is asked for while it is read for
+/// its details.
+const MAX_COVER_CANDIDATES: usize = 8;
+
+/// The entries of an archive worth reading while it is scanned (a solid archive
+/// is read in one pass for them): the one `ComicInfo.xml`, the first page and
+/// a few pictures named for a cover. However many entries the archive has,
+/// the list stays this short.
+pub(crate) fn scan_wanted(entries: &[Entry]) -> HashSet<String> {
+    let mut wanted = HashSet::new();
+    let comic = entries
+        .iter()
+        .filter(|e| {
+            let lower = e.name.to_lowercase();
+            lower == "comicinfo.xml" || lower.ends_with("/comicinfo.xml")
+        })
+        .min_by(|a, b| a.name.len().cmp(&b.name.len()).then_with(|| natural_cmp(&a.name, &b.name)));
+    if let Some(e) = comic {
+        wanted.insert(e.name.clone());
+    }
+    let mut pages: Vec<&Entry> = entries.iter().filter(|e| is_page_name(&e.name)).collect();
+    pages.sort_by(|a, b| natural_cmp(&norm(&a.name), &norm(&b.name)));
+    if let Some(first) = pages.first() {
+        wanted.insert(first.name.clone());
+    }
+    for e in pages.iter().filter(|e| named_cover(&e.name)).take(MAX_COVER_CANDIDATES) {
+        wanted.insert(e.name.clone());
+    }
+    wanted
 }
 
 #[cfg(test)]
@@ -282,5 +328,44 @@ mod tests {
             &mut |_| None,
         );
         assert!(result.unwrap_err().to_string().contains("no page pictures"));
+    }
+
+    #[test]
+    fn what_a_solid_archive_is_asked_for_while_scanned_stays_short_however_many_covers_it_has() {
+        let mut names: Vec<String> = (0..5000).map(|i| format!("d{i}/cover.jpg")).collect();
+        names.extend((0..5000).map(|i| format!("d{i}/ComicInfo.xml")));
+        names.push("page1.jpg".into());
+        let list: Vec<Entry> = names.iter().map(|n| Entry { name: n.clone(), size: 10 }).collect();
+        let wanted = scan_wanted(&list);
+        assert!(wanted.len() <= MAX_COVER_CANDIDATES + 2, "{}", wanted.len());
+        assert!(wanted.contains("d0/cover.jpg"), "the first page is read");
+        assert_eq!(wanted.iter().filter(|n| n.ends_with("ComicInfo.xml")).count(), 1);
+    }
+
+    #[test]
+    fn two_files_of_one_name_are_one_page_and_the_person_is_told() {
+        let book = build(&["1.jpg", "2.jpg", "1.jpg", "3.jpg"], None);
+        assert_eq!(book.page_count(), 3);
+        assert!(book.warnings.iter().any(|w| w.starts_with("1 page(s)")), "{:?}", book.warnings);
+    }
+
+    #[test]
+    fn a_cover_too_large_to_be_one_is_not_read() {
+        let big = Entry { name: "cover.jpg".into(), size: MAX_SCAN_ENTRY_BYTES + 1 };
+        let page = Entry { name: "1.jpg".into(), size: 10 };
+        let mut asked = Vec::new();
+        let book = build_book(
+            "B.cbz",
+            Format::Cbz,
+            BookSource::Zip("x".into()),
+            &[big, page],
+            None,
+            &mut |n| {
+                asked.push(n.to_string());
+                Some(vec![1])
+            },
+        )
+        .unwrap();
+        assert!(book.cover.is_none() || !asked.contains(&"cover.jpg".to_string()));
     }
 }

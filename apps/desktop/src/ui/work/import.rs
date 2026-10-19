@@ -1,8 +1,15 @@
 //! Importing: reading what the person chose into drafts they can correct, then
 //! writing the books into the library. The reading and writing are the
 //! pipeline's; this connects them to the dialog.
+//!
+//! Reading and writing both run in the background and can outlive the dialog
+//! that started them (it can be closed, and another opened). Every read and
+//! every run is given a number from `RUNS`, which also moves on when the
+//! dialog is closed; what an older one finds out is dropped, never written into
+//! the dialog (or the lists behind it) of a newer one.
 
 use super::*;
+use crate::logic::{ImportRegistry, Resolved, RunCounter};
 use crate::state::{
     BookDraft, ChapterDraft, ChapterPlace, ImportDone, ImportSession, ImportStage, InfoDraft,
 };
@@ -12,7 +19,41 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// The books that were read, behind the drafts the dialog shows (in the same
 /// order). They hold the pages' places, which the drafts do not.
 static IMPORT_BOOKS: Mutex<Vec<ImportBook>> = Mutex::new(Vec::new());
-static IMPORT_CANCEL: Mutex<Option<CancelFlag>> = Mutex::new(None);
+/// Moves on with every read, every run and every close of the dialog.
+static RUNS: RunCounter = RunCounter::new();
+/// How to stop the read that is going on.
+static SCAN_CANCEL: Mutex<Option<CancelFlag>> = Mutex::new(None);
+/// The import that is writing, for deleting and for closing the window to see.
+static RUNNING: ImportRegistry = ImportRegistry::new();
+
+fn next_run() -> u64 {
+    RUNS.next()
+}
+
+/// Is run `mine` still the latest thing the dialog is doing?
+fn current(mine: u64) -> bool {
+    RUNS.is_current(mine)
+}
+
+/// Is an import writing into the library now?
+pub fn import_running() -> bool {
+    RUNNING.running()
+}
+
+/// The series a running import writes into.
+pub fn importing_series() -> Vec<String> {
+    RUNNING.series()
+}
+
+/// Lets go of the record of a run when it ends, however it ends (also when the
+/// task is dropped).
+struct RunGuard(u64);
+
+impl Drop for RunGuard {
+    fn drop(&mut self) {
+        RUNNING.end(self.0);
+    }
+}
 
 /// Change the dialog's state, if it is open.
 fn edit_session(state: AppState, change: impl FnOnce(&mut ImportSession)) {
@@ -20,6 +61,13 @@ fn edit_session(state: AppState, change: impl FnOnce(&mut ImportSession)) {
     let mut guard = signal.write();
     if let Some(session) = guard.as_mut() {
         change(session);
+    }
+}
+
+/// Change the dialog's state, if it is open and run `run` is still the latest.
+fn edit_session_for(state: AppState, run: u64, change: impl FnOnce(&mut ImportSession)) {
+    if current(run) {
+        edit_session(state, change);
     }
 }
 
@@ -36,13 +84,19 @@ pub fn cover_from_bytes(bytes: &[u8]) -> Option<(Arc<Vec<u8>>, String)> {
     Some((Arc::new(small), url))
 }
 
-/// The picture in a file, as a cover. `None` if it is not a picture.
-pub fn cover_from_file(path: &std::path::Path) -> Option<(Arc<Vec<u8>>, String)> {
+/// The picture in a file, as a cover. `None` if it is not a picture. The file
+/// is read and shrunk on a worker thread, not on the one the window runs on.
+pub async fn cover_from_file(path: std::path::PathBuf) -> Option<(Arc<Vec<u8>>, String)> {
     const MAX: u64 = 40 * 1024 * 1024;
-    if std::fs::metadata(path).ok()?.len() > MAX {
-        return None;
-    }
-    cover_from_bytes(&std::fs::read(path).ok()?)
+    tokio::task::spawn_blocking(move || {
+        if std::fs::metadata(&path).ok()?.len() > MAX {
+            return None;
+        }
+        cover_from_bytes(&std::fs::read(&path).ok()?)
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 fn status_word(raw: &str) -> String {
@@ -197,23 +251,31 @@ pub fn add_paths_to_import(state: AppState, paths: Vec<std::path::PathBuf>) {
     read_paths(state, target, paths, true);
 }
 
-/// Take one book out of the dialog.
+/// Take one book out of the dialog (and out of the list behind it, together,
+/// so the two never differ).
 pub fn remove_book(state: AppState, index: usize) {
-    if let Ok(mut books) = IMPORT_BOOKS.lock() {
-        if index < books.len() {
-            books.remove(index);
-        }
-    }
+    let Ok(mut books) = IMPORT_BOOKS.lock() else {
+        return;
+    };
     edit_session(state, |s| {
-        if index < s.books.len() {
+        if index < s.books.len() && index < books.len() {
+            books.remove(index);
             s.books.remove(index);
         }
     });
 }
 
-/// Read these files; `more` keeps the books the dialog already has and puts the
+/// Read these; `more` keeps the books the dialog already has and puts the
 /// new ones after them.
 fn read_paths(state: AppState, target: Option<String>, paths: Vec<std::path::PathBuf>, more: bool) {
+    // This read is the one that counts; one still going is stopped.
+    let run = next_run();
+    let cancel = CancelFlag::new();
+    if let Ok(mut slot) = SCAN_CANCEL.lock() {
+        if let Some(older) = slot.replace(cancel.clone()) {
+            older.cancel();
+        }
+    }
     let mut session = state.import;
     let kept = if more { session.peek().clone() } else { None };
     if let Some(mut kept) = kept.clone() {
@@ -221,15 +283,15 @@ fn read_paths(state: AppState, target: Option<String>, paths: Vec<std::path::Pat
         session.set(Some(kept));
     } else {
         session.set(Some(ImportSession {
-        target: target.clone(),
-        stage: ImportStage::Reading,
-        books: Vec::new(),
-        failures: Vec::new(),
-        combine: false,
-        done_pages: 0,
-        total_pages: 0,
-        finished: Vec::new(),
-        errors: Vec::new(),
+            target: target.clone(),
+            stage: ImportStage::Reading,
+            books: Vec::new(),
+            failures: Vec::new(),
+            combine: false,
+            done_pages: 0,
+            total_pages: 0,
+            finished: Vec::new(),
+            errors: Vec::new(),
         }));
     }
     // What a series being added to already has: its numbers are taken.
@@ -238,29 +300,62 @@ fn read_paths(state: AppState, target: Option<String>, paths: Vec<std::path::Pat
         .and_then(|id| state.library.peek().find(id).map(|s| s.chapters.clone()))
         .unwrap_or_default();
     let adding = target.is_some();
+    // Which files were imported into which series before.
+    let known: Vec<(String, Vec<String>)> = state
+        .library
+        .peek()
+        .series
+        .iter()
+        .filter_map(|s| {
+            s.imported
+                .as_ref()
+                .filter(|i| !i.books.is_empty())
+                .map(|i| (s.id.clone(), i.books.clone()))
+        })
+        .collect();
+    let scan_target = target.clone();
     spawn_forever(async move {
+        let scan_cancel = cancel.clone();
         let read = tokio::task::spawn_blocking(move || {
-            let mut result = import::scan(&paths);
+            let mut result = import::scan(&paths, &scan_cancel);
             let taken: Vec<f64> = existing.iter().filter_map(|c| c.number).collect();
             for book in &mut result.books {
+                if scan_cancel.is_cancelled() {
+                    break;
+                }
                 book.number_chapters(&taken);
                 if adding {
                     book.meet(&existing);
                 }
+                // The same file as before: its chapters are left out unless the person says so.
+                let prints = import::book_fingerprints(book);
+                let series = scan_target.clone().unwrap_or_else(|| {
+                    library::series_id(&logic::wanted_title(&book.meta.title, &book.label))
+                });
+                if logic::already_imported(&known, &series, &prints) {
+                    for chapter in &mut book.chapters {
+                        chapter.skip = true;
+                    }
+                    book.warnings.push(
+                        "Already imported: this same file was imported into the series before, so its chapters are left out. Tick the ones you want to import again."
+                            .to_string(),
+                    );
+                }
             }
-            let drafts: Vec<BookDraft> = result.books.iter().map(draft_of).collect();
+            let drafts: Vec<BookDraft> = if scan_cancel.is_cancelled() {
+                Vec::new()
+            } else {
+                result.books.iter().map(draft_of).collect()
+            };
             (result, drafts)
         })
         .await;
+        // Closed, or read again, meanwhile: this read's answer is no longer wanted.
+        if !current(run) || cancel.is_cancelled() {
+            return;
+        }
         match read {
             Ok((result, drafts)) => {
-                if let Ok(mut books) = IMPORT_BOOKS.lock() {
-                    if more {
-                        books.extend(result.books);
-                    } else {
-                        *books = result.books;
-                    }
-                }
                 let mut failures: Vec<(String, String)> = result
                     .failures
                     .into_iter()
@@ -269,19 +364,25 @@ fn read_paths(state: AppState, target: Option<String>, paths: Vec<std::path::Pat
                 if drafts.is_empty() && failures.is_empty() {
                     failures.push((String::new(), "There is nothing to import there.".into()));
                 }
-                edit_session(state, move |s| {
-                    if more {
+                // The books and their drafts change together, under one lock.
+                let Ok(mut books) = IMPORT_BOOKS.lock() else {
+                    return;
+                };
+                let new_books = result.books;
+                edit_session_for(state, run, move |s| {
+                    if more && books.len() == s.books.len() {
+                        books.extend(new_books);
                         s.books.extend(drafts);
-                        s.failures = failures;
                     } else {
+                        *books = new_books;
                         s.books = drafts;
-                        s.failures = failures;
                     }
+                    s.failures = failures;
                     s.stage = ImportStage::Review;
                 });
             }
             Err(e) => {
-                edit_session(state, move |s| {
+                edit_session_for(state, run, move |s| {
                     s.failures = vec![(String::new(), format!("Reading the files failed: {e}"))];
                     s.stage = ImportStage::Review;
                 });
@@ -290,8 +391,15 @@ fn read_paths(state: AppState, target: Option<String>, paths: Vec<std::path::Pat
     });
 }
 
-/// Close the dialog. Importing in progress is stopped first.
+/// Close the dialog. A read or an import in progress is stopped first, and
+/// whatever it still finds out is dropped.
 pub fn close_import(state: AppState) {
+    next_run();
+    if let Ok(mut slot) = SCAN_CANCEL.lock() {
+        if let Some(read) = slot.take() {
+            read.cancel();
+        }
+    }
     cancel_import();
     let mut session = state.import;
     session.set(None);
@@ -302,11 +410,7 @@ pub fn close_import(state: AppState) {
 
 /// Stop a running import at the next page.
 pub fn cancel_import() {
-    if let Ok(cancel) = IMPORT_CANCEL.lock() {
-        if let Some(flag) = cancel.as_ref() {
-            flag.cancel();
-        }
-    }
+    RUNNING.cancel();
 }
 
 /// One series to make or add to: a book (or books put together) and what the
@@ -324,32 +428,84 @@ pub fn run_import(state: AppState) {
     if session.stage != ImportStage::Review {
         return;
     }
-    let books: Vec<ImportBook> = IMPORT_BOOKS.lock().map(|b| b.clone()).unwrap_or_default();
-    let mut units: Vec<Unit> = Vec::new();
-    let mut edited: Vec<(ImportBook, InfoDraft)> = Vec::new();
-    for (book, draft) in books.iter().zip(&session.books) {
-        if !draft.include {
-            continue;
+    // Pages cannot be added to a series that has been deleted since.
+    if let Some(id) = session.target.as_deref() {
+        if let Err(message) = logic::resolve_series(&state.library.peek(), Some(id), "") {
+            edit_session(state, |s| s.errors.push(message.to_string()));
+            return;
         }
-        let mut book = book.clone();
-        apply_edits(&mut book, draft);
-        edited.push((book, draft.info.clone()));
     }
-    if session.combine && edited.len() > 1 && session.target.is_none() {
-        let info = edited[0].1.clone();
-        let merged = ImportBook::merge(edited.into_iter().map(|(b, _)| b).collect());
-        units.extend(merged.map(|book| Unit { book, info }));
-    } else {
-        units.extend(edited.into_iter().map(|(book, info)| Unit { book, info }));
+    if RUNNING.running() {
+        edit_session(state, |s| {
+            s.errors.push("An import is still finishing. Try again in a moment.".into());
+        });
+        return;
     }
-    let total: usize = units.iter().map(|u| u.book.included_pages()).sum();
-    if units.is_empty() || total == 0 {
+    // The books are moved out of the list, not copied (they can hold a lot).
+    let taken: Vec<ImportBook> = IMPORT_BOOKS
+        .lock()
+        .map(|mut b| std::mem::take(&mut *b))
+        .unwrap_or_default();
+    if taken.len() != session.books.len() {
+        // The list behind the dialog and the dialog differ: nothing is written from a
+        // list that may not be what is shown.
+        if let Ok(mut books) = IMPORT_BOOKS.lock() {
+            *books = taken;
+        }
+        edit_session(state, |s| {
+            s.errors.push("The list changed while it was being read. Add the files again.".into());
+        });
+        return;
+    }
+    let mut staged: Vec<(ImportBook, &BookDraft)> = taken.into_iter().zip(&session.books).collect();
+    for (book, draft) in &mut staged {
+        if draft.include {
+            apply_edits(book, draft);
+        }
+    }
+    let total: usize = staged
+        .iter()
+        .filter(|(_, d)| d.include)
+        .map(|(b, _)| b.included_pages())
+        .sum();
+    if total == 0 {
+        if let Ok(mut books) = IMPORT_BOOKS.lock() {
+            *books = staged.into_iter().map(|(b, _)| b).collect();
+        }
         edit_session(state, |s| s.errors.push("Nothing is chosen to import.".into()));
         return;
     }
+    let edited: Vec<(ImportBook, InfoDraft)> = staged
+        .into_iter()
+        .filter(|(_, d)| d.include)
+        .map(|(b, d)| (b, d.info.clone()))
+        .collect();
+    let units: Vec<Unit> = if session.combine && edited.len() > 1 && session.target.is_none() {
+        let info = edited[0].1.clone();
+        ImportBook::merge(edited.into_iter().map(|(b, _)| b).collect())
+            .map(|book| Unit { book, info })
+            .into_iter()
+            .collect()
+    } else {
+        edited.into_iter().map(|(book, info)| Unit { book, info }).collect()
+    };
+    // The series the import will write into, known before it starts so that a
+    // delete or the closing of the window can see them.
+    let series: Vec<String> = {
+        let library = state.library.peek();
+        units
+            .iter()
+            .filter_map(|u| {
+                let wanted = logic::wanted_title(&u.book.meta.title, &u.book.label);
+                logic::resolve_series(&library, session.target.as_deref(), &wanted).ok()
+            })
+            .map(|r| r.id)
+            .collect()
+    };
+    let run = next_run();
     let cancel = CancelFlag::new();
-    if let Ok(mut slot) = IMPORT_CANCEL.lock() {
-        *slot = Some(cancel.clone());
+    if !RUNNING.begin(run, series, cancel.clone()) {
+        return;
     }
     edit_session(state, |s| {
         s.stage = ImportStage::Importing;
@@ -359,51 +515,62 @@ pub fn run_import(state: AppState) {
         s.errors.clear();
     });
     let target = session.target.clone();
+    let guard = RunGuard(run);
     spawn_forever(async move {
+        let _running = guard;
+        let mut finished: Vec<ImportDone> = Vec::new();
         let mut base = 0usize;
         for unit in units {
             let pages = unit.book.included_pages();
-            match import_unit(state, unit, target.clone(), base, &cancel).await {
-                Ok(Some(done)) => edit_session(state, |s| s.finished.push(done)),
+            match import_unit(state, run, unit, target.clone(), base, &cancel).await {
+                Ok(Some(done)) => {
+                    finished.push(done.clone());
+                    edit_session_for(state, run, |s| s.finished.push(done));
+                }
                 Ok(None) => {}
                 Err(PipelineError::Cancelled) => {
-                    edit_session(state, |s| {
+                    edit_session_for(state, run, |s| {
                         s.errors.push("Cancelled. What was started was taken away again.".into());
                     });
                     break;
                 }
-                Err(message) => edit_session(state, |s| s.errors.push(message.to_string())),
+                Err(message) => {
+                    let text = message.to_string();
+                    let text = text.trim_start_matches("import: ").to_string();
+                    edit_session_for(state, run, |s| s.errors.push(text));
+                }
             }
             base += pages;
         }
-        let summary = {
-            let session = state.import.peek();
-            session.as_ref().map(|s| {
-                let chapters: usize = s.finished.iter().map(|d| d.chapters).sum();
-                (chapters, s.finished.first().map(|d| d.title.clone()))
-            })
-        };
-        edit_session(state, |s| {
+        edit_session_for(state, run, |s| {
             s.stage = ImportStage::Finished;
             s.done_pages = s.total_pages;
         });
-        if let Some((chapters, title)) = summary.filter(|(c, _)| *c > 0) {
+        let chapters: usize = finished.iter().map(|d| d.chapters).sum();
+        if chapters > 0 {
             state.notify(format!(
                 "Imported {} into {}.",
                 logic::plural(chapters, "chapter"),
-                title.unwrap_or_else(|| "your library".into())
+                finished.first().map_or("your library", |d| d.title.as_str())
             ));
         }
-        if let Ok(mut slot) = IMPORT_CANCEL.lock() {
-            *slot = None;
-        }
     });
+}
+
+/// Is an export of this series running, or paused to go on later?
+fn being_exported(state: AppState, series_id: &str) -> bool {
+    state
+        .job
+        .peek()
+        .as_ref()
+        .is_some_and(|v| v.kind == JobKind::Export && v.result.is_none() && v.series_id == series_id)
 }
 
 /// Make or add to one series from one unit. `Ok(None)` when there was nothing
 /// new to add.
 async fn import_unit(
     state: AppState,
+    run: u64,
     unit: Unit,
     target: Option<String>,
     base: usize,
@@ -412,27 +579,12 @@ async fn import_unit(
     let Unit { mut book, info } = unit;
     let files = library_files();
     // Which series: the one being added to, one imported before with this title,
-    // or a new one (with a free title if another series has the name).
-    let (series_id, title, new_series) = {
-        let library = state.library.peek();
-        match target.as_deref().and_then(|id| library.find(id)) {
-            Some(series) => (series.id.clone(), series.title.clone(), false),
-            None => {
-                let wanted = if book.meta.title.trim().is_empty() {
-                    import::series_title(&book.label)
-                } else {
-                    book.meta.title.trim().to_string()
-                };
-                match library.find(&library::series_id(&wanted)) {
-                    Some(s) if s.is_imported() => (s.id.clone(), s.title.clone(), false),
-                    Some(_) => {
-                        let title = library.free_title(&wanted);
-                        (library::series_id(&title), title, true)
-                    }
-                    None => (library::series_id(&wanted), wanted, true),
-                }
-            }
-        }
+    // or a new one (with a free title if another series has the name). A series
+    // that was renamed keeps its id; nothing is looked up by its title.
+    let Resolved { id: series_id, title, new_series } = {
+        let wanted = logic::wanted_title(&book.meta.title, &book.label);
+        logic::resolve_series(&state.library.peek(), target.as_deref(), &wanted)
+            .map_err(|m| PipelineError::Import(m.to_string()))?
     };
     let existing: Vec<library::DownloadedChapter> = state
         .library
@@ -444,13 +596,27 @@ async fn import_unit(
     // out unless the person chose otherwise.
     let taken: Vec<f64> = existing.iter().filter_map(|c| c.number).collect();
     book.number_chapters(&taken);
-    let had_decision: Vec<bool> = book.chapters.iter().map(|c| c.meets.is_some()).collect();
-    let mut probe = book.clone();
-    probe.meet(&existing);
-    for ((chapter, probed), decided) in book.chapters.iter_mut().zip(&probe.chapters).zip(had_decision) {
-        if !decided && probed.meets.is_some() {
-            chapter.meets = probed.meets.clone();
+    book.meet_undecided(&existing);
+    // Chapters of a series that is being exported are not added to or replaced
+    // meanwhile: the export is reading them.
+    if being_exported(state, &series_id) {
+        let mut held = 0;
+        for chapter in book
+            .chapters
+            .iter_mut()
+            .filter(|c| !c.skip && matches!(c.into, Placement::Append(_) | Placement::Replace(_)))
+        {
             chapter.skip = true;
+            held += 1;
+        }
+        if held > 0 {
+            edit_session_for(state, run, |s| {
+                s.errors.push(format!(
+                    "{} of {title} {} not changed, because the series is being exported. Import again when the export has finished.",
+                    logic::plural(held, "chapter"),
+                    if held == 1 { "was" } else { "were" }
+                ));
+            });
         }
     }
     let already = book
@@ -472,9 +638,10 @@ async fn import_unit(
     let first_id = state.library.peek().next_import_chapter_id();
     let now = now_secs();
     let progress = Arc::new(AtomicUsize::new(0));
+    let book = Arc::new(book);
     let (task_files, task_book, task_series, task_cancel) =
         (files.clone(), book.clone(), series_id.clone(), cancel.clone());
-    let (task_existing, task_progress) = (existing.clone(), progress.clone());
+    let (task_existing, task_progress) = (existing, progress.clone());
     let handle = tokio::task::spawn_blocking(move || {
         let target = CommitTarget {
             series_id: &task_series,
@@ -493,13 +660,21 @@ async fn import_unit(
     while !handle.is_finished() {
         tokio::time::sleep(Duration::from_millis(120)).await;
         let done = base + progress.load(Ordering::Relaxed);
-        edit_session(state, |s| s.done_pages = done);
+        edit_session_for(state, run, |s| s.done_pages = done);
     }
     let outcome = handle
         .await
         .map_err(|e| PipelineError::Import(e.to_string()))??;
     if outcome.chapters.is_empty() {
-        return Ok(None);
+        // Pages were read but none was a picture MangaPoint can use: say so.
+        return Ok((outcome.skipped_pages > 0).then_some(ImportDone {
+            series_id,
+            title,
+            chapters: 0,
+            pages: 0,
+            skipped: outcome.skipped_pages,
+            already,
+        }));
     }
 
     // The cover: one the person chose, else the book's own when the series has none.
@@ -511,20 +686,32 @@ async fn import_unit(
         .is_some_and(|i| i.has_cover);
     let mut has_cover = has_cover_already;
     if info.cover.is_some() || !has_cover_already {
-        let source = info.cover.as_ref().map(|c| c.to_vec()).or_else(|| book.cover.clone());
-        let small = match source {
-            Some(bytes) => tokio::task::spawn_blocking(move || logic::small_cover(&bytes))
-                .await
-                .ok()
-                .flatten(),
-            None => None,
-        };
+        let (chosen, cover_book) = (info.cover.clone(), book.clone());
+        let small = tokio::task::spawn_blocking(move || {
+            let bytes = chosen.as_deref().map(Vec::as_slice).or(cover_book.cover.as_deref())?;
+            logic::small_cover(bytes)
+        })
+        .await
+        .ok()
+        .flatten();
         if let Some(small) = small {
-            let target = files.cover_path(&series_id);
-            if let Some(dir) = target.parent() {
-                let _ = std::fs::create_dir_all(dir);
+            let path = files.cover_path(&series_id);
+            let saved = tokio::task::spawn_blocking(move || import::save_cover(&path, &small))
+                .await
+                .map_err(|e| PipelineError::Import(e.to_string()))
+                .and_then(|r| r);
+            match saved {
+                Ok(()) => has_cover = true,
+                Err(e) => {
+                    let text = e.to_string();
+                    edit_session_for(state, run, |s| {
+                        s.errors.push(format!(
+                            "The pages were imported, but the cover could not be saved: {}",
+                            text.trim_start_matches("import: ")
+                        ));
+                    });
+                }
             }
-            has_cover = std::fs::write(&target, &small).is_ok();
         }
     }
     let (mut defaults, preset) = state.new_series_defaults();
@@ -545,22 +732,49 @@ async fn import_unit(
         has_cover,
         saved_at: now,
     };
+    let prints = {
+        let book = book.clone();
+        tokio::task::spawn_blocking(move || import::book_fingerprints(&book))
+            .await
+            .unwrap_or_default()
+    };
     let pages: usize = outcome.chapters.iter().map(|c| c.pages).sum();
     let chapters = outcome.chapters.len();
-    {
+    let keys: Vec<String> = outcome.chapters.iter().map(|c| c.key.clone()).collect();
+    // Recorded only if the series is still there (or this import is making it):
+    // one deleted while the import ran is not brought back.
+    let recorded = {
         let mut library = state.library;
         let mut db = library.write();
-        let id = db.add_imported(
+        let id = db.add_imported_to(
+            &series_id,
             &title,
             &defaults,
             Some(details),
             book.source_names(),
             outcome.chapters,
             now,
+            new_series,
         );
-        if new_series {
-            db.adopt_default_preset(&id, &defaults, &preset);
+        if let Some(id) = &id {
+            db.note_imported_books(id, prints);
+            if new_series {
+                db.adopt_default_preset(id, &defaults, &preset);
+            }
         }
+        id.is_some()
+    };
+    if !recorded {
+        let (gone_files, gone_series) = (files.clone(), series_id.clone());
+        let _ = tokio::task::spawn_blocking(move || {
+            for key in keys {
+                let _ = gone_files.remove_chapter(&gone_series, &key);
+            }
+        })
+        .await;
+        return Err(PipelineError::Import(format!(
+            "{title} was deleted while its pages were being imported, so they were not kept."
+        )));
     }
     state.save_library();
     load_saved_cover(state, &series_id);
@@ -584,11 +798,13 @@ pub fn save_series_details(state: AppState, series_id: &str, draft: &InfoDraft) 
         .and_then(|s| s.info.as_ref())
         .is_some_and(|i| i.has_cover);
     if let Some(cover) = &draft.cover {
-        let target = files.cover_path(series_id);
-        if let Some(dir) = target.parent() {
-            let _ = std::fs::create_dir_all(dir);
+        match import::save_cover(&files.cover_path(series_id), cover.as_slice()) {
+            Ok(()) => has_cover = true,
+            Err(e) => state.error(format!(
+                "Could not save the cover: {}",
+                e.to_string().trim_start_matches("import: ")
+            )),
         }
-        has_cover = std::fs::write(&target, cover.as_slice()).is_ok() || has_cover;
     }
     {
         let mut library = state.library;
@@ -622,15 +838,24 @@ pub fn save_series_details(state: AppState, series_id: &str, draft: &InfoDraft) 
 }
 
 /// The first page of a series as a cover (a small JPEG), for when a book has no
-/// cover of its own.
-pub fn first_page_cover(series_id: &str) -> Option<(Arc<Vec<u8>>, String)> {
-    let files = library_files();
-    let series = library_files_series_first_chapter(series_id)?;
-    let page = files.page_files(series_id, &series).into_iter().next()?;
-    cover_from_file(&page)
+/// cover of its own. Read and shrunk on a worker thread.
+pub async fn first_page_cover(series_id: String) -> Option<(Arc<Vec<u8>>, String)> {
+    tokio::task::spawn_blocking(move || {
+        let files = library_files();
+        let chapter = first_chapter_with_pages(&series_id)?;
+        let page = files.page_files(&series_id, &chapter).into_iter().next()?;
+        const MAX: u64 = 40 * 1024 * 1024;
+        if std::fs::metadata(&page).ok()?.len() > MAX {
+            return None;
+        }
+        cover_from_bytes(&std::fs::read(&page).ok()?)
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
-fn library_files_series_first_chapter(series_id: &str) -> Option<String> {
+fn first_chapter_with_pages(series_id: &str) -> Option<String> {
     let files = library_files();
     let dir = files.series_dir(series_id);
     let mut chapters: Vec<_> = std::fs::read_dir(dir)
@@ -638,6 +863,8 @@ fn library_files_series_first_chapter(series_id: &str) -> Option<String> {
         .flatten()
         .filter(|e| e.path().is_dir())
         .map(|e| e.file_name().to_string_lossy().into_owned())
+        // The folder an import is writing into is not a chapter yet.
+        .filter(|name| !name.starts_with("_import-"))
         .collect();
     chapters.sort_by(|a, b| import::natural_cmp(a, b));
     chapters.into_iter().find(|c| !files.page_files(series_id, c).is_empty())

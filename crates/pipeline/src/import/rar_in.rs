@@ -2,9 +2,13 @@
 //! in THIRD-PARTY-LICENSES.md). Like a solid 7Z, a RAR is read from the front in
 //! one pass.
 
-use super::archive::{build_book, Entry};
-use super::{comicinfo, fail, is_page_name, BookSource, Format, ImportBook, MAX_ENTRIES, MAX_PAGE_BYTES};
-use crate::error::Result;
+use super::archive::{build_book, scan_wanted, Entry};
+use super::{
+    comicinfo, fail, BookSource, Format, ImportBook, MAX_ENTRIES, MAX_PAGE_BYTES,
+    MAX_SCAN_ENTRY_BYTES, MAX_SCAN_TOTAL_BYTES,
+};
+use crate::error::{PipelineError, Result};
+use crate::types::CancelFlag;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use unrar::Archive;
@@ -59,18 +63,34 @@ fn list(path: &Path) -> Result<(Vec<Entry>, bool)> {
 fn read_named(
     path: &Path,
     wanted: &HashSet<String>,
+    limit: u64,
+    cancel: &CancelFlag,
     each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
 ) -> Result<()> {
     let mut archive = Archive::new(path)
         .open_for_processing()
         .map_err(|e| explain(path, &e))?;
+    // The pass ends when every wanted name has been given once. An archive can
+    // hold a name twice: the first is the one used, the later ones are passed by.
     let mut remaining = wanted.len();
+    let mut given: HashSet<String> = HashSet::new();
     while remaining > 0 {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
         let Some(header) = archive.read_header().map_err(|e| explain(path, &e))? else {
             break;
         };
         let name = normal(&header.entry().filename);
-        if header.entry().is_file() && wanted.contains(&name) && header.entry().unpacked_size <= MAX_PAGE_BYTES {
+        if header.entry().is_file() && wanted.contains(&name) && !given.contains(&name) {
+            given.insert(name.clone());
+            remaining -= 1;
+            if header.entry().unpacked_size > limit.min(MAX_PAGE_BYTES) {
+                // Too big to be taken: it counts as a picture that cannot be read.
+                each(&name, Vec::new())?;
+                archive = header.skip().map_err(|e| explain(path, &e))?;
+                continue;
+            }
             match header.read() {
                 Ok((bytes, next)) => {
                     each(&name, bytes)?;
@@ -82,7 +102,6 @@ fn read_named(
                     return Err(explain(path, &e));
                 }
             }
-            remaining -= 1;
         } else {
             archive = header.skip().map_err(|e| explain(path, &e))?;
         }
@@ -90,7 +109,7 @@ fn read_named(
     Ok(())
 }
 
-pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
+pub(crate) fn scan(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
     let label = label_of(path);
     let (entries, locked) = list(path)?;
     if entries.is_empty() {
@@ -99,27 +118,15 @@ pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
     if locked {
         return Err(fail(format!("{label} is protected by a password, which MangaPoint cannot use.")));
     }
-    let mut pages: Vec<&Entry> = entries.iter().filter(|e| is_page_name(&e.name)).collect();
-    pages.sort_by(|a, b| super::natural_cmp(&a.name, &b.name));
-    let mut wanted: HashSet<String> = HashSet::new();
-    for e in &entries {
-        let lower = e.name.to_lowercase();
-        if lower == "comicinfo.xml" || lower.ends_with("/comicinfo.xml") {
-            wanted.insert(e.name.clone());
-        }
-    }
-    if let Some(first) = pages.first() {
-        wanted.insert(first.name.clone());
-    }
-    for e in &pages {
-        let stem = e.name.rsplit('/').next().unwrap_or("").rsplit_once('.').map_or("", |(s, _)| s).to_lowercase();
-        if matches!(stem.as_str(), "cover" | "folder" | "front" | "frontcover") {
-            wanted.insert(e.name.clone());
-        }
-    }
+    let wanted = scan_wanted(&entries);
     let mut got: HashMap<String, Vec<u8>> = HashMap::new();
-    read_named(path, &wanted, &mut |name, bytes| {
-        got.insert(name.to_string(), bytes);
+    let mut kept = 0u64;
+    read_named(path, &wanted, MAX_SCAN_ENTRY_BYTES, cancel, &mut |name, bytes| {
+        // What is kept in memory for the details stays small.
+        kept += bytes.len() as u64;
+        if kept <= MAX_SCAN_TOTAL_BYTES {
+            got.insert(name.to_string(), bytes);
+        }
         Ok(())
     })?;
     let comic = got
@@ -140,14 +147,18 @@ pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
 pub(crate) fn visit(
     path: &Path,
     keys: &[String],
+    cancel: &CancelFlag,
     each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
 ) -> Result<()> {
     let wanted: HashSet<String> = keys.iter().cloned().collect();
     let mut seen: HashSet<String> = HashSet::new();
-    let outcome = read_named(path, &wanted, &mut |name, bytes| {
+    let outcome = read_named(path, &wanted, MAX_PAGE_BYTES, cancel, &mut |name, bytes| {
         seen.insert(name.to_string());
         each(name, bytes)
     });
+    if matches!(outcome, Err(PipelineError::Cancelled)) {
+        return outcome;
+    }
     // Entries not reached count as pages that cannot be read.
     for key in keys.iter().filter(|k| !seen.contains(*k)) {
         each(key, Vec::new())?;

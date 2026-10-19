@@ -695,7 +695,7 @@ fn prepare_chapter_dir(
 
 /// Write to a temporary name, then rename, so a crash never leaves a
 /// half-written page that looks complete.
-fn write_atomically(dest: &Path, bytes: &[u8]) -> Result<()> {
+pub(crate) fn write_atomically(dest: &Path, bytes: &[u8]) -> Result<()> {
     // A name of its own, so two writers of the same page never share a file.
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let tmp: PathBuf = dest.with_extension(format!(

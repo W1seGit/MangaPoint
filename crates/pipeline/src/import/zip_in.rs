@@ -2,8 +2,12 @@
 
 use super::archive::{build_book, Entry};
 use super::names::natural_cmp;
-use super::{comicinfo, epub_in, fail, BookSource, Format, ImportBook, MAX_ENTRIES, MAX_PAGE_BYTES};
+use super::{
+    comicinfo, epub_in, fail, BookSource, Format, ImportBook, MAX_ENTRIES, MAX_PAGE_BYTES,
+    MAX_SCAN_ENTRY_BYTES,
+};
 use crate::error::{PipelineError, Result};
+use crate::types::CancelFlag;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
@@ -68,12 +72,15 @@ pub(crate) fn list(archive: &mut Archive) -> (Vec<Entry>, bool) {
     (entries, locked)
 }
 
-pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
+pub(crate) fn scan(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
     let label = name(path);
     let mut archive = open(path)?;
     let (entries, locked) = list(&mut archive);
+    if cancel.is_cancelled() {
+        return Err(PipelineError::Cancelled);
+    }
     if entries.iter().any(|e| e.name.eq_ignore_ascii_case("META-INF/container.xml")) {
-        return epub_in::scan(path, &mut archive, entries);
+        return epub_in::scan(path, &mut archive, entries, cancel);
     }
     if locked {
         return Err(fail(format!(
@@ -87,6 +94,7 @@ pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
             lower == "comicinfo.xml" || lower.ends_with("/comicinfo.xml")
         })
         .min_by(|a, b| natural_cmp(&a.name, &b.name))
+        .filter(|e| e.size <= MAX_SCAN_ENTRY_BYTES)
         .and_then(|e| read_entry(&mut archive, &e.name).ok())
         .and_then(|bytes| comicinfo::parse(&bytes));
     let format = if super::extension(path) == "cbz" { Format::Cbz } else { Format::Zip };
@@ -103,10 +111,14 @@ pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
 pub(crate) fn visit(
     path: &Path,
     keys: &[String],
+    cancel: &CancelFlag,
     each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
 ) -> Result<()> {
     let mut archive = open(path)?;
     for key in keys {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
         match read_entry(&mut archive, key) {
             Ok(bytes) => each(key, bytes)?,
             Err(_) => each(key, Vec::new())?,

@@ -80,7 +80,10 @@ pub fn parse(bytes: &[u8]) -> Option<ComicInfo> {
     Some(ComicInfo {
         series: field("Series"),
         title: field("Title"),
-        number: field("Number").parse().ok(),
+        number: field("Number")
+            .parse::<f64>()
+            .ok()
+            .filter(|n| n.is_finite() && *n >= 0.0),
         summary: field("Summary"),
         writer: first_of(&["Writer"]),
         artist: first_of(&["Penciller", "Artist", "Inker", "CoverArtist"]),

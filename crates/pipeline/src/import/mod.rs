@@ -15,6 +15,7 @@
 
 mod archive;
 mod comicinfo;
+mod commit;
 mod epub_in;
 mod folder;
 mod names;
@@ -25,19 +26,27 @@ mod tiff_in;
 mod zip_in;
 
 pub use comicinfo::ComicInfo;
+pub use commit::{commit, sweep_leftovers, CommitOutcome, CommitTarget};
 pub use names::{chapter_name, chapter_number, clean_name, natural_cmp, plain, series_title};
 
 use crate::error::{PipelineError, Result};
 use crate::types::CancelFlag;
-use library::{chapter_key, DownloadedChapter, LibraryFiles, IMPORT_SOURCE};
-use std::collections::HashMap;
-use std::io::Cursor;
+use library::DownloadedChapter;
 use std::path::{Path, PathBuf};
 
 /// The most a single page may be once unpacked, and the most entries an
 /// archive may hold: a defence against archives made to fill the disk.
 pub(crate) const MAX_PAGE_BYTES: u64 = 256 * 1024 * 1024;
 pub(crate) const MAX_ENTRIES: usize = 100_000;
+/// The most one import may unpack in all.
+pub(crate) const MAX_TOTAL_BYTES: u64 = 32 * 1024 * 1024 * 1024;
+/// The most an entry read only for the book's details or cover may be.
+pub(crate) const MAX_SCAN_ENTRY_BYTES: u64 = 32 * 1024 * 1024;
+/// The most such entries may add up to, together, while a book is scanned.
+pub(crate) const MAX_SCAN_TOTAL_BYTES: u64 = 96 * 1024 * 1024;
+/// The most pixels a page may have: the same limit the converter applies, so a
+/// page that would fail at every export is refused when it is imported.
+pub const MAX_PAGE_PIXELS: u64 = converter::decode::MAX_MEGAPIXELS as u64 * 1_000_000;
 
 /// Picture files a book's pages can be.
 pub const PAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff"];
@@ -302,6 +311,58 @@ impl ImportBook {
             }
         }
     }
+
+    /// Like [`ImportBook::meet`], for the chapters that have not been looked at
+    /// yet (no decision recorded): a chapter the person already decided about
+    /// keeps what they chose.
+    pub fn meet_undecided(&mut self, existing: &[DownloadedChapter]) {
+        for chapter in self.chapters.iter_mut().filter(|c| c.meets.is_none()) {
+            let key = chapter.number.and_then(|n| {
+                existing
+                    .iter()
+                    .find(|e| e.number.is_some_and(|m| (m - n).abs() < 0.0005))
+                    .map(|e| e.key.clone())
+            });
+            if key.is_some() {
+                chapter.meets = key;
+                chapter.skip = true;
+            }
+        }
+    }
+}
+
+/// Save a series' cover where the library keeps it: a temporary file renamed
+/// into place, so a crash never leaves half a picture. The folder is made if
+/// it is not there.
+pub fn save_cover(dest: &Path, bytes: &[u8]) -> Result<()> {
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| PipelineError::Io(dir.to_path_buf(), e))?;
+    }
+    crate::download::write_atomically(dest, bytes)
+}
+
+/// What identifies the files a book was read from (path, size and time of
+/// each file; a folder by its path and page count), to notice the same book
+/// being imported twice. Loose pictures have none.
+pub fn book_fingerprints(book: &ImportBook) -> Vec<String> {
+    book.sources
+        .iter()
+        .filter_map(|source| match source {
+            BookSource::Zip(p) | BookSource::SevenZ(p) | BookSource::Rar(p) | BookSource::Pdf(p) => {
+                let meta = std::fs::metadata(p).ok()?;
+                let time = meta
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_secs());
+                Some(format!("{}|{}|{}", p.display(), meta.len(), time))
+            }
+            BookSource::Dir(p) if book.format == Format::Folder => {
+                Some(format!("{}|folder|{}", p.display(), book.page_count()))
+            }
+            BookSource::Dir(_) => None,
+        })
+        .collect()
 }
 
 /// A file or folder that could not be read, and why.
@@ -363,7 +424,10 @@ fn sniff(path: &Path) -> Option<Format> {
 const UNSUPPORTED: [&str; 7] = ["mobi", "azw", "azw3", "azw4", "kfx", "lit", "djvu"];
 
 /// Read one file as a book.
-fn scan_file(path: &Path) -> Result<ImportBook> {
+fn scan_file(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
+    if cancel.is_cancelled() {
+        return Err(PipelineError::Cancelled);
+    }
     let ext = extension(path);
     let name = path
         .file_name()
@@ -382,10 +446,10 @@ fn scan_file(path: &Path) -> Result<ImportBook> {
         _ => None,
     });
     match format {
-        Some(Format::Zip) => zip_in::scan(path),
-        Some(Format::Rar) => rar_in::scan(path),
-        Some(Format::SevenZ) => sevenz_in::scan(path),
-        Some(Format::Pdf) => pdf_in::scan(path),
+        Some(Format::Zip) => zip_in::scan(path, cancel),
+        Some(Format::Rar) => rar_in::scan(path, cancel),
+        Some(Format::SevenZ) => sevenz_in::scan(path, cancel),
+        Some(Format::Pdf) => pdf_in::scan(path, cancel),
         _ => Err(fail(format!(
             "{name} is not a file type MangaPoint can import. It reads CBZ, ZIP, CBR, RAR, CB7, 7Z, EPUB and PDF books, and JPG, PNG, WEBP, GIF and TIFF pictures."
         ))),
@@ -394,17 +458,22 @@ fn scan_file(path: &Path) -> Result<ImportBook> {
 
 /// Read what was chosen: folders, archives, books and loose pictures. Loose
 /// pictures from one folder are one book. A file that cannot be read does not
-/// stop the others; it is listed in `failures`.
-pub fn scan(paths: &[PathBuf]) -> ScanResult {
+/// stop the others; it is listed in `failures`. When `cancel` is set the
+/// reading stops at the next file, archive entry or page, and what has been
+/// read so far is returned (a caller that cancelled drops it).
+pub fn scan(paths: &[PathBuf], cancel: &CancelFlag) -> ScanResult {
     let mut result = ScanResult::default();
     let mut loose: Vec<(PathBuf, Vec<PathBuf>)> = Vec::new();
     for path in paths {
+        if cancel.is_cancelled() {
+            return result;
+        }
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.display().to_string());
         let book = if path.is_dir() {
-            folder::scan_dir(path)
+            folder::scan_dir(path, cancel)
         } else if PAGE_EXTENSIONS.contains(&extension(path).as_str()) {
             let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
             match loose.iter_mut().find(|(p, _)| *p == parent) {
@@ -413,12 +482,13 @@ pub fn scan(paths: &[PathBuf]) -> ScanResult {
             }
             continue;
         } else if path.is_file() {
-            scan_file(path)
+            scan_file(path, cancel)
         } else {
             Err(fail("it is not there"))
         };
         match book {
             Ok(book) => result.books.push(book),
+            Err(PipelineError::Cancelled) => return result,
             Err(e) => result.failures.push(ScanFailure {
                 file: name,
                 message: e.to_string().trim_start_matches("import: ").to_string(),
@@ -426,8 +496,12 @@ pub fn scan(paths: &[PathBuf]) -> ScanResult {
         }
     }
     for (parent, files) in loose {
-        match folder::scan_files(&parent, files) {
+        if cancel.is_cancelled() {
+            return result;
+        }
+        match folder::scan_files(&parent, files, cancel) {
             Ok(book) => result.books.push(book),
+            Err(PipelineError::Cancelled) => return result,
             Err(e) => result.failures.push(ScanFailure {
                 file: parent.display().to_string(),
                 message: e.to_string().trim_start_matches("import: ").to_string(),
@@ -435,239 +509,6 @@ pub fn scan(paths: &[PathBuf]) -> ScanResult {
         }
     }
     result
-}
-
-// ---- Writing -----------------------------------------------------------------
-
-/// What [`commit`] needs to know about where the book goes.
-pub struct CommitTarget<'a> {
-    pub series_id: &'a str,
-    /// The chapters the series already has, so a new one never takes a folder
-    /// that is in use.
-    pub existing: &'a [DownloadedChapter],
-    /// The id for the first new chapter (see `LibraryDb::next_import_chapter_id`);
-    /// the next ones count down from it.
-    pub first_id: i64,
-    pub now: u64,
-}
-
-#[derive(Debug, Default)]
-pub struct CommitOutcome {
-    /// The chapters that were written (or added to), ready for the library.
-    pub chapters: Vec<DownloadedChapter>,
-    /// Pages that were not pictures MangaPoint can read.
-    pub skipped_pages: usize,
-}
-
-/// A page, if it is a picture the converter reads: its bytes are kept as they
-/// are. TIFFs have been turned into PNGs by the time they get here.
-fn accept(bytes: Vec<u8>) -> Option<Vec<u8>> {
-    let format = image::guess_format(&bytes).ok()?;
-    if !matches!(
-        format,
-        image::ImageFormat::Jpeg
-            | image::ImageFormat::Png
-            | image::ImageFormat::WebP
-            | image::ImageFormat::Gif
-    ) {
-        return None;
-    }
-    let (w, h) = image::ImageReader::with_format(Cursor::new(&bytes), format)
-        .into_dimensions()
-        .ok()?;
-    (w > 0 && h > 0 && u64::from(w) * u64::from(h) <= 400_000_000).then_some(bytes)
-}
-
-/// Read the pages named by `keys` from one source, handing each to `each`
-/// with its key (in any order: a solid archive is read once, front to back).
-fn visit(
-    source: &BookSource,
-    keys: &[String],
-    each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
-) -> Result<()> {
-    match source {
-        BookSource::Dir(root) => folder::visit(root, keys, each),
-        BookSource::Zip(path) => zip_in::visit(path, keys, each),
-        BookSource::SevenZ(path) => sevenz_in::visit(path, keys, each),
-        BookSource::Rar(path) => rar_in::visit(path, keys, each),
-        BookSource::Pdf(path) => pdf_in::visit(path, keys, each),
-    }
-}
-
-struct Planned {
-    key: String,
-    into: Placement,
-    number: Option<f64>,
-    name: String,
-    id: i64,
-    /// Pages the chapter already has when pages are added to it.
-    base: usize,
-    pages: Vec<PageRef>,
-}
-
-/// Write a book's chapters into the library. `progress(done, total)` is called
-/// as pages are written; the work stops at the next page when `cancel` is set,
-/// and the chapters it had started are taken away again.
-pub fn commit(
-    book: &ImportBook,
-    files: &LibraryFiles,
-    target: &CommitTarget,
-    progress: &mut dyn FnMut(usize, usize),
-    cancel: &CancelFlag,
-) -> Result<CommitOutcome> {
-    let io = |path: &Path, e: std::io::Error| PipelineError::Io(path.to_path_buf(), e);
-    let mut used: std::collections::HashSet<String> =
-        target.existing.iter().map(|c| c.key.clone()).collect();
-    let mut next_id = target.first_id;
-    let mut planned: Vec<Planned> = Vec::new();
-    for chapter in book.chapters.iter().filter(|c| !c.skip && !c.pages.is_empty()) {
-        let (key, id, base) = match &chapter.into {
-            Placement::New => {
-                let id = next_id;
-                next_id -= 1;
-                let mut key = chapter_key(chapter.number, id);
-                if used.contains(&key) || files.chapter_dir(target.series_id, &key).exists() {
-                    key = chapter_key(None, id);
-                }
-                (key, id, 0)
-            }
-            Placement::Replace(key) => {
-                let id = existing_id(target.existing, key).unwrap_or(next_id);
-                (key.clone(), id, 0)
-            }
-            Placement::Append(key) => {
-                let id = existing_id(target.existing, key).unwrap_or(next_id);
-                let base = files.page_files(target.series_id, key).len();
-                (key.clone(), id, base)
-            }
-        };
-        used.insert(key.clone());
-        planned.push(Planned {
-            key,
-            into: chapter.into.clone(),
-            number: chapter.number,
-            name: chapter.name.clone(),
-            id,
-            base,
-            pages: chapter.pages.clone(),
-        });
-    }
-    let total: usize = planned.iter().map(|p| p.pages.len()).sum();
-    let mut done = 0usize;
-    let mut skipped = 0usize;
-    let mut created: Vec<String> = Vec::new();
-    // Pages by source and key, to the chapter and place they go to.
-    let mut wanted: Vec<HashMap<String, Vec<(usize, usize)>>> =
-        vec![HashMap::new(); book.sources.len()];
-    for (c, plan) in planned.iter().enumerate() {
-        if plan.into == Placement::New || matches!(plan.into, Placement::Replace(_)) {
-            if matches!(plan.into, Placement::Replace(_)) {
-                files
-                    .remove_chapter(target.series_id, &plan.key)
-                    .map_err(|e| io(&files.chapter_dir(target.series_id, &plan.key), e))?;
-            }
-            created.push(plan.key.clone());
-        }
-        let dir = files.chapter_dir(target.series_id, &plan.key);
-        std::fs::create_dir_all(&dir).map_err(|e| io(&dir, e))?;
-        for (p, page) in plan.pages.iter().enumerate() {
-            if let Some(map) = wanted.get_mut(page.source) {
-                map.entry(page.key.clone()).or_default().push((c, p));
-            }
-        }
-    }
-    let cleanup = |created: &[String]| {
-        for key in created {
-            let _ = files.remove_chapter(target.series_id, key);
-        }
-    };
-    progress(0, total);
-    for (s, source) in book.sources.iter().enumerate() {
-        let map = &wanted[s];
-        if map.is_empty() {
-            continue;
-        }
-        let keys: Vec<String> = book
-            .chapters
-            .iter()
-            .filter(|c| !c.skip)
-            .flat_map(|c| c.pages.iter())
-            .filter(|p| p.source == s)
-            .map(|p| p.key.clone())
-            .collect();
-        let run = visit(source, &keys, &mut |key, bytes| {
-            if cancel.is_cancelled() {
-                return Err(PipelineError::Cancelled);
-            }
-            let Some(places) = map.get(key) else {
-                return Ok(());
-            };
-            let mut bytes = bytes;
-            let mut left = places.len();
-            for &(c, p) in places {
-                left -= 1;
-                // The last place takes the bytes; a page used twice is copied.
-                let own = if left == 0 { std::mem::take(&mut bytes) } else { bytes.clone() };
-                let plan = &planned[c];
-                match accept(own) {
-                    Some(good) => {
-                        let path = files.page_path(target.series_id, &plan.key, plan.base + p);
-                        std::fs::write(&path, good).map_err(|e| io(&path, e))?;
-                    }
-                    None => skipped += 1,
-                }
-                done += 1;
-            }
-            progress(done, total);
-            Ok(())
-        });
-        if let Err(e) = run {
-            cleanup(&created);
-            return Err(e);
-        }
-    }
-    // Close the gaps left by pages that could not be read, and count.
-    let mut chapters = Vec::new();
-    for plan in &planned {
-        let dir = files.chapter_dir(target.series_id, &plan.key);
-        let mut pages = files.page_files(target.series_id, &plan.key);
-        pages.sort();
-        for (i, from) in pages.iter().enumerate() {
-            let to = files.page_path(target.series_id, &plan.key, i);
-            if *from != to {
-                std::fs::rename(from, &to).map_err(|e| io(&to, e))?;
-            }
-        }
-        if pages.is_empty() {
-            let _ = std::fs::remove_dir(&dir);
-            continue;
-        }
-        let existing = target.existing.iter().find(|c| c.key == plan.key);
-        let keep_details = matches!(plan.into, Placement::Append(_));
-        chapters.push(DownloadedChapter {
-            key: plan.key.clone(),
-            number: if keep_details { existing.and_then(|c| c.number) } else { plan.number },
-            name: if keep_details {
-                existing.map_or_else(|| plan.name.clone(), |c| c.name.clone())
-            } else {
-                plan.name.clone()
-            },
-            source_id: IMPORT_SOURCE.to_string(),
-            chapter_id: plan.id,
-            pages: pages.len(),
-            bytes: files.chapter_bytes(target.series_id, &plan.key),
-            downloaded_at: target.now,
-        });
-    }
-    progress(total, total);
-    Ok(CommitOutcome {
-        chapters,
-        skipped_pages: skipped,
-    })
-}
-
-fn existing_id(existing: &[DownloadedChapter], key: &str) -> Option<i64> {
-    existing.iter().find(|c| c.key == key).map(|c| c.chapter_id)
 }
 
 #[cfg(test)]

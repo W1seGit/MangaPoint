@@ -6,7 +6,7 @@ use super::*;
 const STOP_WAIT: Duration = Duration::from_secs(60);
 
 /// The series of the export that is running (not a paused one), if any.
-fn running_export_series(state: AppState) -> Option<String> {
+pub(super) fn running_export_series(state: AppState) -> Option<String> {
     state
         .job
         .peek()
@@ -17,20 +17,26 @@ fn running_export_series(state: AppState) -> Option<String> {
 
 fn any_busy(state: AppState, series_ids: &[String]) -> bool {
     let running = running_export_series(state);
+    let importing = importing_series();
     let queue = state.queue.peek();
     series_ids
         .iter()
-        .any(|id| logic::series_busy(&queue, running.as_deref(), id).any())
+        .any(|id| logic::series_busy(&queue, running.as_deref(), &importing, id).any())
 }
 
-/// Stop the downloads and the export working on these series and wait until
-/// they have really stopped, so nothing writes to a folder that is being
-/// deleted or records a chapter of a series that is gone. Says so and returns
-/// false if they do not stop in time; then nothing should be deleted.
+/// Stop the downloads, the export and the import working on these series and
+/// wait until they have really stopped, so nothing writes to a folder that is
+/// being deleted or records a chapter of a series that is gone. Says so and
+/// returns false if they do not stop in time; then nothing should be deleted.
 pub(super) async fn stop_work_for(state: AppState, series_ids: &[String]) -> bool {
     for id in series_ids {
         state.edit_queue(|q| q.cancel_series(id));
         remove_waiting_export(state, id);
+    }
+    // An import writing into any of them is stopped (what it had started is taken
+    // away again); it ends before anything is deleted.
+    if importing_series().iter().any(|id| series_ids.contains(id)) {
+        cancel_import();
     }
     if let Some(running) = running_export_series(state) {
         if series_ids.contains(&running) {
@@ -64,7 +70,7 @@ pub(super) async fn stop_work_for(state: AppState, series_ids: &[String]) -> boo
     while any_busy(state, series_ids) {
         if started.elapsed() > STOP_WAIT {
             state.error(
-                "A download or export of this series would not stop, so nothing was deleted.                  Cancel it and try again."
+                "A download, export or import of this series would not stop, so nothing was deleted. Cancel it and try again."
                     .to_string(),
             );
             return false;

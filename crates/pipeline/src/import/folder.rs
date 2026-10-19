@@ -8,6 +8,7 @@ use super::{
     MAX_ENTRIES, MAX_PAGE_BYTES, PAGE_EXTENSIONS,
 };
 use crate::error::{PipelineError, Result};
+use crate::types::CancelFlag;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -34,7 +35,10 @@ struct Tree {
     count: usize,
 }
 
-fn walk(root: &Path, rel: &str, depth: usize, tree: &mut Tree) -> Result<()> {
+fn walk(root: &Path, rel: &str, depth: usize, tree: &mut Tree, cancel: &CancelFlag) -> Result<()> {
+    if cancel.is_cancelled() {
+        return Err(PipelineError::Cancelled);
+    }
     let dir = if rel.is_empty() { root.to_path_buf() } else { root.join(rel) };
     let Ok(read) = std::fs::read_dir(&dir) else {
         return Err(fail(format!("{} cannot be read", dir.display())));
@@ -70,7 +74,7 @@ fn walk(root: &Path, rel: &str, depth: usize, tree: &mut Tree) -> Result<()> {
     if depth < MAX_DEPTH {
         for sub in subdirs {
             let child = if rel.is_empty() { sub } else { format!("{rel}/{sub}") };
-            walk(root, &child, depth + 1, tree)?;
+            walk(root, &child, depth + 1, tree, cancel)?;
         }
     }
     Ok(())
@@ -80,6 +84,7 @@ fn walk(root: &Path, rel: &str, depth: usize, tree: &mut Tree) -> Result<()> {
 /// holds several.
 fn pages_of(root: &Path, rel: &str, warnings: &mut Vec<String>) -> Vec<PageRef> {
     let path = root.join(rel);
+    // (A TIFF is counted by opening it; the cancel flag is checked between files.)
     if matches!(extension(&path).as_str(), "tif" | "tiff") {
         return match tiff_in::count_pages(&path) {
             Ok(1) => vec![PageRef { source: 0, key: rel.to_string() }],
@@ -107,8 +112,13 @@ fn read_capped(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// The bytes of a picture file as a page: a TIFF becomes a PNG.
-fn read_page(root: &Path, key: &str) -> Result<Vec<u8>> {
+/// A TIFF that is open, with the path it was opened from.
+type OpenTiff = Option<(PathBuf, tiff_in::Reader)>;
+
+/// The bytes of a picture file as a page: a TIFF becomes a PNG. `tiff` keeps
+/// the TIFF open between calls, so the pictures of one file are read from a
+/// single opening.
+fn read_page(root: &Path, key: &str, tiff: &mut OpenTiff) -> Result<Vec<u8>> {
     if key.split('/').any(|part| part == "..") {
         return Err(fail("a page name leaves its folder"));
     }
@@ -120,7 +130,13 @@ fn read_page(root: &Path, key: &str) -> Result<Vec<u8>> {
     };
     let path = root.join(rel);
     if matches!(extension(&path).as_str(), "tif" | "tiff") {
-        tiff_in::read_page(&path, index)
+        if tiff.as_ref().is_none_or(|(open, _)| *open != path) {
+            *tiff = Some((path.clone(), tiff_in::Reader::open(&path)?));
+        }
+        match tiff.as_mut() {
+            Some((_, reader)) => reader.read_page(index),
+            None => Err(fail("the TIFF is not open")),
+        }
     } else {
         read_capped(&path)
     }
@@ -129,10 +145,15 @@ fn read_page(root: &Path, key: &str) -> Result<Vec<u8>> {
 pub(crate) fn visit(
     root: &Path,
     keys: &[String],
+    cancel: &CancelFlag,
     each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
 ) -> Result<()> {
+    let mut tiff: OpenTiff = None;
     for key in keys {
-        match read_page(root, key) {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
+        match read_page(root, key, &mut tiff) {
             Ok(bytes) => each(key, bytes)?,
             // A page that cannot be read is left out, and counted by the writer.
             Err(PipelineError::Cancelled) => return Err(PipelineError::Cancelled),
@@ -143,10 +164,10 @@ pub(crate) fn visit(
 }
 
 /// A folder as a book.
-pub(crate) fn scan_dir(path: &Path) -> Result<ImportBook> {
+pub(crate) fn scan_dir(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
     let label = name_of(path);
     let mut tree = Tree::default();
-    walk(path, "", 0, &mut tree)?;
+    walk(path, "", 0, &mut tree, cancel)?;
     tree.pictures
         .sort_by(|a, b| natural_cmp(&a.0, &b.0));
     tree.books.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
@@ -161,6 +182,9 @@ pub(crate) fn scan_dir(path: &Path) -> Result<ImportBook> {
         let apart = in_root && tree.pictures.len() > 1;
         let mut pages = Vec::new();
         for name in names {
+            if cancel.is_cancelled() {
+                return Err(PipelineError::Cancelled);
+            }
             let key = if in_root { name.clone() } else { format!("{rel}/{name}") };
             if apart && is_cover(name) {
                 cover_rel = cover_rel.or(Some(key));
@@ -188,7 +212,8 @@ pub(crate) fn scan_dir(path: &Path) -> Result<ImportBook> {
     if !tree.books.is_empty() {
         let mut parts = Vec::new();
         for file in &tree.books {
-            match scan_file(file) {
+            match scan_file(file, cancel) {
+                Err(PipelineError::Cancelled) => return Err(PipelineError::Cancelled),
                 Ok(mut part) => {
                     if part.chapters.len() == 1 {
                         let n = name_of(file);
@@ -236,7 +261,7 @@ pub(crate) fn scan_dir(path: &Path) -> Result<ImportBook> {
                 .filter(|p| p.source == 0)
                 .map(|p| p.key.clone())
         });
-        book.cover = key.and_then(|k| read_page(path, &k).ok());
+        book.cover = key.and_then(|k| read_page(path, &k, &mut None).ok());
     }
     finish(book)
 }
@@ -250,7 +275,7 @@ fn finish(mut book: ImportBook) -> Result<ImportBook> {
 }
 
 /// Pictures picked one by one: one chapter, named for the folder they are in.
-pub(crate) fn scan_files(parent: &Path, files: Vec<PathBuf>) -> Result<ImportBook> {
+pub(crate) fn scan_files(parent: &Path, files: Vec<PathBuf>, cancel: &CancelFlag) -> Result<ImportBook> {
     let label = {
         let n = name_of(parent);
         if n.is_empty() { "Pictures".to_string() } else { n }
@@ -261,6 +286,9 @@ pub(crate) fn scan_files(parent: &Path, files: Vec<PathBuf>) -> Result<ImportBoo
     book.meta.title = clean_name(&label);
     let mut pages = Vec::new();
     for name in &names {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
         pages.extend(pages_of(parent, name, &mut book.warnings));
     }
     if pages.is_empty() {
@@ -269,6 +297,6 @@ pub(crate) fn scan_files(parent: &Path, files: Vec<PathBuf>) -> Result<ImportBoo
     let number = chapter_number(&label);
     book.chapters.push(ImportChapter::new(number, chapter_name(&label, number), pages));
     let cover_name = names.iter().find(|n| is_cover(n)).unwrap_or(&names[0]);
-    book.cover = read_page(parent, cover_name).ok();
+    book.cover = read_page(parent, cover_name, &mut None).ok();
     Ok(book)
 }

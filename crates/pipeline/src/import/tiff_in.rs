@@ -31,14 +31,35 @@ pub(crate) fn count_pages(path: &Path) -> Result<usize> {
     Ok(count)
 }
 
+/// A TIFF kept open while several of its pictures are read, so a file of
+/// hundreds of pictures is opened once, not once for each.
+pub(crate) struct Reader {
+    decoder: Decoder<BufReader<File>>,
+}
+
+impl Reader {
+    pub(crate) fn open(path: &Path) -> Result<Self> {
+        Ok(Self { decoder: open(path)? })
+    }
+
+    /// Picture number `index`, as a PNG.
+    pub(crate) fn read_page(&mut self, index: usize) -> Result<Vec<u8>> {
+        read_from(&mut self.decoder, index)
+    }
+}
+
 /// Picture number `index` of a TIFF, as a PNG.
+#[cfg(test)]
 pub(crate) fn read_page(path: &Path, index: usize) -> Result<Vec<u8>> {
-    let mut decoder = open(path)?;
+    Reader::open(path)?.read_page(index)
+}
+
+fn read_from(decoder: &mut Decoder<BufReader<File>>, index: usize) -> Result<Vec<u8>> {
     decoder
         .seek_to_image(index)
         .map_err(|e| fail(format!("TIFF picture {index}: {e}")))?;
     let (w, h) = decoder.dimensions().map_err(|e| fail(e.to_string()))?;
-    if u64::from(w) * u64::from(h) > 400_000_000 {
+    if u64::from(w) * u64::from(h) > super::MAX_PAGE_PIXELS {
         return Err(fail("the TIFF picture is too large"));
     }
     let color = decoder.colortype().map_err(|e| fail(e.to_string()))?;

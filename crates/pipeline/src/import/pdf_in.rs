@@ -6,19 +6,31 @@
 use super::names::{chapter_name, chapter_number, clean_name, series_title};
 use super::{fail, BookSource, Format, ImportBook, ImportChapter, PageRef};
 use crate::error::{PipelineError, Result};
+use crate::types::CancelFlag;
 use image::{DynamicImage, ImageFormat};
 use lopdf::{Document, Object, ObjectId};
 use std::collections::BTreeMap;
 use std::io::{Cursor, Read};
 use std::path::Path;
 
-/// The largest PDF read, and the most a single picture may inflate to.
-const MAX_PDF_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-const MAX_PICTURE_BYTES: usize = 400 * 1024 * 1024;
+/// The largest PDF read (the parser holds the whole file in memory, and the
+/// objects it makes from it besides), and the most a single picture's samples
+/// may take once unpacked.
+const MAX_PDF_BYTES: u64 = 768 * 1024 * 1024;
+const MAX_PICTURE_BYTES: usize = 512 * 1024 * 1024;
 
 fn load(path: &Path) -> Result<Document> {
     let label = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let file = std::fs::File::open(path).map_err(|e| PipelineError::Io(path.to_path_buf(), e))?;
+    // Refused by its size before any of it is read.
+    let size = file.metadata().map_err(|e| PipelineError::Io(path.to_path_buf(), e))?.len();
+    if size > MAX_PDF_BYTES {
+        return Err(fail(format!(
+            "{label} is {} MB, which is more than the {} MB MangaPoint reads as one PDF. Split it into smaller PDFs first.",
+            size / (1024 * 1024),
+            MAX_PDF_BYTES / (1024 * 1024)
+        )));
+    }
     let mut bytes = Vec::new();
     file.take(MAX_PDF_BYTES + 1)
         .read_to_end(&mut bytes)
@@ -75,6 +87,16 @@ fn page_picture(doc: &Document, page: ObjectId) -> Result<Vec<u8>> {
     if filters.iter().any(|f| matches!(*f, "JPXDecode" | "CCITTFaxDecode" | "JBIG2Decode" | "DCTDecode")) {
         return Err(fail(format!("the page picture uses {}, which is not supported", filters.join(" + "))));
     }
+    // The size the picture says it has is not trusted: a PDF can say anything.
+    let (w, h) = match (u32::try_from(image.width), u32::try_from(image.height)) {
+        (Ok(w), Ok(h)) if w > 0 && h > 0 && u64::from(w) * u64::from(h) <= super::MAX_PAGE_PIXELS => (w, h),
+        _ => {
+            return Err(fail(format!(
+                "the page picture is {} x {}, which is not a size MangaPoint can use",
+                image.width, image.height
+            )))
+        }
+    };
     let stream = doc
         .get_object(image.id)
         .and_then(Object::as_stream)
@@ -82,7 +104,6 @@ fn page_picture(doc: &Document, page: ObjectId) -> Result<Vec<u8>> {
     let data = stream
         .decompressed_content_with_limit(MAX_PICTURE_BYTES)
         .map_err(|e| fail(format!("the page picture cannot be decoded ({e})")))?;
-    let (w, h) = (image.width as u32, image.height as u32);
     let bpc = image.bits_per_component.unwrap_or(8);
     let inverted = image
         .origin_dict
@@ -117,7 +138,13 @@ fn to_image(
         "ICCBased" => {
             let array = dict.get(b"ColorSpace").ok()?.as_array().ok()?;
             let profile = doc.get_object(array.get(1)?.as_reference().ok()?).ok()?.as_stream().ok()?;
-            profile.dict.get(b"N").ok()?.as_i64().ok()? as usize
+            // The profile says how many samples a pixel has; only 1, 3 and 4 are
+            // pictures (a negative or huge number is a damaged or hostile file).
+            let n = usize::try_from(profile.dict.get(b"N").ok()?.as_i64().ok()?).ok()?;
+            if !matches!(n, 1 | 3 | 4) {
+                return None;
+            }
+            n
         }
         "Indexed" => 1,
         _ => return None,
@@ -157,7 +184,7 @@ fn to_image(
     let (w, h) = (w as usize, h as usize);
     let samples = unpack(data, w, h, components, bpc, palette.is_none())?;
     if let Some((base, table)) = palette {
-        let mut rgb = Vec::with_capacity(w * h * 3);
+        let mut rgb = Vec::with_capacity(w.checked_mul(h)?.checked_mul(3).filter(|n| *n <= MAX_PICTURE_BYTES)?);
         for &index in &samples {
             let at = usize::from(index) * base;
             let entry = table.get(at..at + base)?;
@@ -199,25 +226,32 @@ fn to_image(
 /// `scale`, samples of fewer than 8 bits are spread over 0..=255 (a 1-bit
 /// sample is 0 or 255); an indexed picture's samples stay indices.
 fn unpack(data: &[u8], w: usize, h: usize, components: usize, bpc: i64, scale: bool) -> Option<Vec<u8>> {
-    let per_row = w * components;
-    let mut out = Vec::with_capacity(per_row * h);
+    // The sizes come from the file, so none of this arithmetic can be trusted
+    // not to overflow, and nothing is allocated before it is known to fit.
+    let per_row = w.checked_mul(components)?;
+    let count = per_row.checked_mul(h).filter(|n| *n <= MAX_PICTURE_BYTES)?;
+    if components == 0 || w == 0 || h == 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(count);
     match bpc {
         8 => {
-            if data.len() < per_row * h {
+            if data.len() < count {
                 return None;
             }
-            out.extend_from_slice(&data[..per_row * h]);
+            out.extend_from_slice(&data[..count]);
         }
         16 => {
-            if data.len() < per_row * h * 2 {
+            let bytes = count.checked_mul(2)?;
+            if data.len() < bytes {
                 return None;
             }
-            out.extend(data[..per_row * h * 2].as_chunks::<2>().0.iter().map(|p| p[0]));
+            out.extend(data[..bytes].as_chunks::<2>().0.iter().map(|p| p[0]));
         }
         1 | 2 | 4 => {
             let bits = bpc as usize;
-            let row_bytes = (per_row * bits).div_ceil(8);
-            if data.len() < row_bytes * h {
+            let row_bytes = per_row.checked_mul(bits)?.div_ceil(8);
+            if data.len() < row_bytes.checked_mul(h)? {
                 return None;
             }
             let max = (1u32 << bits) - 1;
@@ -235,7 +269,7 @@ fn unpack(data: &[u8], w: usize, h: usize, components: usize, bpc: i64, scale: b
     Some(out)
 }
 
-pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
+pub(crate) fn scan(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
     let label = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     let doc = load(path)?;
     let pages: BTreeMap<u32, ObjectId> = doc.get_pages();
@@ -243,6 +277,9 @@ pub(crate) fn scan(path: &Path) -> Result<ImportBook> {
     let mut kept: Vec<u32> = Vec::new();
     let mut without = 0usize;
     for (&number, &id) in &pages {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
         match page_picture_kind(&doc, id) {
             true => kept.push(number),
             false => without += 1,
@@ -314,11 +351,15 @@ fn page_picture_kind(doc: &Document, page: ObjectId) -> bool {
 pub(crate) fn visit(
     path: &Path,
     keys: &[String],
+    cancel: &CancelFlag,
     each: &mut dyn FnMut(&str, Vec<u8>) -> Result<()>,
 ) -> Result<()> {
     let doc = load(path)?;
     let pages = doc.get_pages();
     for key in keys {
+        if cancel.is_cancelled() {
+            return Err(PipelineError::Cancelled);
+        }
         let picture = key
             .parse::<u32>()
             .ok()
@@ -390,7 +431,7 @@ pub(crate) mod tests {
             &[(16, 16, Some("DCTDecode"), jpeg(40)), (8, 4, None, vec![200; 32])],
             "My Scans",
         );
-        let book = scan(&path).unwrap();
+        let book = scan(&path, &CancelFlag::new()).unwrap();
         assert_eq!(book.meta.title, "My Scans");
         assert_eq!(book.meta.author, "A. Writer");
         assert_eq!(book.page_count(), 2);
@@ -398,7 +439,7 @@ pub(crate) mod tests {
         assert!(book.cover.is_some());
         // The JPEG goes through as it is; raw samples become a PNG.
         let mut got = Vec::new();
-        visit(&path, &["1".into(), "2".into()], &mut |k, bytes| {
+        visit(&path, &["1".into(), "2".into()], &CancelFlag::new(), &mut |k, bytes| {
             got.push((k.to_string(), bytes));
             Ok(())
         })
@@ -416,7 +457,7 @@ pub(crate) mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("text.pdf");
         make_pdf(&path, &[], "");
-        let message = scan(&path).unwrap_err().to_string();
+        let message = scan(&path, &CancelFlag::new()).unwrap_err().to_string();
         assert!(message.contains("no page pictures"), "{message}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -429,5 +470,107 @@ pub(crate) mod tests {
         assert_eq!(unpack(&[0b1010_0000], 3, 1, 1, 1, false).unwrap(), [1, 0, 1]);
         assert_eq!(unpack(&[1, 2, 3, 4], 2, 1, 1, 16, true).unwrap(), [1, 3]);
         assert!(unpack(&[1], 2, 2, 1, 8, true).is_none());
+    }
+
+    /// A one-page PDF whose picture has an ICC colour space of `n` samples a pixel.
+    fn make_icc_pdf(path: &Path, n: i64, w: u32, h: u32) {
+        let mut doc = Document::with_version("1.5");
+        let pages_id = doc.new_object_id();
+        let profile = doc.add_object(Stream::new(dictionary! { "N" => n }, vec![0u8; 8]));
+        let image = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject", "Subtype" => "Image", "Width" => i64::from(w), "Height" => i64::from(h),
+                "ColorSpace" => vec![Object::Name(b"ICCBased".to_vec()), Object::Reference(profile)],
+                "BitsPerComponent" => 8,
+            },
+            vec![7u8; 64],
+        ));
+        let contents = doc.add_object(Stream::new(dictionary! {}, b"q 100 0 0 100 0 0 cm /Im0 Do Q".to_vec()));
+        let page = doc.add_object(dictionary! {
+            "Type" => "Page", "Parent" => pages_id,
+            "MediaBox" => vec![0.into(), 0.into(), 100.into(), 100.into()],
+            "Contents" => contents,
+            "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => image } },
+        });
+        doc.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! { "Type" => "Pages", "Kids" => vec![page.into()], "Count" => 1 }),
+        );
+        let catalog = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+        doc.trailer.set("Root", catalog);
+        doc.save(path).unwrap();
+    }
+
+    fn page_one(path: &Path) -> Vec<u8> {
+        let mut got = None;
+        visit(path, &["1".into()], &CancelFlag::new(), &mut |_, bytes| {
+            got = Some(bytes);
+            Ok(())
+        })
+        .unwrap();
+        got.unwrap()
+    }
+
+    #[test]
+    fn absurd_picture_sizes_are_refused_with_an_error_not_allocated() {
+        let dir = std::env::temp_dir().join(format!("mp-pdf-big-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (i, (w, h)) in [(100_000u32, 100_000u32), (u32::MAX, u32::MAX), (20_000, 20_000)].into_iter().enumerate() {
+            let path = dir.join(format!("huge{i}.pdf"));
+            make_pdf(&path, &[(w, h, None, vec![0; 16])], "");
+            // The book is read (the page has a picture), but the picture is not made.
+            let book = scan(&path, &CancelFlag::new()).unwrap();
+            assert!(book.cover.is_none(), "{w}x{h}");
+            assert!(page_one(&path).is_empty(), "{w}x{h}");
+        }
+        // The same through the one function that does the arithmetic.
+        assert!(unpack(&[], usize::MAX, 2, 3, 8, true).is_none());
+        assert!(unpack(&[], 1 << 40, 1 << 40, 4, 16, true).is_none());
+        assert!(unpack(&[], 1 << 20, 1 << 20, 1, 1, true).is_none());
+        assert!(unpack(&[], 4, 4, 0, 8, true).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_colour_space_with_a_negative_or_impossible_sample_count_is_refused() {
+        let dir = std::env::temp_dir().join(format!("mp-pdf-icc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for n in [-5i64, 0, 2, 5, 1 << 40, i64::MIN] {
+            let path = dir.join(format!("icc{}.pdf", n.unsigned_abs()));
+            make_icc_pdf(&path, n, 4, 4);
+            assert!(page_one(&path).is_empty(), "N = {n}");
+        }
+        // A sane profile still works.
+        let path = dir.join("icc3.pdf");
+        make_icc_pdf(&path, 3, 4, 4);
+        assert_eq!(image::guess_format(&page_one(&path)).unwrap(), ImageFormat::Png);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pdf_too_large_to_read_is_refused_by_its_size_before_it_is_read() {
+        let dir = std::env::temp_dir().join(format!("mp-pdf-size-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("giant.pdf");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(MAX_PDF_BYTES + 1).unwrap();
+        drop(file);
+        let message = scan(&path, &CancelFlag::new()).unwrap_err().to_string();
+        assert!(message.contains("MB") && message.contains("giant.pdf"), "{message}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reading_a_pdf_stops_when_cancelled() {
+        let dir = std::env::temp_dir().join(format!("mp-pdf-cancel-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("two.pdf");
+        make_pdf(&path, &[(8, 4, None, vec![1; 32]), (8, 4, None, vec![2; 32])], "");
+        let cancel = CancelFlag::new();
+        cancel.cancel();
+        assert!(matches!(scan(&path, &cancel), Err(PipelineError::Cancelled)));
+        let r = visit(&path, &["1".into()], &cancel, &mut |_, _| Ok(()));
+        assert!(matches!(r, Err(PipelineError::Cancelled)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
