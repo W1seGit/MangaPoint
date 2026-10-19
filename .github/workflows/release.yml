@@ -27,7 +27,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       new: ${{ steps.v.outputs.new }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: v
         run: |
           version="$(python3 tools/release.py current)"
@@ -53,8 +53,8 @@ jobs:
     needs: [check, package]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true

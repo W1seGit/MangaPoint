@@ -26,10 +26,24 @@ pub fn SettingsPage() -> Element {
     let s = state.settings.read().clone();
     let limits = s.download.limits();
     let services = state.services.read().clone();
-    let browser_size = services
-        .as_ref()
-        .map(|sv| browser::size_on_disk(&sv.data_dir))
-        .unwrap_or(0);
+    // Walking the runtime folder takes a while, so it is done once in the
+    // background and again when browser support or the server changes, never
+    // while the page is drawn.
+    // The memo only changes when browser support, the server's folder or the
+    // server starting changes, so unrelated settings changes do not walk the
+    // folder again.
+    let browser_dir = use_memo(move || {
+        let enabled = state.settings.read().browser_support;
+        let starting = matches!(*state.boot.read(), BootState::Starting { .. });
+        let dir = state.services.read().as_ref().map(|sv| sv.data_dir.clone());
+        dir.filter(|_| enabled && !starting)
+    });
+    let browser_size = use_resource(move || async move {
+        let dir = browser_dir()?;
+        tokio::task::spawn_blocking(move || browser::size_on_disk(&dir))
+            .await
+            .ok()
+    });
     let on_macos = !browser::supported();
     let starting = matches!(*state.boot.read(), BootState::Starting { .. });
     let (series_count, chapter_count, library_bytes) = {
@@ -177,7 +191,12 @@ pub fn SettingsPage() -> Element {
                             desc: if on_macos {
                                 "Not available on macOS.".to_string()
                             } else if s.browser_support {
-                                format!("On, using {} of disk space.", human_bytes(browser_size))
+                                match *browser_size.read() {
+                                    Some(Some(bytes)) => {
+                                        format!("On, using {} of disk space.", human_bytes(bytes))
+                                    }
+                                    _ => "On.".to_string(),
+                                }
                             } else {
                                 "A few sources need a real web browser. Turning this on downloads about 270 MB, once.".to_string()
                             },

@@ -48,7 +48,7 @@ pub fn DownloadsTab() -> Element {
     let Some(ws) = state.workspace.read().clone() else {
         return rsx! {};
     };
-    let queue = state.queue.read().clone();
+    let queue = state.queue.read();
 
     // Saved chapters, then the others that are in the queue for this series.
     let mut rows: Vec<Row> = state

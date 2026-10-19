@@ -116,6 +116,86 @@ impl Limiter {
     }
 }
 
+/// Page failures in a row (each already retried) after which a source is
+/// given up on for a while.
+const BREAKER_AFTER: u32 = 6;
+/// How long a source that tripped the breaker is left alone.
+const BREAKER_COOLDOWN: Duration = Duration::from_secs(120);
+
+/// Stops a dead source being retried for every page of a batch: after
+/// [`BREAKER_AFTER`] failures in a row it is skipped for a cooldown, so the
+/// chapter moves on to another source at once.
+pub struct Breaker {
+    state: Mutex<(u32, Option<Instant>)>,
+    /// When the last failure was counted.
+    last: Mutex<Option<Instant>>,
+    /// Failures closer together than this count as one: the pages of a single
+    /// bad chapter all fail at once and must not shut a good source out.
+    spacing: Duration,
+}
+
+/// How far apart failures must be to count separately.
+const BREAKER_SPACING: Duration = Duration::from_millis(1500);
+
+impl Default for Breaker {
+    fn default() -> Self {
+        Self::with_spacing(BREAKER_SPACING)
+    }
+}
+
+impl Breaker {
+    pub fn with_spacing(spacing: Duration) -> Self {
+        Self {
+            state: Mutex::new((0, None)),
+            last: Mutex::new(None),
+            spacing,
+        }
+    }
+
+    pub fn is_open(&self) -> bool {
+        let mut s = self.state.lock().unwrap();
+        match s.1 {
+            Some(until) if Instant::now() < until => true,
+            Some(_) => {
+                // Cooled down: one fresh start.
+                *s = (0, None);
+                false
+            }
+            None => false,
+        }
+    }
+
+    pub fn failed(&self) {
+        let now = Instant::now();
+        {
+            let mut last = self.last.lock().unwrap();
+            if last.is_some_and(|t| now.duration_since(t) < self.spacing) {
+                return;
+            }
+            *last = Some(now);
+        }
+        let mut s = self.state.lock().unwrap();
+        s.0 += 1;
+        if s.0 >= BREAKER_AFTER && s.1.is_none() {
+            s.1 = Some(Instant::now() + BREAKER_COOLDOWN);
+        }
+    }
+
+    pub fn succeeded(&self) {
+        let mut s = self.state.lock().unwrap();
+        if s.1.is_none() {
+            s.0 = 0;
+        }
+    }
+
+    /// The error given for a request that was not even tried.
+    pub fn error() -> catalog::CatalogError {
+        catalog::CatalogError::BadResponse(
+            "this source kept failing, so it is being skipped for a while".into(),
+        )
+    }
+}
+
 /// The limiters for a download: one shared by every source, or one for each
 /// source (so a slow source cannot hold a fast one back, and each is asked for
 /// no more than the allowance).
@@ -123,6 +203,7 @@ pub struct LimiterSet {
     max: usize,
     per_source: bool,
     limiters: Mutex<HashMap<String, Arc<Limiter>>>,
+    breakers: Mutex<HashMap<String, Arc<Breaker>>>,
 }
 
 impl LimiterSet {
@@ -131,7 +212,18 @@ impl LimiterSet {
             max,
             per_source,
             limiters: Mutex::new(HashMap::new()),
+            breakers: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// The give-up record of `source` (always one per source).
+    pub fn breaker(&self, source: &str) -> Arc<Breaker> {
+        self.breakers
+            .lock()
+            .unwrap()
+            .entry(source.to_string())
+            .or_default()
+            .clone()
     }
 
     /// The limiter requests to `source` go through.
@@ -143,6 +235,30 @@ impl LimiterSet {
             .entry(key.to_string())
             .or_insert_with(|| Arc::new(Limiter::new(self.max)))
             .clone()
+    }
+}
+
+#[cfg(test)]
+mod breaker_tests {
+    use super::*;
+
+    #[test]
+    fn the_failures_of_one_bad_chapter_at_once_do_not_shut_a_source_out() {
+        let b = Breaker::default();
+        // Ten pages of one chapter fail in the same instant.
+        for _ in 0..10 {
+            b.failed();
+        }
+        assert!(!b.is_open(), "one burst is one failure, not six");
+    }
+
+    #[test]
+    fn failures_spread_over_time_do_shut_a_dead_source_out() {
+        let b = Breaker::with_spacing(Duration::ZERO);
+        for _ in 0..BREAKER_AFTER {
+            b.failed();
+        }
+        assert!(b.is_open());
     }
 }
 

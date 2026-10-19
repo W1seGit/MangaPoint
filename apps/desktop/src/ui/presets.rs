@@ -23,54 +23,74 @@ pub fn apply_to_series(
     schedule_preview(state, 0);
 }
 
-/// Make every series of the export as `output` (XTC, XTCH or EPUB), and draw
-/// the preview again.
+/// Make every series of the export as `output` (XTC, XTCH, EPUB or CBZ), and
+/// draw the preview again.
 pub fn set_output(state: AppState, output: library::OutputFormat) {
-    let ids: Vec<String> = state
+    let ids = export_series_ids(state);
+    set_output_of(state, &ids, |_| output);
+}
+
+/// The series on the Export screen.
+fn export_series_ids(state: AppState) -> Vec<String> {
+    state
         .export_plan
         .peek()
         .items
         .iter()
         .map(|i| i.series_id.clone())
-        .collect();
+        .collect()
+}
+
+/// Make each of the series `ids` as the format `choose` gives for it, and draw
+/// the preview again.
+fn set_output_of(
+    state: AppState,
+    ids: &[String],
+    choose: impl Fn(&library::DownloadedSeries) -> library::OutputFormat,
+) {
     let mut library = state.library;
     for id in ids {
-        let Some(series) = state.library.peek().find(&id).cloned() else {
+        let Some(series) = state.library.peek().find(id).cloned() else {
             continue;
         };
         let mut settings = series.settings.clone();
-        settings.set_output(output);
+        settings.set_output(choose(&series));
         let preset = series
             .preset_id
             .as_ref()
             .and_then(|p| state.presets.peek().find(p))
             .map(|e| e.preset.settings);
-        library.write().set_settings(&id, settings, preset.as_ref());
+        library.write().set_settings(id, settings, preset.as_ref());
     }
     state.save_library();
     schedule_preview(state, 0);
 }
 
-/// After another reader is chosen: if the export is made as something it does
-/// not open (an EPUB for an Xteink that lists only XTC, say), switch to the
-/// first thing it does.
-pub fn fit_output_to_reader(state: AppState) {
+/// After another reader is chosen, or a series is added or loaded with a
+/// preset: if a series is made as something the reader does not open (an XTC
+/// for a Kindle that takes only EPUB, say), switch it to the first thing the
+/// reader does. Returns whether anything was changed.
+pub fn fit_output_to_reader(state: AppState) -> bool {
     let setup = state.settings.peek().reader_setup();
     let listed = |o: library::OutputFormat| setup.formats.iter().any(|f| f.eq_ignore_ascii_case(o.label()));
-    let current = state
-        .export_plan
-        .peek()
-        .items
-        .first()
-        .and_then(|i| state.library.peek().find(&i.series_id).map(|s| s.settings.output()));
-    let Some(current) = current else {
-        return;
+    let Some(first) = library::OutputFormat::ALL.into_iter().find(|o| listed(*o)) else {
+        return false;
     };
-    if !listed(current) {
-        if let Some(first) = library::OutputFormat::ALL.into_iter().find(|o| listed(*o)) {
-            set_output(state, first);
-        }
+    let wrong: Vec<String> = export_series_ids(state)
+        .into_iter()
+        .filter(|id| {
+            state
+                .library
+                .peek()
+                .find(id)
+                .is_some_and(|s| !s.is_sample() && !listed(s.settings.output()))
+        })
+        .collect();
+    if wrong.is_empty() {
+        return false;
     }
+    set_output_of(state, &wrong, |_| first);
+    true
 }
 
 /// Replace one of the user's presets with some settings.

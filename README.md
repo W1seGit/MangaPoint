@@ -205,6 +205,9 @@ turns the daily check off. Nothing but the version question is sent.
 Updating never touches your library, settings or engine, and the one downloaded file is
 removed the next time MangaPoint starts.
 
+On 1.0.1 or earlier, which cannot check for updates, update once by hand: see
+[Updating MangaPoint by hand](docs/updating.md).
+
 ### First run
 
 The first start walks you through three steps:

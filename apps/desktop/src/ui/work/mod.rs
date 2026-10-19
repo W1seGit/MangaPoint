@@ -17,7 +17,7 @@ use crate::state::{
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use dioxus::prelude::*;
-use futures_util::future::{join, join_all};
+use futures_util::future::join;
 use futures_util::stream::{self, StreamExt};
 use library::{chapter_key, ExportRecord, ExportedFileRecord};
 use pipeline::{
@@ -25,7 +25,6 @@ use pipeline::{
     Grouping, JobEvent, PipelineError, PreviewImage, RetryPolicy, SourceChoice,
 };
 use search::{merge_chapters, RankedSeries, ScoredMember};
-use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};

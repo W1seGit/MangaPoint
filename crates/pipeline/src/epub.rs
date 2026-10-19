@@ -90,8 +90,8 @@ fn encode_png(img: &LevelImage, depth: Depth) -> Result<Vec<u8>> {
         encoder.set_color(png::ColorType::Indexed);
         encoder.set_depth(bits);
         encoder.set_palette(palette);
-        encoder.set_compression(png::Compression::Best);
-        encoder.set_adaptive_filter(png::AdaptiveFilterType::Adaptive);
+        encoder.set_compression(png::Compression::High);
+        encoder.set_filter(png::Filter::Adaptive);
         let mut writer = encoder.write_header().map_err(fail)?;
         writer.write_image_data(&data).map_err(fail)?;
         writer.finish().map_err(fail)?;
@@ -367,7 +367,7 @@ mod tests {
         let mut reader = decoder.read_info().unwrap();
         assert_eq!(reader.info().bit_depth, png::BitDepth::Two);
         assert_eq!(reader.info().color_type, png::ColorType::Indexed);
-        let mut buf = vec![0; reader.output_buffer_size()];
+        let mut buf = vec![0; reader.output_buffer_size().expect("the buffer size fits in memory")];
         let frame = reader.next_frame(&mut buf).unwrap();
         let row = frame.line_size;
         for y in 0..7usize {
@@ -416,7 +416,7 @@ mod tests {
         let mut zip = zip::ZipArchive::new(File::open(&path).unwrap()).unwrap();
         // The type of the book is the first entry, stored as it is.
         let first = zip.by_index(0).unwrap();
-        assert_eq!(first.name(), "mimetype");
+        assert_eq!(first.name().unwrap(), "mimetype");
         assert_eq!(first.compression(), CompressionMethod::Stored);
         drop(first);
         let mut read = |name: &str| {

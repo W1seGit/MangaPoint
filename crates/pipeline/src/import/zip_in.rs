@@ -58,7 +58,10 @@ pub(crate) fn list(archive: &mut Archive) -> (Vec<Entry>, bool) {
             locked = true;
         }
         entries.push(Entry {
-            name: file.name().to_string(),
+            name: file
+                .name()
+                .map(|n| n.into_owned())
+                .unwrap_or_else(|_| String::from_utf8_lossy(file.name_raw()).into_owned()),
             size: file.size(),
         });
     }

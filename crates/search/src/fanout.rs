@@ -6,7 +6,22 @@ use catalog::{Browse, Catalog, CatalogError, MangaSummary, Source};
 use futures_util::stream::{self, Stream, StreamExt};
 use library::HealthDb;
 use std::collections::HashMap;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
+
+/// The most source requests this program has outstanding at once, across
+/// every search and look-up. A source that is cut off by a timeout may keep
+/// the server busy, so quickly re-typed searches must not stack up without
+/// limit: later ones wait their turn here. Dropping a search stream drops
+/// its waiting and running requests, which frees their places.
+pub const GLOBAL_IN_FLIGHT: usize = 12;
+
+fn global_gate() -> Arc<Semaphore> {
+    static GATE: OnceLock<Arc<Semaphore>> = OnceLock::new();
+    GATE.get_or_init(|| Arc::new(Semaphore::new(GLOBAL_IN_FLIGHT)))
+        .clone()
+}
 
 /// Why a source gave no results, in terms the UI can show.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,6 +50,8 @@ pub enum SearchEvent {
 /// Search `sources` in parallel (at most `concurrency` at a time), yielding
 /// one event per source as soon as it answers. Slow sources are cut off after
 /// `per_source_timeout`, so one dead site never holds up the rest.
+///
+/// Dropping the returned stream cancels everything still pending.
 pub fn search_stream<'a, C: Catalog>(
     catalog: &'a C,
     sources: Vec<Source>,
@@ -42,10 +59,31 @@ pub fn search_stream<'a, C: Catalog>(
     per_source_timeout: Duration,
     concurrency: usize,
 ) -> impl Stream<Item = SearchEvent> + 'a {
+    search_stream_gated(
+        catalog,
+        sources,
+        query,
+        per_source_timeout,
+        concurrency,
+        global_gate(),
+    )
+}
+
+pub(crate) fn search_stream_gated<'a, C: Catalog>(
+    catalog: &'a C,
+    sources: Vec<Source>,
+    query: String,
+    per_source_timeout: Duration,
+    concurrency: usize,
+    gate: Arc<Semaphore>,
+) -> impl Stream<Item = SearchEvent> + 'a {
     stream::iter(sources)
         .map(move |source| {
             let query = query.clone();
+            let gate = gate.clone();
             async move {
+                // Waiting for a place does not count against the source's time.
+                let _place = gate.acquire_owned().await.ok();
                 let start = Instant::now();
                 let result = tokio::time::timeout(
                     per_source_timeout,
@@ -155,8 +193,12 @@ pub async fn enrich<C: Catalog>(
     timeout: Duration,
     concurrency: usize,
 ) -> HashMap<(String, i64), Enrichment> {
+    let gate = global_gate();
     stream::iter(candidates)
-        .map(|cand| async move {
+        .map(|cand| {
+            let gate = gate.clone();
+            async move {
+            let _place = gate.acquire_owned().await.ok();
             let result = tokio::time::timeout(timeout, catalog.fetch_chapters(cand.manga_id)).await;
             match result {
                 Ok(Ok(chapters)) => Some((
@@ -172,9 +214,36 @@ pub async fn enrich<C: Catalog>(
                 )),
                 _ => None,
             }
+            }
         })
         .buffer_unordered(concurrency.max(1))
         .filter_map(|x| async move { x })
+        .collect()
+        .await
+}
+
+/// Fetch the chapter list of each series id (at most `concurrency` at a time,
+/// within the global limit), in the same order as `manga_ids`. A list that
+/// could not be fetched in `timeout` is `None`.
+pub async fn fetch_chapter_lists<C: Catalog>(
+    catalog: &C,
+    manga_ids: &[i64],
+    timeout: Duration,
+    concurrency: usize,
+) -> Vec<Option<Vec<catalog::Chapter>>> {
+    let gate = global_gate();
+    stream::iter(manga_ids)
+        .map(|&id| {
+            let gate = gate.clone();
+            async move {
+                let _place = gate.acquire_owned().await.ok();
+                tokio::time::timeout(timeout, catalog.fetch_chapters(id))
+                    .await
+                    .ok()
+                    .and_then(|r| r.ok())
+            }
+        })
+        .buffered(concurrency.max(1))
         .collect()
         .await
 }
@@ -310,5 +379,67 @@ mod tests {
         let map = enrich(&c, state.candidates(), Duration::from_secs(5), 4).await;
         assert!(!map.contains_key(&("b".to_string(), 3)));
         assert!(map.contains_key(&("a".to_string(), 1)));
+    }
+
+    #[tokio::test]
+    async fn overlapping_searches_share_one_global_limit() {
+        let c = catalog();
+        c.set_call_latency_ms(60);
+        let gate = Arc::new(Semaphore::new(3));
+        let ids: Vec<Source> = (0..8).map(|i| source(&format!("s{i}"))).collect();
+        let one = || {
+            search_stream_gated(
+                &c,
+                ids.clone(),
+                "berserk".into(),
+                Duration::from_secs(5),
+                8,
+                gate.clone(),
+            )
+            .collect::<Vec<_>>()
+        };
+        // Two searches typed one after the other, both asking for 8 at once.
+        let (a, b) = tokio::join!(one(), one());
+        assert_eq!(a.len() + b.len(), 16);
+        assert!(c.max_calls_in_flight() <= 3, "{}", c.max_calls_in_flight());
+        assert!(c.max_calls_in_flight() >= 2);
+    }
+
+    #[tokio::test]
+    async fn dropping_the_stream_cancels_pending_requests_and_frees_places() {
+        let c = catalog();
+        c.set_call_latency_ms(10_000);
+        let gate = Arc::new(Semaphore::new(2));
+        let ids: Vec<Source> = (0..6).map(|i| source(&format!("s{i}"))).collect();
+        {
+            let mut s = Box::pin(search_stream_gated(
+                &c,
+                ids,
+                "berserk".into(),
+                Duration::from_secs(30),
+                6,
+                gate.clone(),
+            ));
+            // Poll briefly so requests start, then abandon the search.
+            let _ = tokio::time::timeout(Duration::from_millis(100), s.next()).await;
+            assert_eq!(c.calls_in_flight(), 2);
+            assert_eq!(gate.available_permits(), 0);
+        }
+        assert_eq!(c.calls_in_flight(), 0);
+        assert_eq!(gate.available_permits(), 2);
+    }
+
+    #[tokio::test]
+    async fn chapter_lists_keep_their_order_and_are_bounded() {
+        let c = catalog();
+        c.set_call_latency_ms(40);
+        let lists = fetch_chapter_lists(&c, &[1, 3, 4, 1, 3, 4, 1, 3], Duration::from_secs(5), 2).await;
+        assert_eq!(lists.len(), 8);
+        assert_eq!(lists[0].as_ref().unwrap().len(), 2);
+        assert_eq!(lists[1].as_ref().unwrap().len(), 1);
+        assert_eq!(lists[2].as_ref().unwrap().len(), 0);
+        assert!(c.max_calls_in_flight() <= 2);
+        let slow = fetch_chapter_lists(&c, &[1], Duration::from_millis(5), 2).await;
+        assert!(slow[0].is_none(), "a list that is too slow is left out");
     }
 }

@@ -295,7 +295,7 @@ mod tests {
         b.finish().unwrap();
 
         let mut z = open(&path);
-        let names: Vec<String> = (0..z.len()).map(|i| z.by_index(i).unwrap().name().to_string()).collect();
+        let names: Vec<String> = (0..z.len()).map(|i| z.by_index(i).unwrap().name().unwrap().to_string()).collect();
         assert_eq!(names, ["00001.png", "00002.png", "00003.png", "00004.jpg", "ComicInfo.xml"]);
         // Pictures are stored, not deflated again.
         assert_eq!(z.by_name("00001.png").unwrap().compression(), CompressionMethod::Stored);

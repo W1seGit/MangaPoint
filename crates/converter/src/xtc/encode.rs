@@ -66,11 +66,16 @@ pub fn encode_page(img: &LevelImage) -> Result<Vec<u8>, XtcError> {
 fn encode_xtg_data(img: &LevelImage) -> Vec<u8> {
     let row_bytes = img.width.div_ceil(8) as usize;
     let mut data = vec![0u8; row_bytes * img.height as usize];
-    for y in 0..img.height {
-        for x in 0..img.width {
-            if img.get(x, y) != 0 {
-                data[y as usize * row_bytes + (x / 8) as usize] |= 0x80 >> (x % 8);
-            }
+    for (row, out) in img
+        .levels
+        .chunks_exact(img.width as usize)
+        .zip(data.chunks_exact_mut(row_bytes))
+    {
+        for (eight, byte) in row.chunks(8).zip(out.iter_mut()) {
+            *byte = eight
+                .iter()
+                .enumerate()
+                .fold(0u8, |bits, (i, &level)| bits | (((level != 0) as u8) << (7 - i)));
         }
     }
     data
@@ -80,18 +85,24 @@ fn encode_xtg_data(img: &LevelImage) -> Vec<u8> {
 /// column-major starting at the rightmost column; a column packs 8 vertical
 /// pixels per byte, topmost pixel in the most significant bit.
 fn encode_xth_data(img: &LevelImage) -> Vec<u8> {
-    let col_bytes = img.height.div_ceil(8) as usize;
-    let plane_len = img.width as usize * col_bytes;
+    let (w, h) = (img.width as usize, img.height as usize);
+    let col_bytes = h.div_ceil(8);
+    let plane_len = w * col_bytes;
     let mut data = vec![0u8; plane_len * 2];
-    for (plane, shift) in [(0usize, 1u8), (1usize, 0u8)] {
-        for (col_index, x) in (0..img.width).rev().enumerate() {
-            for y in 0..img.height {
-                let stored = GRAY_MAP[img.get(x, y) as usize];
-                if (stored >> shift) & 1 == 1 {
-                    data[plane * plane_len + col_index * col_bytes + (y / 8) as usize] |=
-                        0x80 >> (y % 8);
-                }
+    let (high, low) = data.split_at_mut(plane_len);
+    // Eight rows at a time, each read straight along, so a column's byte is
+    // made from eight neighbouring rows instead of a walk down the image.
+    for (block, rows) in img.levels.chunks(8 * w).enumerate() {
+        for x in 0..w {
+            let (mut hi, mut lo) = (0u8, 0u8);
+            for (k, row) in rows.chunks_exact(w).enumerate() {
+                let stored = GRAY_MAP[row[x] as usize];
+                hi |= ((stored >> 1) & 1) << (7 - k);
+                lo |= (stored & 1) << (7 - k);
             }
+            let at = (w - 1 - x) * col_bytes + block;
+            high[at] = hi;
+            low[at] = lo;
         }
     }
     data
@@ -337,5 +348,71 @@ mod tests {
         let mut bytes = encode_page(&pattern(8, 8, Depth::One)).unwrap();
         bytes[0] = 0; // break magic
         assert!(decode_page(&bytes, 0).is_err());
+    }
+
+    /// The encoders as they were: a pixel at a time, columns read downward.
+    fn xtg_old(img: &LevelImage) -> Vec<u8> {
+        let row_bytes = img.width.div_ceil(8) as usize;
+        let mut data = vec![0u8; row_bytes * img.height as usize];
+        for y in 0..img.height {
+            for x in 0..img.width {
+                if img.get(x, y) != 0 {
+                    data[y as usize * row_bytes + (x / 8) as usize] |= 0x80 >> (x % 8);
+                }
+            }
+        }
+        data
+    }
+
+    fn xth_old(img: &LevelImage) -> Vec<u8> {
+        let col_bytes = img.height.div_ceil(8) as usize;
+        let plane_len = img.width as usize * col_bytes;
+        let mut data = vec![0u8; plane_len * 2];
+        for (plane, shift) in [(0usize, 1u8), (1usize, 0u8)] {
+            for (col_index, x) in (0..img.width).rev().enumerate() {
+                for y in 0..img.height {
+                    let stored = GRAY_MAP[img.get(x, y) as usize];
+                    if (stored >> shift) & 1 == 1 {
+                        data[plane * plane_len + col_index * col_bytes + (y / 8) as usize] |=
+                            0x80 >> (y % 8);
+                    }
+                }
+            }
+        }
+        data
+    }
+
+    #[test]
+    fn the_row_by_row_encoders_write_the_same_bytes_as_the_original_ones() {
+        let mut seed = 12345u32;
+        let mut next = move || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 16) as u8
+        };
+        for (w, h) in [(1, 1), (2, 8), (3, 9), (7, 17), (16, 16), (31, 5), (480, 800), (800, 480)] {
+            let one = img(w, h, Depth::One, (0..w * h).map(|_| next() & 1).collect());
+            assert_eq!(encode_xtg_data(&one), xtg_old(&one), "xtg {w}x{h}");
+            let two = img(w, h, Depth::Two, (0..w * h).map(|_| next() & 3).collect());
+            assert_eq!(encode_xth_data(&two), xth_old(&two), "xth {w}x{h}");
+        }
+    }
+
+    /// `cargo test -p converter --release -- --ignored --nocapture encoders`
+    #[test]
+    #[ignore]
+    fn timing_of_the_encoders_against_the_originals() {
+        let two = pattern(480, 800, Depth::Two);
+        let one = pattern(480, 800, Depth::One);
+        let time = |f: &dyn Fn() -> Vec<u8>| {
+            let started = std::time::Instant::now();
+            for _ in 0..200 {
+                std::hint::black_box(f());
+            }
+            started.elapsed() / 200
+        };
+        let (a, b) = (time(&|| xth_old(&two)), time(&|| encode_xth_data(&two)));
+        eprintln!("xth 480x800 per page: before {a:?}, after {b:?}");
+        let (a, b) = (time(&|| xtg_old(&one)), time(&|| encode_xtg_data(&one)));
+        eprintln!("xtg 480x800 per page: before {a:?}, after {b:?}");
     }
 }

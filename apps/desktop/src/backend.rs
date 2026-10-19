@@ -9,7 +9,11 @@ use dioxus::prelude::*;
 use library::Choice;
 use sources::SourceManager;
 use std::cell::Cell;
+use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
@@ -17,12 +21,63 @@ use tracing::{error, info, warn};
 
 static SERVER: Mutex<Option<RunningServer>> = Mutex::new(None);
 
+/// Bumped at every boot, so a watchdog from an earlier boot knows to stop.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+/// One start of the engine at a time: the watchdog's restart, "Try again" and
+/// the browser switches must not each start one.
+static BOOTING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+/// Set once the app is closing, so nothing starts an engine after that.
+static CLOSING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static RESTARTS: Mutex<RestartBudget> = Mutex::new(RestartBudget::new());
+
+/// How often the running engine is checked.
+const WATCH_INTERVAL: Duration = Duration::from_secs(5);
+/// Automatic restarts allowed within [`RESTART_WINDOW`] before giving up.
+const MAX_RESTARTS: usize = 3;
+const RESTART_WINDOW: Duration = Duration::from_secs(600);
+
+/// How many times the engine may be restarted automatically in a time window.
+struct RestartBudget {
+    times: Vec<Instant>,
+}
+
+impl RestartBudget {
+    const fn new() -> Self {
+        Self { times: Vec::new() }
+    }
+
+    /// Record a restart at `now` if the budget allows one; false if the
+    /// engine has already been restarted `max` times within `window`.
+    fn allow(&mut self, now: Instant, max: usize, window: Duration) -> bool {
+        self.times
+            .retain(|t| now.saturating_duration_since(*t) < window);
+        if self.times.len() >= max {
+            return false;
+        }
+        self.times.push(now);
+        true
+    }
+
+    fn clear(&mut self) {
+        self.times.clear();
+    }
+}
+
 /// Bring the server up, showing progress, and publish it to the app.
 /// Safe to call again: any server already running is stopped first.
 ///
 /// The first run does not download the engine by itself: with it missing, this
 /// stops at [`BootState::NeedsEngine`] until called again with `install` set.
 pub async fn boot(state: AppState, install: bool) {
+    boot_with(state, install, "Preparing…").await;
+}
+
+async fn boot_with(state: AppState, install: bool, first_message: &str) {
+    let _one_at_a_time = BOOTING.lock().await;
+    if CLOSING.load(Ordering::SeqCst) {
+        return;
+    }
+    let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let mut boot = state.boot;
     let mut services = state.services;
     services.set(None);
@@ -36,13 +91,19 @@ pub async fn boot(state: AppState, install: bool) {
         return;
     }
     boot.set(BootState::Starting {
-        message: "Preparing…".into(),
+        message: first_message.into(),
         percent: None,
     });
     stop_running().await;
     stop_leftover_servers().await;
 
     match start(state).await {
+        Ok(_) if CLOSING.load(Ordering::SeqCst) => {
+            // The app closed while the engine was starting: do not leave it behind.
+            if let Some(mut server) = SERVER.lock().unwrap().take() {
+                server.kill_now();
+            }
+        }
         Ok(svc) => {
             crate::covers::set_client(Some(svc.client.clone()));
             services.set(Some(svc));
@@ -64,6 +125,11 @@ pub async fn boot(state: AppState, install: bool) {
             }
             info!("Ready");
             boot.set(BootState::Ready);
+            // If the engine dies later (out of memory, a crash), notice and restart it.
+            // Boxed because the watchdog can itself call `boot_with`.
+            let watcher: Pin<Box<dyn Future<Output = ()>>> =
+                Box::pin(watch_engine(state, generation));
+            dioxus::core::spawn_forever(watcher);
             // Downloads that were waiting when the app closed carry on.
             crate::ui::work::ensure_queue_running(state);
             crate::ui::work::restore_export(state);
@@ -72,6 +138,53 @@ pub async fn boot(state: AppState, install: bool) {
             error!("{message}");
             boot.set(BootState::Failed(message));
         }
+    }
+}
+
+/// While the engine is up, check every few seconds that its process is still
+/// running; if it died, start it again, within the restart budget.
+async fn watch_engine(state: AppState, generation: u64) {
+    let mut boot = state.boot;
+    let mut services = state.services;
+    loop {
+        tokio::time::sleep(WATCH_INTERVAL).await;
+        if GENERATION.load(Ordering::SeqCst) != generation {
+            return; // A newer boot (or a deliberate restart) took over.
+        }
+        let died = {
+            let mut guard = SERVER.lock().unwrap();
+            let gone = guard.as_mut().is_some_and(|s| s.has_exited());
+            if gone {
+                guard.take()
+            } else {
+                None
+            }
+        };
+        let Some(dead) = died else { continue };
+        warn!(
+            "The catalog engine stopped by itself. End of its log:\n{}",
+            dead.log_tail(1500)
+        );
+        drop(dead);
+        let allowed = RESTARTS
+            .lock()
+            .unwrap()
+            .allow(Instant::now(), MAX_RESTARTS, RESTART_WINDOW);
+        if !allowed {
+            RESTARTS.lock().unwrap().clear();
+            services.set(None);
+            crate::covers::set_client(None);
+            let message = "The catalog engine keeps stopping, so it was not restarted again. \
+                           Its log is in the data folder under server-data/logs. Try again, \
+                           and if it keeps happening restart the app or your computer."
+                .to_string();
+            error!("{message}");
+            boot.set(BootState::Failed(message));
+            return;
+        }
+        info!("Restarting the catalog engine");
+        boot_with(state, true, "The catalog engine stopped; restarting…").await;
+        return; // The new boot starts its own watchdog.
     }
 }
 
@@ -203,10 +316,15 @@ async fn stop_running() {
 
 /// End the server right now. Used when the window closes or on Ctrl+C.
 pub fn shutdown() {
+    // Nothing should restart it from here on.
+    CLOSING.store(true, Ordering::SeqCst);
+    GENERATION.fetch_add(1, Ordering::SeqCst);
     if let Some(mut server) = SERVER.lock().unwrap().take() {
         info!("Closing: stopping the catalog server");
         server.kill_now();
     }
+    // Only now may another copy of the app start: its engine can use the database.
+    release_instance_lock();
 }
 
 const ROOT_DIR_ARG: &str = "-Dsuwayomi.tachidesk.config.server.rootDir=";
@@ -246,7 +364,17 @@ async fn stop_leftover_servers() {
                     .iter()
                     .map(|a| a.to_string_lossy().into_owned())
                     .collect();
-                is_our_server(&cmd, &data_dir)
+                if !is_our_server(&cmd, &data_dir) {
+                    return false;
+                }
+                let parent = p
+                    .parent()
+                    .and_then(|pp| sys.process(pp).map(|proc| (pp.as_u32(), proc_stem(proc))));
+                if belongs_to_other_live_app(parent.as_ref().map(|(i, n)| (*i, n.as_str()))) {
+                    warn!("A catalog server belongs to another MangaPoint that is still open; leaving it alone");
+                    return false;
+                }
+                true
             })
             .map(|(pid, p)| {
                 p.kill();
@@ -287,6 +415,147 @@ async fn stop_leftover_servers() {
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
     }
+}
+
+fn proc_stem(p: &sysinfo::Process) -> String {
+    let name = p.name().to_string_lossy().to_lowercase();
+    name.strip_suffix(".exe").unwrap_or(&name).to_string()
+}
+
+fn our_exe_stem() -> Option<String> {
+    let exe = std::env::current_exe().ok()?;
+    Some(exe.file_stem()?.to_string_lossy().to_lowercase())
+}
+
+/// Is the server's parent another running copy of this app (not this one)?
+/// Such a server is in use and must not be stopped.
+fn belongs_to_other_live_app(parent: Option<(u32, &str)>) -> bool {
+    let (Some((pid, name)), Some(ours)) = (parent, our_exe_stem()) else {
+        return false;
+    };
+    pid != std::process::id() && name == ours
+}
+
+// ---- One copy of the app per data folder -------------------------------------
+
+/// Held while this copy of the app runs; releasing it lets another start.
+pub struct InstanceLock {
+    path: PathBuf,
+    pid: u32,
+}
+
+#[derive(Debug)]
+pub enum LockError {
+    /// Another copy of the app, with this process id, is using the data folder.
+    Held(u32),
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for LockError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LockError::Held(pid) => write!(
+                f,
+                "MangaPoint is already open (process {pid}) and using this data folder"
+            ),
+            LockError::Io(e) => write!(f, "could not create the lock file: {e}"),
+        }
+    }
+}
+
+impl Drop for InstanceLock {
+    fn drop(&mut self) {
+        // Only remove a file that is still ours.
+        let mine = std::fs::read_to_string(&self.path)
+            .ok()
+            .and_then(|t| t.trim().parse::<u32>().ok())
+            == Some(self.pid);
+        if mine {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+}
+
+static INSTANCE_LOCK: Mutex<Option<InstanceLock>> = Mutex::new(None);
+
+/// Take the lock for the data folder `root`, or say who has it.
+pub fn acquire_instance_lock(root: &Path) -> Result<InstanceLock, LockError> {
+    acquire_lock_with(root, std::process::id(), &|pid| {
+        pid != std::process::id() && is_app_process(pid)
+    })
+}
+
+/// Keep `lock` until [`shutdown`] (or the process ends).
+pub fn keep_instance_lock(lock: InstanceLock) {
+    *INSTANCE_LOCK.lock().unwrap() = Some(lock);
+}
+
+fn release_instance_lock() {
+    INSTANCE_LOCK.lock().unwrap().take();
+}
+
+/// Is `pid` a running copy of this app? (A recycled process id belonging to
+/// some other program does not count.)
+fn is_app_process(pid: u32) -> bool {
+    let pid = Pid::from_u32(pid);
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing(),
+    );
+    match (sys.process(pid), our_exe_stem()) {
+        (Some(p), Some(ours)) => proc_stem(p) == ours,
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
+}
+
+/// The lock is a file `mangapoint.lock` holding the owner's process id. A
+/// file whose owner is not running (a crash, a power cut) is stale and is
+/// taken over.
+fn acquire_lock_with(
+    root: &Path,
+    my_pid: u32,
+    owner_running: &dyn Fn(u32) -> bool,
+) -> Result<InstanceLock, LockError> {
+    use std::io::Write;
+    std::fs::create_dir_all(root).map_err(LockError::Io)?;
+    let path = root.join("mangapoint.lock");
+    let mut empty_reads = 0;
+    for _ in 0..6 {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut file) => {
+                file.write_all(my_pid.to_string().as_bytes())
+                    .map_err(LockError::Io)?;
+                return Ok(InstanceLock { path, pid: my_pid });
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                let owner = std::fs::read_to_string(&path)
+                    .ok()
+                    .and_then(|t| t.trim().parse::<u32>().ok());
+                match owner {
+                    Some(pid) if owner_running(pid) => return Err(LockError::Held(pid)),
+                    None if empty_reads == 0 => {
+                        // The other copy may be between creating and filling the file.
+                        empty_reads += 1;
+                        std::thread::sleep(Duration::from_millis(150));
+                        continue;
+                    }
+                    _ => {}
+                }
+                let _ = std::fs::remove_file(&path);
+            }
+            Err(e) => return Err(LockError::Io(e)),
+        }
+    }
+    Err(LockError::Io(std::io::Error::other(
+        "the lock file keeps changing",
+    )))
 }
 
 /// Turn browser support on and restart the server so it downloads and uses it.
@@ -408,5 +677,81 @@ mod tests {
             is_our_server(&c, DATA),
             "case, slashes and a trailing slash do not matter"
         );
+    }
+
+    fn lock_dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("mangapoint-lock-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn restarts_are_limited_to_three_in_ten_minutes() {
+        let mut b = RestartBudget::new();
+        let t0 = Instant::now();
+        let s = |n: u64| t0 + Duration::from_secs(n);
+        assert!(b.allow(s(0), 3, RESTART_WINDOW));
+        assert!(b.allow(s(60), 3, RESTART_WINDOW));
+        assert!(b.allow(s(120), 3, RESTART_WINDOW));
+        assert!(!b.allow(s(180), 3, RESTART_WINDOW), "a fourth within the window is refused");
+        // The first one has aged out of the window.
+        assert!(b.allow(s(601), 3, RESTART_WINDOW));
+        assert!(!b.allow(s(602), 3, RESTART_WINDOW));
+        b.clear();
+        assert!(b.allow(s(603), 3, RESTART_WINDOW));
+    }
+
+    #[test]
+    fn a_second_copy_cannot_take_the_data_folder_until_the_first_lets_go() {
+        let dir = lock_dir("second");
+        let alive = |_: u32| true;
+        let first = acquire_lock_with(&dir, 100, &alive).unwrap();
+        match acquire_lock_with(&dir, 200, &alive) {
+            Err(LockError::Held(100)) => {}
+            other => panic!("expected Held(100), got {:?}", other.map(|_| ())),
+        }
+        drop(first);
+        let second = acquire_lock_with(&dir, 200, &alive).unwrap();
+        drop(second);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_lock_left_by_a_dead_copy_is_taken_over() {
+        let dir = lock_dir("stale");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("mangapoint.lock"), "4242").unwrap();
+        let lock = acquire_lock_with(&dir, 100, &|_| false).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.join("mangapoint.lock")).unwrap(),
+            "100"
+        );
+        drop(lock);
+        assert!(!dir.join("mangapoint.lock").exists());
+        // A garbled file counts as stale too.
+        std::fs::write(dir.join("mangapoint.lock"), "").unwrap();
+        assert!(acquire_lock_with(&dir, 100, &|_| true).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_real_process_check_sees_this_process_but_not_a_missing_one() {
+        // Test binaries are not named like the app, so only check absence here.
+        assert!(!is_app_process(u32::MAX - 1));
+        let dir = lock_dir("real");
+        let first = acquire_instance_lock(&dir).unwrap();
+        // The recorded owner is this very process, which is never "another copy".
+        assert!(acquire_instance_lock(&dir).is_ok());
+        drop(first);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_server_whose_app_is_gone_is_not_protected() {
+        assert!(!belongs_to_other_live_app(None));
+        assert!(!belongs_to_other_live_app(Some((std::process::id(), "anything"))));
+        assert!(!belongs_to_other_live_app(Some((1, "explorer"))));
+        let ours = our_exe_stem().unwrap();
+        assert!(belongs_to_other_live_app(Some((std::process::id() + 1, &ours))));
     }
 }

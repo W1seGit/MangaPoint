@@ -219,6 +219,9 @@ async fn download_saves_every_page_and_reports_each_finished_chapter() {
             _ => {}
         }
     }
+    // The two chapters download side by side, so either may finish first; the
+    // library sorts chapters as it records them.
+    saved.sort();
     assert_eq!(saved, ["c1", "c2"]);
     assert_eq!(page_events, 5);
     let _ = fs::remove_dir_all(lib.root);
@@ -739,7 +742,7 @@ fn epub_text(path: &str, name: &str) -> String {
 fn epub_pictures(path: &str) -> Vec<String> {
     let zip = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
     let mut names: Vec<String> = zip
-        .file_names()
+        .file_names().flatten()
         .filter(|n| n.ends_with(".png") || n.ends_with(".jpg"))
         .map(String::from)
         .collect();
@@ -797,7 +800,7 @@ async fn a_cbz_has_every_page_in_order_and_a_comic_info_with_the_chapters() {
     let path = out.files[0].location.clone();
 
     let zip = zip::ZipArchive::new(fs::File::open(&path).unwrap()).unwrap();
-    let mut pictures: Vec<String> = zip.file_names().filter(|n| n.ends_with(".png") || n.ends_with(".jpg")).map(String::from).collect();
+    let mut pictures: Vec<String> = zip.file_names().flatten().filter(|n| n.ends_with(".png") || n.ends_with(".jpg")).map(String::from).collect();
     pictures.sort();
     let expected: Vec<String> = (1..=9).map(|n| format!("{n:05}.png")).collect();
     assert_eq!(pictures, expected, "an Xteink shows four grays, so 2-bit PNGs, named to sort in order");
@@ -1509,14 +1512,14 @@ async fn a_race_still_succeeds_when_all_but_one_source_fail() {
     .await
     .unwrap();
     assert_eq!(out.chapters[0].source_id, "good");
-    let bad = out
-        .source_use
-        .iter()
-        .find(|u| u.source_id == "bad")
-        .unwrap();
+    // The bad source may be stopped by the win before it reports its failure,
+    // so it is either recorded as failed or not recorded; never as a success.
     assert!(
-        !bad.ok,
-        "a source that really failed is still recorded as failed"
+        out.source_use
+            .iter()
+            .filter(|u| u.source_id == "bad")
+            .all(|u| !u.ok),
+        "a source that really failed is never recorded as working"
     );
     let _ = fs::remove_dir_all(lib.root);
 }
@@ -1618,23 +1621,30 @@ async fn a_slow_source_does_not_hold_back_a_fast_one() {
     let started = std::time::Instant::now();
     let run = download_with(&c, &lib, &reqs, separate(6, 12), Some(tx));
     let watch = async {
-        let mut fast_done = Vec::new();
+        let (mut fast_done, mut slow_done) = (Vec::new(), Vec::new());
         while let Some(e) = rx.recv().await {
             if let JobEvent::ChapterSaved { chapter } = e {
-                if ["c1_5", "c2_5", "c3_5"].contains(&chapter.key.as_str()) {
+                if chapter.key.ends_with("_5") {
                     fast_done.push(started.elapsed());
+                } else {
+                    slow_done.push(started.elapsed());
                 }
             }
         }
-        fast_done
+        (fast_done, slow_done)
     };
-    let (out, fast_done) = tokio::join!(run, watch);
+    let (out, (fast_done, slow_done)) = tokio::join!(run, watch);
     out.unwrap();
     assert_eq!(fast_done.len(), 3);
+    assert_eq!(slow_done.len(), 3);
+    // Judged against the slow chapters rather than a fixed time, so a busy
+    // machine does not fail it: the fast chapters must be done before the first
+    // slow one is (a slow chapter needs seconds; a fast one a few milliseconds).
     let last_fast = fast_done.iter().max().unwrap();
+    let first_slow = slow_done.iter().min().unwrap();
     assert!(
-        *last_fast < std::time::Duration::from_millis(500),
-        "the fast chapters waited for the slow source: {last_fast:?}"
+        last_fast < first_slow,
+        "the fast chapters waited for the slow source: fast done at {last_fast:?}, first slow at {first_slow:?}"
     );
     let _ = fs::remove_dir_all(lib.root);
 }

@@ -22,8 +22,9 @@ use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{mpsc::UnboundedSender, Semaphore};
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::{mpsc::UnboundedSender, OwnedSemaphorePermit, Semaphore};
 
 /// Pages decoded at the same time within one chapter: one for each core, but
 /// not so many that tall pages fill the memory.
@@ -223,7 +224,261 @@ fn unique_name(kind: &str) -> String {
     )
 }
 
+/// How much decoded picture the chapters being converted may hold between
+/// them, in MiB, whatever the number of chapters converted at once. A page
+/// decoded for conversion is one byte a pixel and a whole chapter is held
+/// until it is converted, so a few big chapters at once would otherwise reach
+/// several gigabytes.
+const DECODED_BUDGET_MB: u32 = 1536;
+
+/// A share of the memory the decoded chapters may use. A chapter takes what
+/// all its pages need at once before it decodes the first, so two chapters
+/// cannot each hold half of what the other is waiting for.
+#[derive(Clone)]
+struct MemoryBudget {
+    pool: Arc<Semaphore>,
+    total_mb: u32,
+}
+
+impl MemoryBudget {
+    fn new(total_mb: u32) -> Self {
+        Self {
+            pool: Arc::new(Semaphore::new(total_mb as usize)),
+            total_mb,
+        }
+    }
+
+    /// MiB to reserve for pictures that decode to `pixels` pixels in all: one
+    /// byte a pixel, a quarter more for the cropped or scaled copy that exists
+    /// while the original is let go, and never more than the whole budget, so
+    /// that a huge chapter runs alone instead of waiting for ever.
+    fn weight(&self, pixels: u64) -> u32 {
+        let mb = (pixels.saturating_add(pixels / 4)).div_ceil(1 << 20).max(1);
+        mb.min(self.total_mb as u64) as u32
+    }
+
+    async fn acquire(&self, pixels: u64) -> OwnedSemaphorePermit {
+        self.pool
+            .clone()
+            .acquire_many_owned(self.weight(pixels))
+            .await
+            .expect("the decode memory budget remains open")
+    }
+
+    #[cfg(test)]
+    fn try_acquire(&self, pixels: u64) -> Option<OwnedSemaphorePermit> {
+        self.pool.clone().try_acquire_many_owned(self.weight(pixels)).ok()
+    }
+
+    #[cfg(test)]
+    fn free_mb(&self) -> usize {
+        self.pool.available_permits()
+    }
+}
+
+/// Whether the first chapter of a file leaves room for the cover under the
+/// page limit. The cover is a page like the others; a chapter that fills the
+/// file by itself keeps the file within its limit and goes without.
+fn cover_fits(page_cap: usize, chapter_pages: usize) -> bool {
+    chapter_pages < page_cap
+}
+
+/// What a task that did not finish says: for a panic, its message, so that a
+/// bug is reported as one and not as a page that could not be read.
+fn task_failed(
+    what: &str,
+    error: tokio::task::JoinError,
+    otherwise: impl FnOnce(String) -> PipelineError,
+) -> PipelineError {
+    if error.is_panic() {
+        let payload = error.into_panic();
+        let message = payload
+            .downcast_ref::<&str>()
+            .map(|s| s.to_string())
+            .or_else(|| payload.downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "no message".into());
+        // There is no variant of its own for a bug; this is the closest.
+        PipelineError::Decode(format!("internal error while {what}: {message}"))
+    } else {
+        otherwise(error.to_string())
+    }
+}
+
+fn cancelled(_: converter::plan::Cancelled) -> PipelineError {
+    PipelineError::Cancelled
+}
+
+/// Bytes the scratch files of an export may take on the system drive: the
+/// pages as they are spooled, and for an XTC or XTCH book the finished book
+/// written next to them. Counted from the pages saved, one page each, which
+/// is the least a chapter can make (a spread or a zoom makes more), so it does
+/// not turn away an export that would have fitted.
+fn scratch_needed(source_pages: usize, page_bytes: u64, pictures: bool) -> u64 {
+    let copies = if pictures { 1 } else { 2 };
+    let bytes = source_pages as u64 * page_bytes * copies;
+    bytes + bytes / 20
+}
+
+/// The room left on the drive that holds `dir`, or `None` for a place that
+/// matches no drive.
+fn available_space(dir: &Path) -> Option<u64> {
+    #[cfg(test)]
+    if let Some(free) = SCRATCH_FREE.with(|c| c.get()) {
+        return Some(free);
+    }
+    let dir = fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    disks
+        .iter()
+        .filter(|d| dir.starts_with(d.mount_point()))
+        .max_by_key(|d| d.mount_point().components().count())
+        .map(|d| d.available_space())
+}
+
+fn space_verdict(available: Option<u64>, needed: u64, dir: &Path) -> Result<()> {
+    match available {
+        Some(available) if available < needed => Err(PipelineError::NoSpace {
+            mount: dir.to_path_buf(),
+            needed,
+            available,
+        }),
+        _ => Ok(()),
+    }
+}
+
+/// The size of one converted page of a book, as a guess for the room it needs.
+fn page_bytes_estimate(opts: &ProcessOptions, pictures: bool) -> u64 {
+    if pictures {
+        return epub::typical_page_bytes(opts.depth);
+    }
+    let (w, h) = opts.output_size();
+    converter::xtc::PAGE_HEADER_SIZE as u64
+        + match opts.depth {
+            converter::Depth::One => converter::xtc::xtg_data_size(w, h),
+            _ => converter::xtc::xth_data_size(w, h),
+        } as u64
+}
+
+/// Whether a process with this id is running now.
+#[cfg(windows)]
+fn process_is_running(pid: u32) -> bool {
+    use std::ffi::c_void;
+    extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
+        fn GetExitCodeProcess(process: *mut c_void, code: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut c_void) -> i32;
+    }
+    const QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const STILL_ACTIVE: u32 = 259;
+    const ERROR_INVALID_PARAMETER: i32 = 87;
+    // SAFETY: plain Win32 calls with a handle that is closed before returning.
+    unsafe {
+        let handle = OpenProcess(QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            // No such process; any other failure (access denied) means there is one.
+            return std::io::Error::last_os_error().raw_os_error() != Some(ERROR_INVALID_PARAMETER);
+        }
+        let mut code = 0u32;
+        let known = GetExitCodeProcess(handle, &mut code);
+        CloseHandle(handle);
+        known == 0 || code == STILL_ACTIVE
+    }
+}
+
+#[cfg(unix)]
+fn process_is_running(pid: u32) -> bool {
+    extern "C" {
+        fn kill(pid: i32, signal: i32) -> i32;
+    }
+    const ESRCH: i32 = 3;
+    let Ok(pid) = i32::try_from(pid) else {
+        return false;
+    };
+    // SAFETY: signal 0 only asks whether the process can be signalled.
+    unsafe { kill(pid, 0) == 0 || std::io::Error::last_os_error().raw_os_error() != Some(ESRCH) }
+}
+
+/// The process id in the name of a scratch file of ours,
+/// `mangapoint-<pid>-<n>.spool`, `.book` or `.part`; `None` for any other name.
+fn spool_file_pid(name: &str) -> Option<u32> {
+    let rest = name.strip_prefix("mangapoint-")?;
+    let (stem, extension) = rest.rsplit_once('.')?;
+    if !matches!(extension, "spool" | "book" | "part") {
+        return None;
+    }
+    let (pid, n) = stem.split_once('-')?;
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    (digits(pid) && digits(n)).then(|| pid.parse().ok())?
+}
+
+/// Delete the scratch files an export left in `dir` when the app was closed
+/// or killed part-way: files named as this crate names them
+/// (`mangapoint-<pid>-<n>.spool`, `.book`, `.part`) whose process is no longer
+/// running, or that were last written more than `older_than` ago. Nothing else
+/// is touched, and nothing below `dir`. Call it when the app starts, with the
+/// folder exports use as their `work_dir`. Returns how many files it removed.
+pub fn sweep_spool(dir: &Path, older_than: Duration) -> usize {
+    sweep_spool_at(dir, older_than, SystemTime::now(), &process_is_running)
+}
+
+fn sweep_spool_at(
+    dir: &Path,
+    older_than: Duration,
+    now: SystemTime,
+    running: &dyn Fn(u32) -> bool,
+) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        // A real file only: not a folder, not a link to somewhere else.
+        if !entry.file_type().is_ok_and(|t| t.is_file()) {
+            continue;
+        }
+        let Some(pid) = entry.file_name().to_str().and_then(spool_file_pid) else {
+            continue;
+        };
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age >= older_than);
+        let orphan = pid != std::process::id() && !running(pid);
+        if (old || orphan) && fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+/// Take back the files this export already sent to a folder or a drive. Files
+/// on the reader's Wi-Fi share are left: there is no way to take them back.
+fn remove_sent(target: &ExportTarget, sent: &[ExportedFile]) {
+    if matches!(target, ExportTarget::WebDav { .. }) {
+        return;
+    }
+    for file in sent {
+        let _ = fs::remove_file(&file.location);
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test hook: cancel the export once this many files have been sent.
+    static CANCEL_AFTER_SENT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    /// Test hook: lose the next file once this many have been sent.
+    static LOSE_AFTER_SENT: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
+    /// Test hook: the room the scratch drive appears to have.
+    static SCRATCH_FREE: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
 /// Build the files and send them to the target.
+///
+/// If a file after the first cannot be sent, or the export is cancelled, the
+/// files already sent are named in the error (or, on a cancel, removed from a
+/// folder or drive), so no half-finished set is left unannounced.
 pub async fn export_series(
     files: &LibraryFiles,
     job: &ExportJob,
@@ -251,6 +506,19 @@ pub async fn export_series(
     let format = settings.format;
     let extension = settings.output().extension();
     let page_cap = pages_per_file(job, format);
+
+    // Fail now, not after an hour of converting, if the scratch drive is too full.
+    let source_pages: usize = chapters
+        .iter()
+        .map(|c| files.page_files(&job.series.id, &c.key).len())
+        .sum();
+    let needed = scratch_needed(
+        source_pages,
+        page_bytes_estimate(&opts, settings.pictures()),
+        settings.pictures(),
+    );
+    space_verdict(available_space(&job.work_dir), needed, &job.work_dir)?;
+
     let mut scratch = Scratch::default();
     let mut volumes: Vec<Volume> = Vec::new();
     let mut total_pages = 0usize;
@@ -259,6 +527,8 @@ pub async fn export_series(
     // More chapters can prepare/pack independently, while the total number
     // of simultaneous decodes remains capped at the old two-chapter budget.
     let decode_slots = Semaphore::new(page_concurrency() * 2);
+    // And what they hold decoded, in all, is held to a budget.
+    let budget = MemoryBudget::new(DECODED_BUDGET_MB);
 
     // Chapters are converted a little ahead of the one being written, so the
     // cores stay busy while a finished chapter is added to its book. They come
@@ -271,8 +541,14 @@ pub async fn export_series(
     let mut converted = stream::iter(order)
         .map(|(group, ci)| {
             let chapter = chapters[ci];
-            let (series_id, opts, events, settings, decode_slots) =
-                (&job.series.id, &opts, &events, settings, &decode_slots);
+            let (series_id, opts, events, settings, decode_slots, budget) = (
+                &job.series.id,
+                &opts,
+                &events,
+                settings,
+                &decode_slots,
+                &budget,
+            );
             async move {
                 if cancel.is_cancelled() {
                     return (group, ci, Err(PipelineError::Cancelled));
@@ -293,6 +569,7 @@ pub async fn export_series(
                     &job.series.crops,
                     job.force_conversion,
                     decode_slots,
+                    budget,
                     ci,
                     events,
                     cancel,
@@ -327,7 +604,9 @@ pub async fn export_series(
         // A new group starts a new file.
         if group != open_group {
             if let Some((builder, volume)) = open.take() {
-                volumes.push(finish_volume(builder, volume, &job.work_dir, &mut scratch).await?);
+                volumes.push(
+                    finish_volume(builder, volume, &job.work_dir, &mut scratch, cancel).await?,
+                );
             }
             open_group = group;
         }
@@ -335,7 +614,9 @@ pub async fn export_series(
         if let Some((builder, _)) = &open {
             if builder.page_count() + images.len() > page_cap {
                 let (builder, volume) = open.take().expect("checked above");
-                volumes.push(finish_volume(builder, volume, &job.work_dir, &mut scratch).await?);
+                volumes.push(
+                    finish_volume(builder, volume, &job.work_dir, &mut scratch, cancel).await?,
+                );
             }
         }
         if open.is_none() {
@@ -388,7 +669,6 @@ pub async fn export_series(
             };
             open = Some((
                 book,
-
                 Volume {
                     temp: if settings.pictures() { spool.clone() } else { PathBuf::new() },
                     group,
@@ -400,12 +680,15 @@ pub async fn export_series(
         }
         let (builder, volume) = open.as_mut().expect("opened above");
         if builder.page_count() == 0 {
-            if let Some(cover) = &cover {
+            if let Some(cover) = cover.as_ref().filter(|_| cover_fits(page_cap, images.len())) {
                 builder.add(cover)?;
             }
         }
         let start = builder.page_count();
         for image in &images {
+            if cancel.is_cancelled() {
+                return Err(PipelineError::Cancelled);
+            }
             builder.add(image)?;
         }
         builder.chapter(&chapter.name, start, chapter.number);
@@ -419,12 +702,12 @@ pub async fn export_series(
         total_pages += images.len();
     }
     if let Some((builder, volume)) = open.take() {
-        volumes.push(finish_volume(builder, volume, &job.work_dir, &mut scratch).await?);
+        volumes.push(finish_volume(builder, volume, &job.work_dir, &mut scratch, cancel).await?);
     }
 
     // Now that every file exists, name them (part numbers need the count) and
     // send them.
-    let mut sent = Vec::new();
+    let mut sent: Vec<ExportedFile> = Vec::new();
     let sizes: Vec<u64> = volumes
         .iter()
         .map(|v| fs::metadata(&v.temp).map_or(0, |m| m.len()))
@@ -432,12 +715,23 @@ pub async fn export_series(
     let all: u64 = sizes.iter().sum();
     let mut before = 0u64;
     for (i, volume) in volumes.iter().enumerate() {
+        #[cfg(test)]
+        {
+            if CANCEL_AFTER_SENT.with(|c| c.get()) == Some(sent.len()) {
+                cancel.cancel();
+            }
+            if LOSE_AFTER_SENT.with(|c| c.get()) == Some(sent.len()) {
+                let _ = fs::remove_file(&volume.temp);
+            }
+        }
         let name = volume_name(job, volume, &volumes, i, extension);
-        emit(JobEvent::Writing { file: name.clone() });
-        emit(JobEvent::Sent { done: before, total: all });
-        let (tx_progress, tx_flush) = (events.clone(), events.clone());
-        let mut last = std::time::Instant::now();
-        sent.push(
+        let result = if cancel.is_cancelled() {
+            Err(PipelineError::Cancelled)
+        } else {
+            emit(JobEvent::Writing { file: name.clone() });
+            emit(JobEvent::Sent { done: before, total: all });
+            let (tx_progress, tx_flush) = (events.clone(), events.clone());
+            let mut last = std::time::Instant::now();
             job.target
                 .write_file_with(
                     &name,
@@ -457,9 +751,26 @@ pub async fn export_series(
                             let _ = tx.send(JobEvent::Flushing);
                         }
                     },
+                    cancel,
                 )
-                .await?,
-        );
+                .await
+        };
+        match result {
+            Ok(file) => sent.push(file),
+            Err(PipelineError::Cancelled) => {
+                // A half-set of files is of no use: take back what went out.
+                remove_sent(&job.target, &sent);
+                return Err(PipelineError::Cancelled);
+            }
+            Err(e) if !sent.is_empty() => {
+                let list: Vec<&str> = sent.iter().map(|f| f.location.as_str()).collect();
+                return Err(PipelineError::Upload(format!(
+                    "{e}. These files were already sent and are still there: {}",
+                    list.join(", ")
+                )));
+            }
+            Err(e) => return Err(e),
+        }
         before += sizes[i];
     }
     Ok(ExportOutcome {
@@ -469,6 +780,10 @@ pub async fn export_series(
         cached_chapters,
     })
 }
+
+/// Set by a test to make the cover's conversion panic once.
+#[cfg(test)]
+static PANIC_IN_COVER: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// The saved cover of a series as one page for the device: the whole picture,
 /// fitted to the screen, uncropped. A series without a cover uses the first
@@ -493,7 +808,11 @@ async fn cover_page(
     opts.crop = converter::process::CropMode::Full;
     opts.margins = Default::default();
     opts.spread = converter::process::SpreadMode::Fit;
-    tokio::task::spawn_blocking(move || {
+    let made = tokio::task::spawn_blocking(move || {
+        #[cfg(test)]
+        if PANIC_IN_COVER.swap(false, Ordering::SeqCst) {
+            panic!("injected cover failure");
+        }
         let gray = decode_page(&bytes).ok()?;
         let page = converter::plan::convert_chapter(&[gray], &opts)
             .into_iter()
@@ -504,11 +823,19 @@ async fn cover_page(
             converter::xtc::encode_page(&page).ok()
         }
     })
-    .await
-    .ok()?
+    .await;
+    match made {
+        Ok(cover) => cover,
+        Err(e) => {
+            // A bug, not a cover that cannot be read: the file goes without a
+            // cover, and the reason is not lost.
+            let error = task_failed("making the cover", e, PipelineError::Decode);
+            eprintln!("mangapoint: the cover was left out: {error}");
+            None
+        }
+    }
 }
 
-/// Write an assembled book to the scratch folder.
 /// Write a finished book out as its file. A book can be gigabytes, so this
 /// happens on a thread of its own, not the one the app's window runs on.
 async fn finish_volume(
@@ -516,38 +843,58 @@ async fn finish_volume(
     volume: Volume,
     work_dir: &Path,
     scratch: &mut Scratch,
+    cancel: &CancelFlag,
 ) -> Result<Volume> {
+    if cancel.is_cancelled() {
+        return Err(PipelineError::Cancelled);
+    }
+    let interrupted = |m: String| PipelineError::Upload(format!("writing the book was interrupted: {m}"));
+    let flag = cancel.clone();
     match book {
         Book::Xtc(builder) => {
             let temp = work_dir.join(unique_name("book"));
             scratch.0.push(temp.clone());
-            tokio::task::spawn_blocking(move || write_volume(builder, volume, temp))
+            tokio::task::spawn_blocking(move || write_volume(builder, volume, temp, &flag))
                 .await
-                .map_err(|e| PipelineError::Upload(format!("writing the book was interrupted: {e}")))?
+                .map_err(|e| task_failed("writing the book", e, interrupted))?
         }
         // An EPUB or a CBZ has been written to its file as it grew; this closes it.
         Book::Epub(builder) => tokio::task::spawn_blocking(move || {
+            if flag.is_cancelled() {
+                return Err(PipelineError::Cancelled);
+            }
             (*builder).finish()?;
             Ok(volume)
         })
         .await
-        .map_err(|e| PipelineError::Upload(format!("writing the book was interrupted: {e}")))?,
+        .map_err(|e| task_failed("writing the book", e, interrupted))?,
         Book::Cbz(builder) => tokio::task::spawn_blocking(move || {
+            if flag.is_cancelled() {
+                return Err(PipelineError::Cancelled);
+            }
             (*builder).finish()?;
             Ok(volume)
         })
         .await
-        .map_err(|e| PipelineError::Upload(format!("writing the book was interrupted: {e}")))?,
+        .map_err(|e| task_failed("writing the book", e, interrupted))?,
     }
 }
 
-fn write_volume(builder: XtcBuilder, mut volume: Volume, temp: PathBuf) -> Result<Volume> {
+fn write_volume(
+    builder: XtcBuilder,
+    mut volume: Volume,
+    temp: PathBuf,
+    cancel: &CancelFlag,
+) -> Result<Volume> {
     let file = File::create(&temp).map_err(|e| PipelineError::Io(temp.clone(), e))?;
     let mut writer = BufWriter::new(file);
-    builder.write_to(&mut writer).map_err(|e| match e {
-        WriteError::Xtc(e) => PipelineError::Xtc(e),
-        WriteError::Io(e) => PipelineError::Io(temp.clone(), e),
-    })?;
+    builder
+        .write_to_cancellable(&mut writer, &|| cancel.is_cancelled())
+        .map_err(|e| match e {
+            WriteError::Xtc(e) => PipelineError::Xtc(e),
+            WriteError::Io(e) => PipelineError::Io(temp.clone(), e),
+            WriteError::Cancelled => PipelineError::Cancelled,
+        })?;
     writer
         .flush()
         .map_err(|e| PipelineError::Io(temp.clone(), e))?;
@@ -593,6 +940,60 @@ fn volume_name(
     )
 }
 
+/// How many pixels each saved page will be once decoded, read from the start
+/// of its file. A page whose size cannot be read counts as nothing: decoding
+/// it will say what is wrong with it.
+fn decoded_pixels(pages: &[PathBuf]) -> u64 {
+    pages
+        .iter()
+        .map(|path| {
+            let dimensions = |bytes: &[u8]| converter::decode::image_dimensions(bytes).ok();
+            let mut head = Vec::new();
+            let read_head = File::open(path)
+                .and_then(|f| std::io::Read::read_to_end(&mut std::io::Read::take(f, 256 * 1024), &mut head));
+            // A header further in than that (a JPEG with a big thumbnail) needs the whole file.
+            let size = read_head
+                .ok()
+                .and_then(|_| dimensions(&head))
+                .or_else(|| fs::read(path).ok().and_then(|bytes| dimensions(&bytes)));
+            size.map_or(0, |(w, h)| u64::from(w) * u64::from(h))
+        })
+        .sum()
+}
+
+/// Convert decoded pages into the packed pages of a book (or the pictures of
+/// an EPUB/CBZ). Pages are drawn on every core and each is encoded on the core
+/// that drew it, then let go; the packed pages come back in page order.
+/// `cuts_of` gives the manual crop of each planned page (none: no cuts).
+/// The decoded images are consumed, so a chapter never exists twice.
+fn pack_chapter(
+    grays: Vec<GrayImage>,
+    opts: &ProcessOptions,
+    cuts_of: &dyn Fn(&converter::ChapterPlan) -> Vec<[f32; 4]>,
+    pictures: bool,
+    cancel: &(dyn Fn() -> bool + Sync),
+) -> Result<Vec<Vec<u8>>> {
+    let prepared = converter::plan::prepare_owned(grays, opts, cancel).map_err(cancelled)?;
+    let plan = converter::plan::plan(&prepared, opts);
+    let cuts = cuts_of(&plan);
+    let packed = converter::plan::render_all_cropped_with(
+        &prepared,
+        &plan.pages,
+        opts,
+        &cuts,
+        cancel,
+        |_, image| -> Result<Vec<u8>> {
+            Ok(if pictures {
+                epub::encode_page(&image)?
+            } else {
+                converter::xtc::encode_page(&image)?
+            })
+        },
+    )
+    .map_err(cancelled)?;
+    packed.into_iter().collect()
+}
+
 /// Decode every saved page of a chapter, then plan and convert it as a whole:
 /// a webtoon's images are joined before they are cut into pages, so the pages
 /// match what the preview showed and the user's corrections apply.
@@ -606,6 +1007,7 @@ async fn convert_chapter(
     crops: &library::CropOverrides,
     force_conversion: bool,
     decode_slots: &Semaphore,
+    budget: &MemoryBudget,
     chapter_index: usize,
     events: &Option<UnboundedSender<JobEvent>>,
     cancel: &CancelFlag,
@@ -618,42 +1020,32 @@ async fn convert_chapter(
         )));
     }
     let total = pages.len();
-    let cache_path = files.chapter_dir(series_id, &chapter.key).join(if settings.pictures() {
+    let epub = settings.pictures();
+    let cache_path = files.chapter_dir(series_id, &chapter.key).join(if epub {
         conversion_cache::EPUB_FILE_NAME
     } else {
         conversion_cache::FILE_NAME
     });
-    let (source_pages, saved_settings, cache, flag) = (
-        pages.clone(),
-        settings.clone(),
-        cache_path.clone(),
-        cancel.clone(),
-    );
+    let key = conversion_cache::cache_key(opts, epub);
+    let (source_pages, cache, flag, lookup_key) =
+        (pages.clone(), cache_path.clone(), cancel.clone(), key.clone());
     let ((width, height), format) = (opts.output_size(), settings.format);
-    let (epub, depth) = (settings.pictures(), opts.depth);
     let crop_configuration = crops.chapter_configuration(&chapter.key);
     let lookup_crops = crop_configuration.clone();
     // A first export has no cache to look up. Hash its decoded snapshot
     // below instead of reading every source twice just to establish a miss.
     let cached = if !force_conversion && cache_path.is_file() {
         tokio::task::spawn_blocking(move || {
-            let fingerprint = conversion_cache::fingerprint(
-                &source_pages,
-                &saved_settings,
-                width,
-                height,
-                &flag,
-            )?;
+            let fingerprint = conversion_cache::fingerprint(&source_pages, &lookup_key, &flag)?;
             let fingerprint = conversion_cache::with_crops(fingerprint, &lookup_crops);
             Ok::<_, PipelineError>(if epub {
-                let fingerprint = conversion_cache::with_depth(fingerprint, depth);
                 conversion_cache::load_pictures(&cache, &fingerprint)
             } else {
                 conversion_cache::load(&cache, &fingerprint, width, height, format)
             })
         })
         .await
-        .map_err(|e| PipelineError::Decode(e.to_string()))??
+        .map_err(|e| task_failed("reading the converted chapter", e, PipelineError::Decode))??
     } else {
         None
     };
@@ -663,11 +1055,24 @@ async fn convert_chapter(
     if let Some(cached) = cached {
         return Ok((cached, true));
     }
+
+    // Wait for room for the whole chapter, decoded, before decoding any of it.
+    let sizes = {
+        let pages = pages.clone();
+        tokio::task::spawn_blocking(move || decoded_pixels(&pages))
+            .await
+            .map_err(|e| task_failed("measuring the chapter", e, PipelineError::Decode))?
+    };
+    let _memory = budget.acquire(sizes).await;
+    if cancel.is_cancelled() {
+        return Err(PipelineError::Cancelled);
+    }
+
     let done = std::sync::atomic::AtomicUsize::new(0);
     let done = &done;
     let name = chapter.name.as_str();
 
-    let decoded: Vec<Result<(usize, GrayImage, Vec<u8>)>> = stream::iter(pages.into_iter().enumerate())
+    let decoded: Vec<Result<(usize, GrayImage, [u8; 32])>> = stream::iter(pages.into_iter().enumerate())
         .map(|(index, path)| async move {
             if cancel.is_cancelled() {
                 return Err(PipelineError::Cancelled);
@@ -677,15 +1082,20 @@ async fn convert_chapter(
             let bytes = tokio::fs::read(&path)
                 .await
                 .map_err(|e| PipelineError::Io(path.clone(), e))?;
-            let gray = tokio::task::spawn_blocking(move || decode_page(&bytes).map(|gray| (gray, bytes)))
-                .await
-                .map_err(|e| PipelineError::Decode(e.to_string()))?
-                .map_err(|e| {
-                    PipelineError::Decode(format!(
-                        "page {} of {name} could not be read ({e}); delete the chapter and download it again",
-                        index + 1
-                    ))
-                })?;
+            // The file's bytes are let go as soon as they are decoded; only
+            // the short digest that stands for them in the cache key stays.
+            let (gray, digest) = tokio::task::spawn_blocking(move || {
+                let digest = conversion_cache::page_digest(&bytes);
+                decode_page(&bytes).map(|gray| (gray, digest))
+            })
+            .await
+            .map_err(|e| task_failed("reading a page", e, PipelineError::Decode))?
+            .map_err(|e| {
+                PipelineError::Decode(format!(
+                    "page {} of {name} could not be read ({e}); delete the chapter and download it again",
+                    index + 1
+                ))
+            })?;
             drop(permit);
             let n = done.fetch_add(1, Ordering::SeqCst) + 1;
             if let Some(tx) = events {
@@ -695,7 +1105,7 @@ async fn convert_chapter(
                     total,
                 });
             }
-            Ok((index, gray.0, gray.1))
+            Ok((index, gray, digest))
         })
         // A tall early image must not prevent later completed reads from
         // releasing their slots and starting more work. Restore order below.
@@ -710,51 +1120,34 @@ async fn convert_chapter(
     }
     let opts = opts.clone();
     let cancel = cancel.clone();
-    let settings = settings.clone();
     let crops = crops.clone();
     let chapter_key = chapter.key.clone();
     let packed = tokio::task::spawn_blocking(move || {
-        let fingerprint = conversion_cache::fingerprint_bytes(
-            decoded.iter().map(|(_, _, bytes)| bytes.as_slice()),
-            &settings,
-            width,
-            height,
-        );
+        let (digests, grays): (Vec<_>, Vec<_>) =
+            decoded.into_iter().map(|(_, gray, digest)| (digest, gray)).unzip();
+        let fingerprint = conversion_cache::fingerprint_digests(&digests, &key);
         let fingerprint = conversion_cache::with_crops(fingerprint, &crop_configuration);
-        let fingerprint = if epub {
-            conversion_cache::with_depth(fingerprint, opts.depth)
-        } else {
-            fingerprint
-        };
-        let grays: Vec<_> = decoded.into_iter().map(|(_, gray, _)| gray).collect();
-        let images = if crop_configuration.is_empty() {
-            converter::plan::convert_chapter(&grays, &opts)
-        } else {
-            let prepared = converter::plan::prepare(&grays, &opts);
-            let plan = converter::plan::plan(&prepared, &opts);
-            let cuts: Vec<_> = plan
-                .pages
-                .iter()
-                .map(|page| {
-                    crops
-                        .effective(&chapter_key, &crate::preview::crop_page_key(page))
-                        .unwrap_or_default()
-                        .as_array()
-                })
-                .collect();
-            converter::plan::render_all_cropped(&prepared, &plan.pages, &opts, &cuts)
-        };
-        let mut packed = Vec::with_capacity(images.len());
-        for image in images {
-            if cancel.is_cancelled() {
-                return Err(PipelineError::Cancelled);
-            }
-            packed.push(if epub {
-                epub::encode_page(&image)?
-            } else {
-                converter::xtc::encode_page(&image)?
-            });
-        }
+        let stop = || cancel.is_cancelled();
+        let packed = pack_chapter(
+            grays,
+            &opts,
+            &|plan| {
+                if crop_configuration.is_empty() {
+                    return Vec::new();
+                }
+                plan.pages
+                    .iter()
+                    .map(|page| {
+                        crops
+                            .effective(&chapter_key, &crate::preview::crop_page_key(page))
+                            .unwrap_or_default()
+                            .as_array()
+                    })
+                    .collect()
+            },
+            epub,
+            &stop,
+        )?;
         if epub {
             conversion_cache::save_pictures(&cache_path, &fingerprint, &packed);
         } else {
@@ -763,7 +1156,7 @@ async fn convert_chapter(
         Ok::<_, PipelineError>(packed)
     })
     .await
-    .map_err(|e| PipelineError::Decode(e.to_string()))??;
+    .map_err(|e| task_failed("converting the chapter", e, PipelineError::Decode))??;
     Ok((packed, false))
 }
 
@@ -822,5 +1215,462 @@ mod tests {
     #[test]
     fn temporary_names_do_not_repeat() {
         assert_ne!(unique_name("book"), unique_name("book"));
+    }
+
+    // ---- Audit fixes ---------------------------------------------------------
+
+    use image::ImageEncoder;
+    use library::{ConversionSettings, LibraryDb};
+
+    fn test_png(w: u32, h: u32, seed: u8) -> Vec<u8> {
+        let pixels: Vec<u8> = (0..w * h)
+            .map(|i| ((i % w) * 3 + (i / w) * 2) as u8 ^ seed)
+            .collect();
+        let mut out = Vec::new();
+        image::codecs::png::PngEncoder::new(&mut out)
+            .write_image(&pixels, w, h, image::ExtendedColorType::L8)
+            .unwrap();
+        out
+    }
+
+    fn scratch_dir(tag: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("mangapoint-compose-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// A library on disk with `chapters` chapters of `pages` pages each.
+    fn fixture(tag: &str, chapters: usize, pages: usize) -> (PathBuf, LibraryFiles, DownloadedSeries) {
+        let root = scratch_dir(tag);
+        let files = LibraryFiles::new(root.join("library"));
+        let title = "Test Series";
+        let id = library::series_id(title);
+        let mut db = LibraryDb::default();
+        for c in 1..=chapters {
+            let key = format!("c{c}");
+            fs::create_dir_all(files.chapter_dir(&id, &key)).unwrap();
+            for p in 0..pages {
+                fs::write(files.page_path(&id, &key, p), test_png(300, 450, (c * 10 + p) as u8)).unwrap();
+            }
+            db.record_chapter(
+                title,
+                &ConversionSettings::default(),
+                library::DownloadedChapter {
+                    key,
+                    number: Some(c as f64),
+                    name: format!("Chapter {c}"),
+                    source_id: "s".into(),
+                    chapter_id: c as i64,
+                    pages,
+                    bytes: 0,
+                    downloaded_at: 1,
+                },
+                1,
+            );
+        }
+        (root.clone(), files, db.series.remove(0))
+    }
+
+    fn folder_job(root: &Path, series: &DownloadedSeries) -> ExportJob {
+        let mut job = ExportJob::new(
+            series.clone(),
+            series.chapters.iter().map(|c| c.key.clone()).collect(),
+            device_profiles::x4_pro(),
+            ExportTarget::Folder { path: root.join("out") },
+            root.join("work"),
+        );
+        job.cover = false;
+        job
+    }
+
+    fn folder_files(root: &Path) -> Vec<String> {
+        fs::read_dir(root.join("out"))
+            .map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect())
+            .unwrap_or_default()
+    }
+
+    // The memory budget
+
+    #[test]
+    fn a_chapters_share_of_the_budget_follows_its_pixels_and_never_exceeds_it() {
+        let b = MemoryBudget::new(100);
+        assert_eq!(b.weight(0), 1, "even an empty chapter takes a unit");
+        assert_eq!(b.weight(40 << 20), 50, "a quarter more than the decoded pictures");
+        assert_eq!(b.weight(10_000_000_000), 100, "a huge chapter takes the lot and runs alone");
+        assert_eq!(b.weight(u64::MAX), 100);
+    }
+
+    #[test]
+    fn chapters_that_do_not_fit_together_wait_for_each_other() {
+        let b = MemoryBudget::new(100);
+        let first = b.try_acquire(60 << 20).expect("75 of 100");
+        assert_eq!(b.free_mb(), 25);
+        assert!(b.try_acquire(60 << 20).is_none(), "another 75 does not fit");
+        let small = b.try_acquire(10 << 20).expect("a small one still does");
+        drop(first);
+        assert!(b.try_acquire(60 << 20).is_some(), "room again once the first is converted");
+        drop(small);
+        // A chapter bigger than everything takes the whole budget, alone.
+        let all = b.try_acquire(1 << 40).expect("the pool is free");
+        assert_eq!(b.free_mb(), 0);
+        assert!(b.try_acquire(1 << 20).is_none());
+        drop(all);
+        assert_eq!(b.free_mb(), 100);
+    }
+
+    #[tokio::test]
+    async fn a_waiting_chapter_goes_on_as_soon_as_room_is_freed() {
+        let b = MemoryBudget::new(100);
+        let first = b.acquire(60 << 20).await;
+        let waiting = tokio::time::timeout(Duration::from_millis(50), b.acquire(60 << 20)).await;
+        assert!(waiting.is_err(), "it must wait while the first holds the memory");
+        let b2 = b.clone();
+        let second = tokio::spawn(async move { b2.acquire(60 << 20).await });
+        tokio::task::yield_now().await;
+        drop(first);
+        let permit = tokio::time::timeout(Duration::from_secs(5), second).await.unwrap().unwrap();
+        drop(permit);
+        assert_eq!(b.free_mb(), 100);
+    }
+
+    #[test]
+    fn the_pixels_of_a_chapter_are_read_from_the_heads_of_its_files() {
+        let dir = scratch_dir("pixels");
+        let (a, b, junk) = (dir.join("1.img"), dir.join("2.img"), dir.join("3.img"));
+        fs::write(&a, test_png(30, 40, 0)).unwrap();
+        fs::write(&b, test_png(100, 20, 0)).unwrap();
+        fs::write(&junk, b"not a picture").unwrap();
+        assert_eq!(decoded_pixels(&[a, b, junk, dir.join("missing.img")]), 30 * 40 + 100 * 20);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // Scratch files and space
+
+    #[test]
+    fn only_our_own_scratch_files_of_a_dead_or_old_process_are_swept() {
+        let dir = scratch_dir("sweep");
+        let touch = |name: &str| fs::write(dir.join(name), b"x").unwrap();
+        for name in [
+            "mangapoint-111-0.spool",  // a process that is gone
+            "mangapoint-111-1.book",
+            "mangapoint-111-2.part",
+            "mangapoint-222-0.spool",  // a process that is running
+            "mangapoint-library.json", // not our pattern
+            "mangapoint-333-0.txt",
+            "mangapoint-333-x.spool",
+            "mangapoint--0.spool",
+            "notes.spool",
+            "Series - Ch 1.xtc",
+        ] {
+            touch(name);
+        }
+        fs::create_dir(dir.join("mangapoint-111-9.spool")).unwrap(); // a folder, not a file
+        fs::write(dir.join("mangapoint-111-9.spool").join("mangapoint-111-0.spool"), b"x").unwrap();
+        let running = |pid: u32| pid == 222;
+
+        let removed = sweep_spool_at(&dir, Duration::from_secs(3600), SystemTime::now(), &running);
+        assert_eq!(removed, 3);
+        let mut left: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "Series - Ch 1.xtc",
+                "mangapoint--0.spool",
+                "mangapoint-111-9.spool",
+                "mangapoint-222-0.spool",
+                "mangapoint-333-0.txt",
+                "mangapoint-333-x.spool",
+                "mangapoint-library.json",
+                "notes.spool",
+            ]
+        );
+        assert!(
+            dir.join("mangapoint-111-9.spool").join("mangapoint-111-0.spool").exists(),
+            "nothing below the folder is touched"
+        );
+
+        // A running process's file goes only once it is old.
+        let later = SystemTime::now() + Duration::from_secs(7200);
+        assert_eq!(sweep_spool_at(&dir, Duration::from_secs(3600), later, &running), 1);
+        assert!(!dir.join("mangapoint-222-0.spool").exists());
+        assert!(dir.join("notes.spool").exists());
+        // Our own live export's files are kept while they are young.
+        let mine = format!("mangapoint-{}-77.spool", std::process::id());
+        fs::write(dir.join(&mine), b"x").unwrap();
+        assert_eq!(sweep_spool(&dir, Duration::from_secs(3600)), 0);
+        assert!(dir.join(&mine).exists());
+        assert_eq!(sweep_spool(&dir.join("nowhere"), Duration::ZERO), 0);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn this_process_is_running_and_an_impossible_one_is_not() {
+        assert!(process_is_running(std::process::id()));
+        assert!(!process_is_running(u32::MAX - 1));
+    }
+
+    #[test]
+    fn the_room_a_book_needs_is_counted_from_its_pages_and_checked_before_converting() {
+        let mut opts = ProcessOptions::manga_default(480, 800, converter::Depth::One);
+        assert_eq!(page_bytes_estimate(&opts, false), 22 + 48_000);
+        opts.depth = converter::Depth::Two;
+        assert_eq!(page_bytes_estimate(&opts, false), 22 + 96_000);
+        assert_eq!(page_bytes_estimate(&opts, true), 22_000);
+        // The spooled pages and the finished book; an EPUB is only its spool. Plus 5%.
+        assert_eq!(scratch_needed(1000, 48_022, false), 2 * 48_022_000 + 2 * 48_022_000 / 20);
+        assert_eq!(scratch_needed(1000, 22_000, true), 22_000_000 + 22_000_000 / 20);
+        assert_eq!(scratch_needed(0, 48_022, false), 0);
+        let dir = Path::new("scratch");
+        assert!(matches!(
+            space_verdict(Some(10_000), 20_000, dir),
+            Err(PipelineError::NoSpace { needed: 20_000, available: 10_000, .. })
+        ));
+        assert!(space_verdict(Some(20_000), 20_000, dir).is_ok());
+        assert!(space_verdict(None, u64::MAX, dir).is_ok(), "a place we cannot match is let through");
+    }
+
+    #[tokio::test]
+    async fn an_export_that_cannot_fit_on_the_scratch_drive_stops_before_converting() {
+        let (root, files, series) = fixture("nospace", 2, 3);
+        let job = folder_job(&root, &series);
+        SCRATCH_FREE.with(|c| c.set(Some(100_000)));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let result = export_series(&files, &job, Some(tx), &CancelFlag::new()).await;
+        SCRATCH_FREE.with(|c| c.set(None));
+        assert!(
+            matches!(result, Err(PipelineError::NoSpace { available: 100_000, .. })),
+            "{result:?}"
+        );
+        assert!(rx.try_recv().is_err(), "nothing was started");
+        assert!(folder_files(&root).is_empty());
+        // And with room, the same export goes through.
+        assert!(export_series(&files, &job, None, &CancelFlag::new()).await.is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    // Panics
+
+    #[tokio::test]
+    async fn a_panic_in_a_task_is_reported_as_a_bug_with_its_message() {
+        let failed = tokio::task::spawn_blocking(|| {
+            let n = 7;
+            if n > 0 {
+                panic!("boom {n}");
+            }
+        })
+        .await
+        .unwrap_err();
+        let error = task_failed("converting the chapter", failed, PipelineError::Decode);
+        let text = error.to_string();
+        assert!(text.contains("internal error while converting the chapter"), "{text}");
+        assert!(text.contains("boom 7"), "{text}");
+        assert!(!text.contains("panicked"), "{text}");
+        let literal = tokio::task::spawn_blocking(|| -> () { panic!("plain text") }).await.unwrap_err();
+        assert!(task_failed("x", literal, PipelineError::Decode).to_string().contains("plain text"));
+    }
+
+    #[tokio::test]
+    async fn a_cover_that_panics_is_left_out_and_the_next_one_is_fine() {
+        let (root, files, series) = fixture("cover-panic", 1, 2);
+        let opts = process_options_for(&device_profiles::x4_pro(), &series.settings);
+        PANIC_IN_COVER.store(true, Ordering::SeqCst);
+        let first = cover_page(&files, &series.id, "c1", &opts, false).await;
+        assert!(first.is_none(), "the export goes on without a cover");
+        assert!(cover_page(&files, &series.id, "c1", &opts, false).await.is_some());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    // The cover counts against the page limit
+
+    #[test]
+    fn the_cover_is_a_page_of_the_limit() {
+        assert!(cover_fits(4, 3));
+        assert!(!cover_fits(3, 3), "a chapter that fills the file leaves no room");
+        assert!(!cover_fits(3, 5));
+        assert!(cover_fits(60_000, 100));
+    }
+
+    #[tokio::test]
+    async fn a_file_with_a_cover_stays_within_the_page_limit() {
+        let (root, files, series) = fixture("cover-cap", 2, 3);
+        let cover = test_png(400, 600, 9);
+        let cover_path = files.cover_path(&series.id);
+        fs::create_dir_all(cover_path.parent().unwrap()).unwrap();
+        fs::write(&cover_path, cover).unwrap();
+        let counts = |out: &ExportOutcome| -> Vec<usize> {
+            out.files
+                .iter()
+                .map(|f| converter::xtc::XtcFile::parse(&fs::read(&f.location).unwrap()).unwrap().page_count())
+                .collect()
+        };
+        let mut job = folder_job(&root, &series);
+        job.cover = true;
+        // Room for a chapter and its cover.
+        job.max_pages_per_file = 4;
+        let roomy = export_series(&files, &job, None, &CancelFlag::new()).await.unwrap();
+        assert_eq!(counts(&roomy), [4, 4], "cover and three pages each");
+        // A chapter that fills a file alone: the cover would be the fourth page of three.
+        job.max_pages_per_file = 3;
+        let tight = export_series(&files, &job, None, &CancelFlag::new()).await.unwrap();
+        assert_eq!(counts(&tight), [3, 3], "no file goes over the limit");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    // Cancelling and failing part-way through a set of files
+
+    #[tokio::test]
+    async fn cancelling_after_the_first_of_two_files_leaves_the_folder_empty() {
+        let (root, files, series) = fixture("cancel-set", 2, 3);
+        let mut job = folder_job(&root, &series);
+        job.max_pages_per_file = 3; // one file for each chapter
+        CANCEL_AFTER_SENT.with(|c| c.set(Some(1)));
+        let result = export_series(&files, &job, None, &CancelFlag::new()).await;
+        CANCEL_AFTER_SENT.with(|c| c.set(None));
+        assert!(matches!(result, Err(PipelineError::Cancelled)), "{result:?}");
+        assert_eq!(folder_files(&root), Vec::<String>::new(), "no half-set is left");
+        assert_eq!(
+            fs::read_dir(root.join("work")).map(|d| d.count()).unwrap_or(0),
+            0,
+            "and no scratch files"
+        );
+        // Without the cancel both files arrive, so the empty folder was the cleanup.
+        let whole = export_series(&files, &job, None, &CancelFlag::new()).await.unwrap();
+        assert_eq!(whole.files.len(), 2);
+        assert_eq!(folder_files(&root).len(), 2);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn a_failure_after_the_first_file_names_the_files_already_sent() {
+        let (root, files, series) = fixture("fail-set", 2, 3);
+        let mut job = folder_job(&root, &series);
+        job.max_pages_per_file = 3;
+        LOSE_AFTER_SENT.with(|c| c.set(Some(1)));
+        let result = export_series(&files, &job, None, &CancelFlag::new()).await;
+        LOSE_AFTER_SENT.with(|c| c.set(None));
+        let Err(PipelineError::Upload(message)) = result else {
+            panic!("expected an upload error, got {result:?}");
+        };
+        let sent = folder_files(&root);
+        assert_eq!(sent.len(), 1, "the first file stays: {sent:?}");
+        assert!(message.contains(&sent[0]), "{message}");
+        assert!(message.contains("already sent"), "{message}");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn an_already_cancelled_export_stops_before_any_book_is_written() {
+        let (root, files, series) = fixture("cancelled-early", 2, 3);
+        let job = folder_job(&root, &series);
+        let cancel = CancelFlag::new();
+        cancel.cancel();
+        assert!(matches!(
+            export_series(&files, &job, None, &cancel).await,
+            Err(PipelineError::Cancelled)
+        ));
+        assert!(folder_files(&root).is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    // Speed: pages encoded on several cores come out as they did one by one
+
+    fn chapter_grays() -> Vec<GrayImage> {
+        let mut seed = 3u32;
+        (0..9)
+            .map(|i| {
+                GrayImage::from_fn(300 + i * 40, 450 + i * 90, |x, y| {
+                    seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                    let noise = (seed >> 24) as u8 / 8;
+                    if (x / 20 + y / 30) % 3 == 0 { 30 + noise } else { 230 - noise }
+                })
+                .unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn pages_packed_on_every_core_are_the_pages_packed_one_by_one() {
+        use converter::{Depth, Layout};
+        let grays = chapter_grays();
+        for (depth, pictures, layout) in [
+            (Depth::One, false, Layout::Manga),
+            (Depth::Two, false, Layout::Manga),
+            (Depth::Two, true, Layout::Manga),
+            (Depth::Eight, true, Layout::Manga),
+            (Depth::One, false, Layout::Webtoon),
+            (Depth::Eight, true, Layout::Webtoon),
+        ] {
+            let mut opts = ProcessOptions::manga_default(480, 800, depth);
+            opts.layout = layout;
+            let serial: Vec<Vec<u8>> = converter::plan::convert_chapter(&grays, &opts)
+                .iter()
+                .map(|image| {
+                    if pictures {
+                        epub::encode_page(image).unwrap()
+                    } else {
+                        converter::xtc::encode_page(image).unwrap()
+                    }
+                })
+                .collect();
+            let parallel =
+                pack_chapter(grays.clone(), &opts, &|_| Vec::new(), pictures, &|| false).unwrap();
+            assert!(serial.len() >= grays.len().min(3));
+            assert_eq!(parallel, serial, "{depth:?} pictures {pictures} {layout:?}");
+        }
+    }
+
+    #[test]
+    fn packing_stops_soon_after_a_cancel() {
+        use std::sync::atomic::AtomicUsize;
+        let grays: Vec<GrayImage> = (0..120)
+            .map(|i| GrayImage::from_fn(300, 450, |x, y| ((x + y + i) % 251) as u8).unwrap())
+            .collect();
+        let opts = ProcessOptions::manga_default(480, 800, converter::Depth::Two);
+        let asked = AtomicUsize::new(0);
+        let stop = || asked.fetch_add(1, Ordering::SeqCst) >= 10;
+        let result = pack_chapter(grays, &opts, &|_| Vec::new(), true, &stop);
+        assert!(matches!(result, Err(PipelineError::Cancelled)));
+        assert!(asked.load(Ordering::SeqCst) < 120, "stopped before the 120 pages");
+    }
+
+    /// `cargo test -p pipeline --release --features catalog/fake,converter/decode --lib -- --ignored --nocapture timing`
+    #[test]
+    #[ignore]
+    fn timing_of_packing_a_chapter_against_rendering_first_and_encoding_after() {
+        let mut seed = 5u32;
+        let grays: Vec<GrayImage> = (0..80)
+            .map(|_| {
+                GrayImage::from_fn(900, 1400, |x, y| {
+                    seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+                    let noise = (seed >> 24) as u8 / 4;
+                    if (x / 40 + y / 60) % 2 == 0 { 20 + noise } else { 235 - noise }
+                })
+                .unwrap()
+            })
+            .collect();
+        for (depth, pictures, name) in [
+            (converter::Depth::Two, true, "EPUB/CBZ PNG"),
+            (converter::Depth::Two, false, "XTCH"),
+        ] {
+            let opts = ProcessOptions::manga_default(480, 800, depth);
+            let started = std::time::Instant::now();
+            let images = converter::plan::convert_chapter(&grays, &opts);
+            let old: Vec<Vec<u8>> = images
+                .iter()
+                .map(|i| if pictures { epub::encode_page(i).unwrap() } else { converter::xtc::encode_page(i).unwrap() })
+                .collect();
+            let before = started.elapsed();
+            let started = std::time::Instant::now();
+            let new = pack_chapter(grays.clone(), &opts, &|_| Vec::new(), pictures, &|| false).unwrap();
+            let after = started.elapsed();
+            assert_eq!(old, new);
+            eprintln!("{name}, 80 pages: render then encode one by one {before:?}; render+encode on every core {after:?}");
+        }
     }
 }

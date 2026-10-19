@@ -6,14 +6,16 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ExportedFileRecord {
     /// A path on this computer, or a URL for files sent over Wi-Fi.
     pub path: String,
     pub bytes: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ExportRecord {
     pub id: String,
     pub series_id: String,
@@ -45,6 +47,7 @@ const KEEP: usize = 300;
 #[serde(default)]
 pub struct ExportsDb {
     /// Oldest first.
+    #[serde(deserialize_with = "crate::json::lenient_vec")]
     pub records: Vec<ExportRecord>,
 }
 
@@ -124,6 +127,24 @@ mod tests {
         assert_eq!(keys.len(), 3);
         assert!(keys.contains("c1") && keys.contains("c3") && !keys.contains("c9"));
         assert!(db.exported_keys("nobody").is_empty());
+    }
+
+    #[test]
+    fn old_or_partial_files_still_load_and_one_bad_record_is_skipped() {
+        let dir = std::env::temp_dir().join(format!("mangapoint-exports-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("exports.json");
+        fs::write(
+            &path,
+            r#"{"records":[{"id":"a","title":"T"},{"id":7,"files":"no"},{"id":"b","files":[{"path":"x.xtc"}]}]}"#,
+        )
+        .unwrap();
+        let db = crate::JsonFile::<ExportsDb>::new(&path).load();
+        assert_eq!(db.records.len(), 2);
+        assert_eq!(db.records[1].files[0].bytes, 0);
+        assert!(path.exists());
+        let _ = fs::remove_dir_all(dir);
     }
 
     fn record(id: &str, files: &[&str]) -> ExportRecord {

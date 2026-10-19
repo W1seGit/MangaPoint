@@ -7,7 +7,7 @@ edition.workspace = true
 thiserror.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 catalog = { path = "../catalog" }
 converter = { path = "../converter", features = ["decode", "serde"] }
 library = { path = "../library" }
@@ -18,8 +18,8 @@ futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
 # EPUBs are zip files; their page pictures are PNGs of 2 or 1 bits.
-zip = { version = "2", default-features = false, features = ["deflate"] }
-png = "0.17"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+png = "0.18"
 # Importing books: the XML of ComicInfo.xml and of an EPUB, PDFs whose pages are
 # pictures, 7z archives, RAR archives and TIFF pages. All but the RAR reader are
 # pure Rust; the RAR one is the vendored UnRAR source (see THIRD-PARTY-LICENSES).
@@ -29,7 +29,7 @@ sevenz-rust = { version = "0.6", default-features = false }
 unrar = "0.5"
 tiff = { version = "0.11", default-features = false, features = ["deflate", "lzw"] }
 # 0.39 needs Rust 1.95; 0.37 works on 1.90 and has the same Disks API.
-sysinfo = { version = "0.37", default-features = false, features = ["disk"] }
+sysinfo = { version = "0.39", default-features = false, features = ["disk"] }
 
 [dev-dependencies]
 # To make 7z archives for the importer's tests.

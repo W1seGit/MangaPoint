@@ -369,67 +369,100 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
     );
     // Adaptive: test the sources that cover about the same, then put the best
     // first for every chapter (the others stay as fallbacks).
-    let requests = if batch.choice == SourceChoice::Adaptive {
-        order_sources(
-            state,
-            id,
-            &client,
-            batch.requests.clone(),
-            &batch.source_names,
+    // The test can take a while on a slow source, so Cancel and Pause are
+    // looked at while it runs, not only afterwards.
+    let ordered = if batch.choice == SourceChoice::Adaptive {
+        logic::unless_stale(
+            order_sources(
+                state,
+                id,
+                &client,
+                batch.requests.clone(),
+                &batch.source_names,
+                &batch.cancel,
+            ),
+            || batch.cancel.is_cancelled(),
+            Duration::from_millis(100),
         )
         .await
     } else {
-        batch.requests.clone()
+        Some(batch.requests.clone())
     };
-    let (tx, mut rx) = unbounded_channel();
-    let run = download_chapters(
-        &*client,
-        &files,
-        &batch.series_id,
-        &requests,
-        quality,
-        limits,
-        &policy,
-        Some(tx),
-        &batch.cancel,
-    );
-    let watch = async {
-        let mut logged = HashMap::new();
-        while let Some(first) = rx.recv().await {
-            // Take everything that has arrived and show it in one go:
-            // redrawing for every single page would keep the screen busy
-            // far more than anyone can see.
-            let mut events = vec![first];
-            while let Ok(event) = rx.try_recv() {
-                events.push(event);
-            }
-            for event in &events {
-                log_event(event, &mut logged);
-                if let JobEvent::ChapterSaved { chapter } = event {
-                    // Record each chapter as soon as it is safe on disk, so
-                    // cancelling or failing later never loses it.
-                    let mut library = state.library;
-                    {
-                        let mut db = library.write();
-                        let series =
-                            db.record_chapter(&batch.title, &defaults, chapter.clone(), now_secs());
-                        db.adopt_default_preset(&series, &defaults, &default_preset);
-                    }
-                    state.save_library();
-                }
-            }
-            // How far it has got is not kept on disk, so nothing is saved here.
+    let result = match ordered {
+        None => {
             state.edit_queue_quiet(|q| {
                 if let Some(b) = q.get_mut(id) {
-                    for event in &events {
-                        b.progress.apply(event);
-                    }
+                    b.progress.note = None;
                 }
             });
-            tokio::time::sleep(PROGRESS_REFRESH).await;
+            Err(PipelineError::Cancelled)
+        }
+        Some(requests) => {
+        let (tx, mut rx) = unbounded_channel();
+        let run = download_chapters(
+            &*client,
+            &files,
+            &batch.series_id,
+            &requests,
+            quality,
+            limits,
+            &policy,
+            Some(tx),
+            &batch.cancel,
+        );
+        // Was the series in the library when this started (or has this download
+        // recorded a chapter of it)? Then its absence later means it was removed.
+        let known = std::cell::Cell::new(state.library.peek().find(&batch.series_id).is_some());
+        let watch = async {
+            let mut logged = HashMap::new();
+            while let Some(first) = rx.recv().await {
+                // Take everything that has arrived and show it in one go:
+                // redrawing for every single page would keep the screen busy
+                // far more than anyone can see.
+                let mut events = vec![first];
+                while let Ok(event) = rx.try_recv() {
+                    events.push(event);
+                }
+                for event in &events {
+                    log_event(event, &mut logged);
+                    if let JobEvent::ChapterSaved { chapter } = event {
+                        // The series was removed while this was still downloading:
+                        // recording would bring it back, so stop instead.
+                        let exists = state.library.peek().find(&batch.series_id).is_some();
+                        if !logic::may_record_chapter(known.get(), exists) {
+                            state.edit_queue(|q| {
+                                q.cancel(id);
+                            });
+                            continue;
+                        }
+                        known.set(true);
+                        // Record each chapter as soon as it is safe on disk, so
+                        // cancelling or failing later never loses it.
+                        let mut library = state.library;
+                        {
+                            let mut db = library.write();
+                            let series =
+                                db.record_chapter(&batch.title, &defaults, chapter.clone(), now_secs());
+                            db.adopt_default_preset(&series, &defaults, &default_preset);
+                        }
+                        state.save_library();
+                    }
+                }
+                // How far it has got is not kept on disk, so nothing is saved here.
+                state.edit_queue_quiet(|q| {
+                    if let Some(b) = q.get_mut(id) {
+                        for event in &events {
+                            b.progress.apply(event);
+                        }
+                    }
+                });
+                tokio::time::sleep(PROGRESS_REFRESH).await;
+            }
+        };
+        let (result, ()) = join(run, watch).await;
+        result
         }
     };
-    let (result, ()) = join(run, watch).await;
 
     // Chapters of the batch that did not end up saved.
     let unsaved = |state: AppState| -> Vec<String> {
@@ -590,6 +623,7 @@ pub(super) async fn order_sources(
     client: &catalog::SuwayomiClient,
     requests: Vec<pipeline::ChapterRequest>,
     names: &HashMap<String, String>,
+    cancel: &pipeline::CancelFlag,
 ) -> Vec<pipeline::ChapterRequest> {
     let name_of = |id: &str| names.get(id).cloned().unwrap_or_else(|| id.to_string());
     let now = now_secs();
@@ -619,7 +653,8 @@ pub(super) async fn order_sources(
                 b.progress.note = Some("Checking which source is fastest…".into());
             }
         });
-        let results = pipeline::probe_sources(client, &to_test, &RetryPolicy::default()).await;
+        let results =
+            pipeline::probe::probe_sources_cancellable(client, &to_test, &RetryPolicy::default(), cancel).await;
         for (source, speed) in results {
             match speed {
                 Some(pages_per_second) => {

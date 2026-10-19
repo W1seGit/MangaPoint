@@ -407,6 +407,27 @@ pub fn load_saved_cover(state: AppState, series_id: &str) {
 /// description, author, genres and cover), if that has not been done. It asks
 /// about a chapter the series was downloaded from, so it also works for series
 /// downloaded before details were saved.
+/// Series whose details could not be fetched, held off for a while before
+/// the next attempt (the library page asks again at every change to the library).
+static INFO_RETRY: std::sync::LazyLock<std::sync::Mutex<logic::Backoff>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(logic::Backoff::new()));
+
+fn info_may_be_tried(series_id: &str) -> bool {
+    INFO_RETRY
+        .lock()
+        .map_or(true, |b| b.may_try(series_id, now_secs()))
+}
+
+fn note_info_result(series_id: &str, worked: bool) {
+    if let Ok(mut b) = INFO_RETRY.lock() {
+        if worked {
+            b.succeeded(series_id);
+        } else {
+            b.failed(series_id, now_secs());
+        }
+    }
+}
+
 pub fn ensure_series_info(state: AppState, series_id: &str) {
     let Some(series) = state.library.peek().find(series_id).cloned() else {
         return;
@@ -421,6 +442,9 @@ pub fn ensure_series_info(state: AppState, series_id: &str) {
     let Some(client) = state.client() else {
         return;
     };
+    if !info_may_be_tried(series_id) {
+        return;
+    }
     let id = series_id.to_string();
     let mut busy = state.info_busy;
     busy.write().insert(id.clone());
@@ -469,7 +493,9 @@ pub fn ensure_series_info(state: AppState, series_id: &str) {
                     .await
                     .ok()
                     .flatten();
-                if let Some(small) = small {
+                // The series may have been removed while the picture came in.
+                let still_here = state.library.peek().find(&id).is_some();
+                if let Some(small) = small.filter(|_| still_here) {
                     let target = files.cover_path(&id);
                     if let Some(dir) = target.parent() {
                         let _ = std::fs::create_dir_all(dir);
@@ -481,11 +507,13 @@ pub fn ensure_series_info(state: AppState, series_id: &str) {
             let mut library = state.library;
             library.write().set_info(&id, info);
             state.save_library();
+            note_info_result(&id, true);
             info!("Saved details for \"{}\"", series.title);
             if has_cover {
                 load_saved_cover(state, &id);
             }
         } else {
+            note_info_result(&id, false);
             warn!("Could not fetch details for \"{}\"", series.title);
         }
         let mut busy = state.info_busy;
@@ -579,17 +607,14 @@ pub(super) async fn load_chapters(
         .collect();
     info!("Loading chapter lists from {}", names.join(", "));
     let started = Instant::now();
-    let fetches = members.iter().map(|m| {
-        let client = client.clone();
-        let id = m.candidate.manga_id;
-        async move { tokio::time::timeout(Duration::from_secs(60), client.fetch_chapters(id)).await }
-    });
+    // At most six at a time, within the app-wide limit on requests to the engine.
+    let ids: Vec<i64> = members.iter().map(|m| m.candidate.manga_id).collect();
     let mut lists = Vec::new();
     let mut unreachable = 0;
-    for result in join_all(fetches).await {
+    for result in search::fanout::fetch_chapter_lists(&*client, &ids, Duration::from_secs(60), 6).await {
         match result {
-            Ok(Ok(chapters)) => lists.push(chapters),
-            _ => {
+            Some(chapters) => lists.push(chapters),
+            None => {
                 unreachable += 1;
                 lists.push(Vec::new());
             }

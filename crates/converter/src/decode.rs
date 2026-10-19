@@ -53,6 +53,10 @@ pub fn decode_to_gray(bytes: &[u8]) -> Result<GrayImage, DecodeError> {
 /// All opaque 8-bit colors share one 16 MiB table. Building it once avoids
 /// repeated float conversion on billions of downloaded RGB pixels, and
 /// avoids expanding opaque images into a second four-channel buffer.
+///
+/// Not replaced by integer arithmetic: the table is rounded from f32 sums, and
+/// every fixed-point weighting tried (8, 15, 16 and 20 bits) differs from it by
+/// one level for thousands of colors, which would change cached pages.
 fn opaque_luma_lookup() -> &'static [u8] {
     static LOOKUP: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
     LOOKUP.get_or_init(|| {
