@@ -51,7 +51,9 @@ struct Spool {
 
 impl Drop for Spool {
     fn drop(&mut self) {
-        // Close the file first: Windows cannot delete an open file.
+        // Close the file first: Windows cannot delete an open file. (In the
+        // browser build `File` has nothing to drop, which clippy notices.)
+        #[allow(clippy::drop_non_drop)]
         drop(self.file.take());
         let _ = std::fs::remove_file(&self.path);
     }

@@ -13,7 +13,14 @@ crate-type = ["cdylib", "rlib"]
 # `convert`: the converter and the file writers; only the worker loads this.
 default = ["core", "convert"]
 core = []
-convert = ["core", "dep:converter"]
+convert = [
+    "core",
+    "dep:converter",
+    "dep:zip",
+    "dep:png",
+    "dep:image",
+    "dep:flate2",
+]
 
 [dependencies]
 converter = { path = "../converter", features = ["serde", "decode"], optional = true }
@@ -21,6 +28,23 @@ device-profiles = { path = "../device-profiles", features = ["serde"] }
 library = { path = "../library" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.11"
+roxmltree = "0.21"
+# The writers below mirror the desktop app's (crates/pipeline) with the same
+# versions and features, so their output is byte for byte the same.
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
+png = { version = "0.18", optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"], optional = true }
+flate2 = { version = "1", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"
+
+[dev-dependencies]
+serde_json = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+pipeline = { path = "../pipeline" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "fs", "io-util", "net", "macros"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }

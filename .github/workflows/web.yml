@@ -1,0 +1,88 @@
+name: Web
+
+# The website (apps/web, crates/web-engine, web/). Pull requests that touch it
+# build the WebAssembly and run the tests. NOTHING is deployed automatically:
+# publishing to GitHub Pages is a manual run of this workflow ("Run workflow").
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "crates/web-engine/**"
+      - "web/**"
+      - "tools/*web*"
+      - "tools/web-e2e/**"
+      - "apps/desktop/src/style.css"
+      - "apps/desktop/src/reader.css"
+      - "apps/desktop/src/import.css"
+      - "apps/desktop/src/ui/**"
+      - ".github/workflows/web.yml"
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: "Deploy the built site to GitHub Pages"
+        type: boolean
+        default: false
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  WASM_BINDGEN_VERSION: "0.2.129"
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
+
+      - name: Clippy (page and engine, native and WebAssembly)
+        run: |
+          cargo clippy -p mangapoint-web -p web-engine --all-targets --locked -- -D warnings
+          cargo clippy -p mangapoint-web --target wasm32-unknown-unknown --locked -- -D warnings
+
+      - name: Native tests
+        run: cargo test -p mangapoint-web -p web-engine --locked
+
+      - name: Build the site
+        run: tools/build-web.sh
+
+      - name: JavaScript tests (ZIP reader, importer with the real engine)
+        run: node --test web/js/test
+
+      - name: Keep the built site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    name: Deploy to GitHub Pages (manual)
+    # Only when someone starts this workflow by hand and asks for it.
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

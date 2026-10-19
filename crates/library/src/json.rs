@@ -282,6 +282,7 @@ impl<T: Serialize + DeserializeOwned + Default> JsonFile<T> {
             let mut f = fs::File::create(&tmp)?;
             io::Write::write_all(&mut f, text.as_bytes())?;
             f.sync_all()?;
+            #[allow(clippy::drop_non_drop)] // (nothing to close in the browser build)
             drop(f);
             fs::rename(&tmp, &self.path)
         };

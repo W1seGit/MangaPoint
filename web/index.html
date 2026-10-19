@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>MangaPoint</title>
+  <meta name="description" content="Read your own comics and books, and make files for your e-reader. Everything stays on your device.">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="MangaPoint">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <!-- The desktop app's own style sheets, copied unchanged at build time -->
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/import.css">
+  <link rel="stylesheet" href="css/reader.css">
+  <!-- Only the layout changes for the web live here -->
+  <link rel="stylesheet" href="css/web.css">
+</head>
+<body>
+  <div id="main">
+    <div class="boot" id="boot">
+      <p class="muted">Opening MangaPoint&hellip;</p>
+      <noscript><p>MangaPoint needs JavaScript and WebAssembly. Nothing is uploaded; everything runs in your browser.</p></noscript>
+    </div>
+  </div>
+  <script type="module" src="js/boot.js"></script>
+</body>
+</html>

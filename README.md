@@ -258,6 +258,15 @@ The only things MangaPoint contacts are the sources you install, GitHub (for the
 the source lists and the daily check for a newer version), and your reader over Wi-Fi if
 you use that.
 
+## On the web
+
+A browser version reads and exports **your own** books: import a CBZ, ZIP, EPUB with
+pictures, a folder of pictures, read them, and export them for an e-reader. It does not
+search or download manga, and RAR, 7z and PDF are not supported on the web yet. Everything
+runs on your device; nothing is uploaded and the host stores nothing. Build it with
+`tools/build-web.ps1` (or `tools/build-web.sh`) and serve `web/dist` from any static host.
+Details, limits and the reading-state file are in [docs/web.md](docs/web.md).
+
 ## Build from source
 
 You need [Rust](https://rustup.rs) (stable). Then:

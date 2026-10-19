@@ -1,0 +1,191 @@
+/* The website's layout. The look is the desktop app's own style.css (copied
+   unchanged at build time, with import.css and reader.css); this file only
+   adapts the layout to a browser and to phones: safe areas, touch targets, the
+   bottom tab bar, no sideways scrolling. */
+
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { overflow-x: hidden; overscroll-behavior: none; }
+body { -webkit-tap-highlight-color: transparent; }
+#main { min-height: 100%; }
+
+/* Before the WebAssembly arrives */
+.boot { height: 100vh; height: 100dvh; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+
+/* The window: dvh follows the phone's moving address bar. */
+.app { height: 100vh; height: 100dvh; min-width: 0; min-height: 0; } /* the desktop window's minimum size does not apply */
+.content { padding-left: max(28px, var(--sal)); padding-right: max(28px, var(--sar)); }
+.splash { height: 100vh; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: auto; }
+
+/* Dropping files on the page */
+.drop-overlay {
+  display: none; position: fixed; inset: 0; z-index: 90; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.8); pointer-events: none; padding: 20px;
+}
+body.dragging .drop-overlay { display: flex; }
+.drop-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  border: 2px dashed var(--accent); border-radius: 18px; padding: 40px 48px; background: var(--panel);
+}
+
+/* Menus */
+.menu-note { padding: 8px 12px 4px; max-width: 250px; white-space: normal; border-top: 1px solid var(--line); margin-top: 4px; }
+.import-anchor .menu { right: 0; }
+.poster-menu { right: auto; left: 8px; top: auto; }
+.poster { position: relative; }
+.menu-scrim { z-index: 70; }
+.menu { z-index: 71; }
+
+/* Library */
+.empty-actions { justify-content: center; margin-top: 8px; }
+.waiting { margin-top: 30px; }
+.waiting-list { padding: 4px 14px; }
+.waiting-row { align-items: flex-start; }
+.waiting-title { overflow-wrap: anywhere; }
+.poster-title { overflow: hidden; text-overflow: ellipsis; }
+.cover-box { display: block; }
+img.cover { background: var(--panel); }
+
+/* Settings cards */
+.page > .card { max-width: 860px; }
+.page > .card + .card { margin-top: 14px; }
+.privacy { border-color: var(--line-strong); }
+
+/* Export */
+.export-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; max-width: 1100px; }
+.export-grid > .card + .card { margin-top: 0; }
+.export-chapters { max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; background: var(--panel-2); }
+.export-chapter { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 2px; cursor: pointer; }
+.export-chapter + .export-chapter { border-top: 1px solid var(--line); }
+.export-chapter input { width: 18px; height: 18px; flex: none; }
+.export-run { margin-top: 14px; max-width: 1100px; }
+.export-file { padding: 10px 2px; }
+.export-file-name { overflow-wrap: anywhere; }
+.device-note { margin-top: 6px; }
+.panel-section select { max-width: 100%; }
+input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 8px; }
+
+/* The reader: safe areas, dynamic viewport, touch */
+.reader { --bar-h: calc(56px + var(--sat)); }
+.reader-bar { padding-top: calc(8px + var(--sat)); padding-left: max(12px, var(--sal)); padding-right: max(12px, var(--sar)); height: var(--bar-h); }
+.reader[data-mode="paged"] .reader-page-wrap { min-height: calc(100vh - var(--bar-h)); min-height: calc(100dvh - var(--bar-h)); }
+.reader[data-mode="paged"][data-fit="height"] .reader-tile { height: calc((100vh - var(--bar-h)) * var(--zoom)); height: calc((100dvh - var(--bar-h)) * var(--zoom)); }
+.reader[data-fit="height"] .reader-tile { height: calc(100dvh * var(--zoom)); }
+/* "Height" shows the whole page: as tall as the window, but never wider than it
+   (a phone held upright), whichever is tighter. Zoom multiplies that. */
+.reader[data-mode="paged"][data-fit="height"] .reader-tile {
+  height: auto; max-width: none;
+  width: min(calc(100% * var(--zoom)), calc((100vh - var(--bar-h)) * var(--zoom) * var(--arn, 0.66)));
+  width: min(calc(100% * var(--zoom)), calc((100dvh - var(--bar-h)) * var(--zoom) * var(--arn, 0.66)));
+}
+.reader-stage {
+  touch-action: pan-x pan-y; overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; padding-bottom: var(--sab);
+}
+.reader-tile img { pointer-events: none; }
+/* Not zoomed: sideways drags are the reader's (turn the page), only vertical ones pan. */
+.reader[data-hpan="no"] .reader-stage { touch-action: pan-y; }
+.reader-title strong { font-size: 0.95rem; }
+.reader-controls { display: flex; align-items: center; gap: 8px; }
+.reader-view { display: none; }
+.reader-end { padding-bottom: calc(72px + var(--sab)); }
+.reader-end .btn { min-height: 44px; }
+.reader-menu { max-height: 60vh; max-height: 60dvh; }
+.reader-view-menu { right: 0; left: auto; min-width: 280px; padding: 12px; }
+.reader-view-menu .reader-controls { flex-direction: column; align-items: stretch; gap: 12px; }
+.reader-view-menu .seg button { flex: 1; }
+.reader-view-menu .reader-zoom { justify-content: space-between; }
+
+/* The reader bar has no room for every control below this width */
+@media (max-width: 1100px) {
+  .reader-inline { display: none; }
+  .reader-view { display: block; }
+}
+
+/* ---- tablets and phones: a bottom tab bar instead of the sidebar ---- */
+@media (max-width: 800px) {
+  .app { flex-direction: column-reverse; }
+  .nav {
+    width: auto; flex: none; flex-direction: row; justify-content: space-around; gap: 2px;
+    border-right: 0; border-top: 1px solid var(--line);
+    padding: 6px max(8px, var(--sar)) calc(6px + var(--sab)) max(8px, var(--sal));
+    z-index: 10;
+  }
+  .brand, .nav-spacer { display: none; }
+  .nav-item {
+    flex: 1; flex-direction: column; justify-content: center; gap: 3px; min-height: 52px;
+    padding: 6px 4px; font-size: 0.74rem; text-align: center; border-radius: 10px;
+  }
+  .content { padding: calc(14px + var(--sat)) max(14px, var(--sal)) 28px max(14px, var(--sal)); padding-right: max(14px, var(--sar)); }
+  h1 { font-size: 1.35rem; }
+
+  /* 44px targets */
+  .btn { min-height: 44px; }
+  .btn.small, .btn.ghost.small { min-height: 40px; }
+  .seg button { min-height: 44px; }
+  .pill { min-height: 40px; display: inline-flex; align-items: center; }
+  .menu-item { min-height: 46px; }
+  select, input[type="text"], input[type="search"], input[type="number"] { min-height: 44px; font-size: 16px; }
+  .poster-more { width: 40px; height: 40px; }
+  .reader-bar .btn { min-height: 44px; }
+  .reader-bar .seg button { padding: 10px 12px; }
+  .toast-x { width: 40px; height: 40px; }
+
+  /* Library */
+  .q-head { gap: 8px; }
+  .lib-tools { gap: 8px; }
+  .lib-filter { width: 100%; order: 3; }
+  .poster-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px 12px; }
+  .poster-read { min-height: 44px; }
+
+  /* Dialogs fill the screen */
+  .overlay { padding: 0; align-items: stretch; }
+  .modal { border-radius: 0; max-width: none; padding: calc(16px + var(--sat)) 14px calc(14px + var(--sab)); display: flex; flex-direction: column; overflow-y: auto; }
+  .modal.import { width: 100%; max-height: none; height: 100%; }
+  .modal:not(.import) { align-self: center; border-radius: 12px; margin: 16px; width: auto; max-width: 460px; }
+  .overlay:has(.modal:not(.import)) { align-items: center; padding: 8px; }
+  .import-body { flex: 1; }
+  .import-bar { flex-wrap: wrap; }
+  .import-title { flex: 1 1 100%; order: -1; }
+  .import-file { flex: 1 1 auto; text-align: left; }
+  .import-book-body { grid-template-columns: minmax(0, 1fr); }
+  .import-cover { width: 96px; }
+  .import-chapter { grid-template-columns: auto 64px minmax(0, 1fr); }
+  .import-chapter .import-pages { grid-column: 3; text-align: left; margin-top: -4px; }
+  .import-chapters { max-height: none; }
+  .import-chapter input[type="checkbox"] { width: 22px; height: 22px; }
+  .modal .actions { flex-wrap: wrap; position: sticky; bottom: 0; background: var(--panel); padding-top: 10px; }
+  .modal .actions .btn { flex: 1 1 auto; }
+
+  /* Export and settings */
+  .export-grid { grid-template-columns: minmax(0, 1fr); }
+  .export-chapters { max-height: 280px; }
+  .export-chapter { min-height: 46px; }
+  .export-chapter input { width: 22px; height: 22px; }
+  .seg { flex-wrap: nowrap; }
+  .seg button { flex: 1; white-space: normal; }
+
+  /* Toasts above the tab bar */
+  .toasts { left: 12px; right: 12px; width: auto; bottom: calc(76px + var(--sab)); }
+  .toast { left: 0; right: 0; width: auto; }
+
+  /* The reader */
+  .reader-back-text { display: none; }
+  .reader-bar { gap: 6px; padding-left: max(8px, var(--sal)); padding-right: max(8px, var(--sar)); }
+  .reader-counter { min-width: 52px; font-size: 0.9rem; }
+}
+
+@media (max-width: 420px) {
+  .poster-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reader-title { display: none; }
+  .reader-bar #reader-chapter-picker { max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { scroll-behavior: auto !important; }
+}
