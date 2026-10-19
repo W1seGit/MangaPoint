@@ -61,7 +61,7 @@ jobs:
         run: cargo test -p mangapoint-web -p web-engine --locked
 
       - name: Build the site
-        run: tools/build-web.sh
+        run: bash tools/build-web.sh
 
       - name: JavaScript tests (ZIP reader, importer with the real engine)
         run: node --test web/js/test
