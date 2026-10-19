@@ -64,7 +64,7 @@ jobs:
         run: bash tools/build-web.sh
 
       - name: JavaScript tests (ZIP reader, importer with the real engine)
-        run: node --test web/js/test
+        run: node --test web/js/test/*.test.js
 
       - name: Keep the built site
         uses: actions/upload-pages-artifact@v3
