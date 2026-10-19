@@ -115,6 +115,15 @@ SD card (found automatically, with a "Safe to unplug" message), or Wi-Fi.
 | **EPUB**: a fixed-layout EPUB 3 that nearly every reader opens, with the chapters as its table of contents | **CBZ**: a comic archive with a `ComicInfo.xml` (series, author, summary, genres, reading direction) and the chapters as page bookmarks |
 | **One file** per series, per chapter, or every N chapters; long EPUBs are cut into parts | |
 
+**Keep color.** For a color reader (Kobo Libra and Clara Colour, Kindle Colorsoft,
+Boox Go Color, Palma 2 Pro, Tab Ultra C Pro and Note Air3 C, PocketBook InkPad Color 3, or any
+reader you mark with **Color screen**), an EPUB or CBZ can keep the pages in color: each is resized
+to the screen and saved as a normal color JPEG, with no tone changes, dithering or sharpening, and
+the reader's firmware does the rest. Choose **Black & white | Color** under Format on the Export
+screen (XTC and XTCH are always gray). Pages are shrunk to gray when they are downloaded unless
+you turn on **Keep colors (uses more space)** in Settings, Downloads, so turn it on before
+downloading what you want in color.
+
 <div align="center">
 <img src="docs/screenshots/send-to.png" alt="The Send to panel: reader, destination, format and files" width="300" />
 </div>

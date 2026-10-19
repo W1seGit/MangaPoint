@@ -100,6 +100,7 @@ fn limits(race: bool) -> DownloadLimits {
         pages: 3,
         spread_sources: true,
         race_sources: race,
+        keep_color: false,
     }
 }
 

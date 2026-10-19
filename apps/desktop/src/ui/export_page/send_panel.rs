@@ -183,6 +183,9 @@ pub(super) fn SendPanel() -> Element {
     // What the book is made as, and which of the three the reader lists.
     let current_output = active_series(state).map_or(OutputFormat::Xtc, |s| s.settings.output());
     let reader_formats = setup.formats.clone();
+    // "Black & white | Color": only for a colour reader and an EPUB or CBZ.
+    let color_choice = active_series(state)
+        .and_then(|s| logic::color_choice(&s.settings, &state.settings.read().device_profile()));
 
     rsx! {
         Panel { title: "Send to", icon: "file-down", id: "send", height: 740,
@@ -388,6 +391,28 @@ pub(super) fn SendPanel() -> Element {
                             }
                         }
                     }
+                }
+            }
+
+            if let Some(in_color) = color_choice {
+                div { class: "px-label", style: "margin-top: 16px",
+                    "Pages"
+                    Help { text: "Color keeps each page in color, resized to your reader's screen with no tone changes, dithering or sharpening: the reader does the rest. Black & white makes the usual high-contrast gray pages. The preview is always shown in gray. Pages downloaded without Keep colors (Settings, Downloads) are black and white already; re-download them to get color." }
+                }
+                div { class: "seg", role: "group", aria_label: "Page colors",
+                    button {
+                        class: if !in_color { "on" } else { "" },
+                        onclick: move |_| presets::set_black_and_white(state, true),
+                        "Black & white"
+                    }
+                    button {
+                        class: if in_color { "on" } else { "" },
+                        onclick: move |_| presets::set_black_and_white(state, false),
+                        "Color"
+                    }
+                }
+                div { class: "muted small", style: "margin-top: 6px",
+                    "Pages downloaded without Keep colors are black and white; re-download to get color."
                 }
             }
 

@@ -36,6 +36,8 @@ struct ReaderDraft {
     height: u32,
     /// Pixels per inch: pages are made at the screen's size in inches times this.
     ppi: u32,
+    /// The screen shows colour: an EPUB or CBZ can then be made in colour.
+    color: bool,
     /// How the reader receives files, the file types it opens, and its firmware.
     setup: ReaderSetup,
 }
@@ -50,6 +52,7 @@ fn apply_reader(settings: &mut library::Settings, draft: &ReaderDraft) -> Result
     updated.width = draft.width;
     updated.height = draft.height;
     updated.ppi = draft.ppi;
+    updated.color = draft.color;
     updated.validate(&others)?;
     if let Some(slot) = settings.custom_devices.iter_mut().find(|d| d.id == base.id) {
         *slot = updated;
@@ -89,6 +92,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
         width: current.width,
         height: current.height,
         ppi: current.ppi,
+        color: current.color,
         setup: s.reader_setup(),
     };
     let mut setup = use_signal(|| saved.setup.clone());
@@ -99,6 +103,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
     let mut width = use_signal(|| inches_text(saved.width, saved.ppi));
     let mut height = use_signal(|| inches_text(saved.height, saved.ppi));
     let mut ppi = use_signal(|| saved.ppi.to_string());
+    let mut color = use_signal(|| saved.color);
     let mut touched = use_signal(|| false);
     let mut locked = use_signal(|| false);
 
@@ -111,7 +116,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
         } else {
             (saved_for_draft.width, saved_for_draft.height)
         };
-        ReaderDraft { name: name(), width: draft_w, height: draft_h, ppi: draft_ppi, setup: setup() }
+        ReaderDraft { name: name(), width: draft_w, height: draft_h, ppi: draft_ppi, color: color(), setup: setup() }
     });
     let draft = form_now();
     let dirty = draft != saved;
@@ -219,6 +224,22 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
             }
         }
 
+        div { class: "sx-row",
+            div { class: "sx-text",
+                div { class: "sx-label", "Color screen"
+                    Help { text: "Tick this if the reader's screen shows color (Kaleido, Gallery). An EPUB or CBZ for it can then keep the pages in color; the Export screen offers the choice. XTC and XTCH are always gray." }
+                }
+            }
+            div { class: "sx-control",
+                label { class: "check-line",
+                    input {
+                        r#type: "checkbox", checked: color(), "aria-label": "Color screen",
+                        onchange: move |e| color.set(e.checked()),
+                    }
+                    span { class: "muted", "Shows color" }
+                }
+            }
+        }
         div { class: "sx-row",
             div { class: "sx-text",
                 div { class: "sx-label", "File formats"
@@ -349,6 +370,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
                         width.set(inches_text(known.width, known.ppi));
                         height.set(inches_text(known.height, known.ppi));
                         ppi.set(known.ppi.to_string());
+                        color.set(known.color);
                         touched.set(false);
                         setup.set(default_setup_for(&reset_id));
                     },
@@ -381,6 +403,7 @@ mod tests {
             width,
             height,
             ppi: 220,
+            color: false,
             setup: ReaderSetup::default(),
         }
     }
@@ -402,6 +425,20 @@ mod tests {
         }
         assert_eq!(pixels_from("abc", 220), 0);
         assert_eq!(pixels_from("3.64", 220), 801);
+    }
+
+    #[test]
+    fn the_colour_screen_mark_is_saved_with_the_reader() {
+        let mut s = library::Settings::default();
+        add_known(&mut s, device_profiles::known("kobo-libra-colour").unwrap()).unwrap();
+        assert!(s.device_profile().color, "a known colour reader is added with its mark");
+        let mut unmarked = draft("Kobo Libra Colour", 1264, 1680);
+        unmarked.ppi = 300;
+        apply_reader(&mut s, &unmarked).unwrap();
+        assert!(!s.device_profile().color, "the box can be unticked");
+        unmarked.color = true;
+        apply_reader(&mut s, &unmarked).unwrap();
+        assert!(s.device_profile().color);
     }
 
     #[test]

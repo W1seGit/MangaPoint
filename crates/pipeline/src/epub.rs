@@ -20,7 +20,7 @@
 //! in memory.
 
 use crate::error::{PipelineError, Result};
-use converter::{Depth, LevelImage};
+use converter::{ColorImage, Depth, LevelImage};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -30,6 +30,11 @@ use zip::{CompressionMethod, ZipWriter};
 
 /// JPEG quality for readers with many grays: small, and clean on e-paper.
 const JPEG_QUALITY: u8 = 62;
+
+/// JPEG quality for pages kept in colour. Higher than the gray pages' because
+/// the reader's firmware does the rest (it tunes and dithers the picture for
+/// its panel), and a visible loss in the source shows after that.
+const COLOR_JPEG_QUALITY: u8 = 82;
 
 /// How many pages one EPUB is cut at. A reader loads the whole list of pages
 /// when it opens the book, and the small chips in some readers cannot hold a
@@ -44,6 +49,12 @@ pub fn typical_page_bytes(depth: Depth) -> u64 {
     }
 }
 
+/// A rough size of one page kept in colour, for the same guess. Manga is mostly
+/// gray even when it is in colour, which a JPEG stores cheaply.
+pub fn typical_color_page_bytes() -> u64 {
+    120_000
+}
+
 fn fail(message: impl std::fmt::Display) -> PipelineError {
     PipelineError::Epub(message.to_string())
 }
@@ -54,6 +65,30 @@ pub fn encode_page(img: &LevelImage) -> Result<Vec<u8>> {
         Depth::Eight => encode_jpeg(img),
         depth => encode_png(img, depth),
     }
+}
+
+/// One page kept in colour, as a JPEG at quality 82: whatever the converter drew
+/// (resized to the screen, no tone work, no dithering, no sharpening) is saved
+/// as it is, for the reader to finish.
+///
+/// The encoder writes baseline JPEG without chroma subsampling (4:4:4), so
+/// thin coloured lines keep their colour; the chroma of a mostly gray page
+/// costs very little. A page with no colour at all (every pixel gray) is
+/// saved as a grayscale JPEG, which is smaller still and looks the same.
+pub fn encode_color_page(img: &ColorImage) -> Result<Vec<u8>> {
+    let mut out = Vec::with_capacity(img.rgb.len() / 8);
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, COLOR_JPEG_QUALITY);
+    if img.rgb.as_chunks::<3>().0.iter().all(|p| p[0] == p[1] && p[1] == p[2]) {
+        let gray: Vec<u8> = img.rgb.as_chunks::<3>().0.iter().map(|p| p[0]).collect();
+        encoder
+            .encode(&gray, img.width, img.height, image::ExtendedColorType::L8)
+            .map_err(fail)?;
+    } else {
+        encoder
+            .encode(&img.rgb, img.width, img.height, image::ExtendedColorType::Rgb8)
+            .map_err(fail)?;
+    }
+    Ok(out)
 }
 
 fn encode_jpeg(img: &LevelImage) -> Result<Vec<u8>> {
@@ -325,6 +360,42 @@ fn iso8601(secs: u64) -> String {
 mod tests {
     use super::*;
     use std::io::Read;
+
+    fn colour(w: u32, h: u32, f: impl Fn(u32, u32) -> [u8; 3]) -> ColorImage {
+        let mut rgb = Vec::new();
+        for y in 0..h {
+            for x in 0..w {
+                rgb.extend(f(x, y));
+            }
+        }
+        ColorImage { width: w, height: h, rgb }
+    }
+
+    #[test]
+    fn a_colour_page_is_a_baseline_jpeg_that_keeps_its_colours_and_a_gray_one_is_a_gray_jpeg() {
+        let page = colour(64, 48, |x, _| if x < 32 { [230, 30, 30] } else { [30, 40, 220] });
+        let jpeg = encode_color_page(&page).unwrap();
+        assert!(jpeg.starts_with(&[0xFF, 0xD8, 0xFF]));
+        let back = image::load_from_memory(&jpeg).unwrap();
+        assert!(matches!(back, image::DynamicImage::ImageRgb8(_)));
+        let rgb = back.to_rgb8();
+        let [r, g, b] = rgb.get_pixel(8, 24).0;
+        assert!(r > 200 && g < 60 && b < 60, "{:?}", [r, g, b]);
+        let [r, g, b] = rgb.get_pixel(56, 24).0;
+        assert!(b > 190 && r < 60 && g < 70, "{:?}", [r, g, b]);
+        // No chroma subsampling: the sampling factors are all 1x1.
+        let sof = jpeg.windows(2).position(|w| w == [0xFF, 0xC0]).expect("a baseline frame");
+        assert_eq!(&jpeg[sof + 11..sof + 12], &[0x11], "luma sampling");
+        assert_eq!(&jpeg[sof + 14..sof + 15], &[0x11], "Cb sampling");
+        assert_eq!(&jpeg[sof + 17..sof + 18], &[0x11], "Cr sampling");
+
+        let gray = colour(64, 48, |x, _| [x as u8 * 3; 3]);
+        let jpeg = encode_color_page(&gray).unwrap();
+        assert!(matches!(image::load_from_memory(&jpeg).unwrap(), image::DynamicImage::ImageLuma8(_)));
+        assert!(jpeg.len() < encode_color_page(&colour(64, 48, |x, _| [x as u8 * 3, 0, 9])).unwrap().len());
+        // EPUB and CBZ writers take it as a jpg.
+        assert!(typical_color_page_bytes() > typical_page_bytes(Depth::Eight));
+    }
 
     fn levels(depth: Depth, w: u32, h: u32, f: impl Fn(u32, u32) -> u8) -> LevelImage {
         let mut v = Vec::new();
