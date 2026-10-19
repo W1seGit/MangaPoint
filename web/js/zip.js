@@ -104,7 +104,13 @@ export async function openZip(blob) {
   }
   if (cdSize > LIMITS.maxDirectoryBytes) throw new ZipError('The file list of this archive is too big.');
   // Bytes in front of the archive (a self-extracting stub): everything is shifted.
-  const shift = zip64 ? 0 : Math.max(0, eocdPos - cdSize - cdOffset);
+  // Only guess a shift when the list is not where the end record says it is: some
+  // writers (Python's zipfile among them) put ZIP64 records between the list and
+  // the end record even though the plain end record holds the real values.
+  let shift = 0;
+  if (!zip64 && (await readBytes(blob, cdOffset, Math.min(blob.size, cdOffset + 4))).getUint32(0, true) !== SIG_CEN) {
+    shift = Math.max(0, eocdPos - cdSize - cdOffset);
+  }
   const cd = await readBytes(blob, cdOffset + shift, cdOffset + shift + cdSize);
   const entries = [];
   let p = 0;

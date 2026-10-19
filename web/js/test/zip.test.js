@@ -35,6 +35,21 @@ test('reads an archive with bytes in front of it', async () => {
   assert.equal(await text(await zip.read(zip.entries[0])), 'payload');
 });
 
+test('reads an archive with ZIP64 records between the list and a plain end record', async () => {
+  const plain = Buffer.from(makeZip([{ name: 'x.txt', data: 'payload' }, { name: 'y.txt', data: 'more' }]));
+  const eocd = plain.length - 22;
+  const cdSize = plain.readUInt32LE(eocd + 12);
+  const cdOffset = plain.readUInt32LE(eocd + 16);
+  const rec = Buffer.alloc(56);
+  rec.writeUInt32LE(0x06064b50, 0); rec.writeBigUInt64LE(44n, 4); rec.writeUInt16LE(45, 12); rec.writeUInt16LE(45, 14);
+  rec.writeBigUInt64LE(2n, 24); rec.writeBigUInt64LE(2n, 32); rec.writeBigUInt64LE(BigInt(cdSize), 40); rec.writeBigUInt64LE(BigInt(cdOffset), 48);
+  const loc = Buffer.alloc(20);
+  loc.writeUInt32LE(0x07064b50, 0); loc.writeBigUInt64LE(BigInt(cdOffset + cdSize), 8); loc.writeUInt32LE(1, 16);
+  const zip = await openZip(blobOf(Buffer.concat([plain.subarray(0, eocd), rec, loc, plain.subarray(eocd)])));
+  assert.deepEqual(zip.entries.map((e) => e.name), ['x.txt', 'y.txt']);
+  assert.equal(await text(await zip.read(zip.entries[1])), 'more');
+});
+
 test('names: UTF-8 flag, and the DOS code page without it', async () => {
   const zip = await openZip(blobOf(makeZip([
     { name: '第1話/001.jpg', data: 'x' },
