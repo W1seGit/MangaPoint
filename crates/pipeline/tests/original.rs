@@ -613,10 +613,19 @@ async fn cancelling_stops_the_export_and_leaves_no_partial_file_anywhere() {
                 }
             }
         });
-        let err = export_series(&l.files, &j, Some(tx), &cancel).await.unwrap_err();
-        assert!(matches!(err, PipelineError::Cancelled), "{err:?}");
+        // Whether the cancel lands before the last chapter is written depends
+        // on when the watcher task gets to run, so both outcomes are right: a
+        // cancelled export sends nothing, one that finished first sent all six.
+        // (`a_cancel_already_made_writes_nothing` pins the cancelled case.)
+        let outcome = export_series(&l.files, &j, Some(tx), &cancel).await;
         watcher.abort();
-        assert!(names_in(&l.out()).is_empty(), "nothing was sent: {:?}", names_in(&l.out()));
+        match outcome {
+            Err(err) => {
+                assert!(matches!(err, PipelineError::Cancelled), "{err:?}");
+                assert!(names_in(&l.out()).is_empty(), "nothing was sent: {:?}", names_in(&l.out()));
+            }
+            Ok(done) => assert_eq!(done.files.len(), 6, "{:?}", names_in(&l.out())),
+        }
         assert!(names_in(&l.work()).is_empty(), "no scratch file: {:?}", names_in(&l.work()));
         let _ = fs::remove_dir_all(l.root);
     }
