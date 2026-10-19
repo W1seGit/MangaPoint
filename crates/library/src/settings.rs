@@ -687,6 +687,22 @@ impl Settings {
         self.color_screens_checked = true;
     }
 
+    /// Whether new downloads keep the colour of the pages they shrink: the
+    /// user turned it on, or the reader in use has a colour screen (so Color
+    /// export is not silently gray with the default settings).
+    pub fn keeps_color_in_downloads(&self) -> bool {
+        self.download.keep_color || self.device_profile().color
+    }
+
+    /// What a download may do at once, with colour kept as
+    /// [`Settings::keeps_color_in_downloads`] says.
+    pub fn download_limits(&self) -> DownloadLimits {
+        DownloadLimits {
+            keep_color: self.keeps_color_in_downloads(),
+            ..self.download.limits()
+        }
+    }
+
     /// Settings from before readers were all the user's own: the three that
     /// used to be built in become theirs, once.
     pub fn list_old_readers(&mut self) {
@@ -828,6 +844,38 @@ mod tests {
         // And a file with none of the new fields at all.
         let bare: Settings = serde_json::from_str("{\"language\":\"ja\"}").unwrap();
         assert!(!bare.download.keep_color && !bare.conversion.black_and_white);
+    }
+
+    #[test]
+    fn downloads_keep_colour_when_asked_or_while_a_colour_reader_is_in_use() {
+        let mut s = Settings::default();
+        // Nobody chosen: the fallback reader is gray, and the switch is off.
+        assert!(!s.keeps_color_in_downloads() && !s.download_limits().keep_color);
+        let add = |s: &mut Settings, id: &str| {
+            let reader = device_profiles::known(id).unwrap();
+            s.custom_devices.push(reader);
+            s.device = id.to_string();
+        };
+        add(&mut s, "kobo-libra-2");
+        assert!(!s.keeps_color_in_downloads(), "a gray reader keeps the switch's value");
+        add(&mut s, "kobo-libra-colour");
+        assert!(s.keeps_color_in_downloads() && s.download_limits().keep_color);
+        assert!(!s.download.keep_color, "the switch itself is not changed");
+        // Back to a gray reader: off again, unless the switch is on.
+        s.device = "kobo-libra-2".into();
+        assert!(!s.keeps_color_in_downloads());
+        s.download.keep_color = true;
+        assert!(s.keeps_color_in_downloads() && s.download_limits().keep_color);
+        // The rest of the limits are the usual ones.
+        let plain = DownloadSettings::default().limits();
+        let mut mine = Settings::default();
+        mine.download.keep_color = true;
+        assert_eq!((mine.download_limits().chapters, mine.download_limits().pages), (plain.chapters, plain.pages));
+        // A colour reader the user unmarked is a gray reader.
+        add(&mut s, "kobo-clara-colour");
+        s.download.keep_color = false;
+        s.custom_devices.last_mut().unwrap().color = false;
+        assert!(!s.keeps_color_in_downloads());
     }
 
     #[test]

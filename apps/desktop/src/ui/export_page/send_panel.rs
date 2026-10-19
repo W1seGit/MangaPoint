@@ -397,7 +397,7 @@ pub(super) fn SendPanel() -> Element {
             if let Some(in_color) = color_choice {
                 div { class: "px-label", style: "margin-top: 16px",
                     "Pages"
-                    Help { text: "Color keeps each page in color, resized to your reader's screen with no tone changes, dithering or sharpening: the reader does the rest. Black & white makes the usual high-contrast gray pages. The preview is always shown in gray. Pages downloaded without Keep colors (Settings, Downloads) are black and white already; re-download them to get color." }
+                    Help { text: "Color keeps each page in color, resized to your reader's screen with no tone changes, dithering or sharpening: the reader does the rest. Black & white makes the usual high-contrast gray pages. The preview shows the pages in color too. Pages saved earlier in black and white stay black and white; download them again to get color." }
                 }
                 div { class: "seg", role: "group", aria_label: "Page colors",
                     button {
@@ -411,8 +411,10 @@ pub(super) fn SendPanel() -> Element {
                         "Color"
                     }
                 }
-                div { class: "muted small", style: "margin-top: 6px",
-                    "Pages downloaded without Keep colors are black and white; re-download to get color."
+                if in_color {
+                    div { class: "muted small", style: "margin-top: 6px",
+                        "Pages saved earlier in black and white stay black and white. Download them again to get color."
+                    }
                 }
             }
 

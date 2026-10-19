@@ -39,6 +39,7 @@ pub use preview::{
     render_source_whole,
 };
 pub use preview::{
+    color_to_preview, color_to_thumbnail, draw_color_page, prepare_chapter_color, ColorPageDraw,
     decode_page, levels_to_previews, prepare_chapter, render_gray, render_levels, render_original,
     render_page, render_planned, render_strip_original, sample_page, ChapterPreview,
     OriginalPreview, PreviewImage, RenderedPage,

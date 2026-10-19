@@ -364,3 +364,103 @@ async fn pages_saved_with_colour_export_in_colour_end_to_end() {
     }
     let _ = fs::remove_dir_all(lib.root);
 }
+
+// ---- The preview ---------------------------------------------------------------
+
+fn colour_opts(layout: converter::process::Layout) -> converter::ProcessOptions {
+    let mut settings = ConversionSettings {
+        crop: CropMode::Full,
+        layout,
+        ..ConversionSettings::default()
+    };
+    settings.set_output(OutputFormat::Epub);
+    let device = device_profiles::known("kobo-libra-colour").unwrap();
+    let opts = pipeline::process_options_for(&device, &settings);
+    assert!(opts.color, "colour is on for a colour reader's EPUB");
+    opts
+}
+
+fn page_files(tag: &str, pages: &[Vec<u8>]) -> (PathBuf, Vec<PathBuf>) {
+    let dir = temp(tag);
+    let files = pages
+        .iter()
+        .enumerate()
+        .map(|(i, bytes)| {
+            let path = dir.join(format!("{i:05}.img"));
+            fs::write(&path, bytes).unwrap();
+            path
+        })
+        .collect();
+    (dir, files)
+}
+
+#[test]
+fn the_colour_preview_draws_the_pages_the_export_writes_in_colour_for_both_panes() {
+    use converter::process::Layout;
+    let (dir, files) = page_files("preview", &[colour_page(300, 450), colour_page(300, 450)]);
+    let opts = colour_opts(Layout::Manga);
+    let chapter = pipeline::prepare_chapter_color(&files, &opts, 2).unwrap();
+    assert!(chapter.prepared.has_color());
+    assert_eq!(chapter.plan.pages.len(), 2);
+    let page = &chapter.plan.pages[0];
+    let drawn = pipeline::draw_color_page(&chapter.prepared, page, &opts, [0.0; 4], true, true, true);
+
+    // The converted pane is exactly the page the export draws, as a colour picture.
+    let page_now = converter::plan::render_page_color(&chapter.prepared, page, &opts, [0.0; 4]);
+    let converted = drawn.converted.unwrap();
+    assert_eq!(converted, pipeline::color_to_preview(&page_now));
+    assert_eq!((converted.width, converted.height), (1264, 1680));
+    let [r, g, b] = rgb_at(&converted.bytes, 632, 300);
+    assert!(r > 190 && g < 70 && b < 70, "{:?}", [r, g, b]);
+    let [r, g, b] = rgb_at(&converted.bytes, 632, 1400);
+    assert!(b > 190 && r < 70 && g < 70, "{:?}", [r, g, b]);
+    let [r, g, b] = rgb_at(&converted.bytes, 12, 800);
+    assert!(r > 245 && g > 245 && b > 245, "padding stays white");
+
+    // The thumbnail is small and coloured.
+    assert_eq!(drawn.thumbnail.height, 160);
+    let [r, _, b] = rgb_at(&drawn.thumbnail.bytes, drawn.thumbnail.width / 2, 30);
+    assert!(r > 150 && b < 90);
+
+    // Source artwork: the downloaded picture, whole, in colour (red above, blue below).
+    let (original, region) = drawn.original.unwrap();
+    assert_eq!((original.width, original.height), (300, 450));
+    let [r, g, b] = rgb_at(&original.bytes, 150, 100);
+    assert!(r > 190 && g < 70 && b < 70);
+    let [r, g, b] = rgb_at(&original.bytes, 150, 350);
+    assert!(b > 190 && r < 70 && g < 70);
+    assert!(region.is_some());
+    let piece = drawn.piece.unwrap();
+    let [r, _, b] = rgb_at(&piece.bytes, 150, 100);
+    assert!(r > 150 && b < 90);
+
+    // Not asked for, not drawn; a manual crop changes the converted pane.
+    let light = pipeline::draw_color_page(&chapter.prepared, page, &opts, [0.0; 4], false, false, false);
+    assert!(light.converted.is_none() && light.original.is_none() && light.piece.is_none());
+    let cut = pipeline::draw_color_page(&chapter.prepared, page, &opts, [0.0, 0.5, 0.0, 0.0], true, false, false);
+    let [r, g, b] = rgb_at(&cut.converted.unwrap().bytes, 632, 1200);
+    assert!(b > 190 && r < 70 && g < 70, "the red half is cropped away: {:?}", [r, g, b]);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn the_colour_preview_of_a_webtoon_strip_and_of_unreadable_pages() {
+    use converter::process::Layout;
+    let (dir, files) = page_files("preview-strip", &[colour_page(300, 1200), colour_page(300, 1200)]);
+    let opts = colour_opts(Layout::Webtoon);
+    let chapter = pipeline::prepare_chapter_color(&files, &opts, 1).unwrap();
+    assert!(chapter.plan.strip);
+    let first = &chapter.plan.pages[0];
+    let drawn = pipeline::draw_color_page(&chapter.prepared, first, &opts, [0.0; 4], true, true, false);
+    let converted = drawn.converted.unwrap();
+    let [r, g, b] = rgb_at(&converted.bytes, 632, 100);
+    assert!(r > 190 && g < 70 && b < 70, "the strip's top is red: {:?}", [r, g, b]);
+    let (original, region) = drawn.original.unwrap();
+    assert!(region.is_none(), "a strip page has no place on a picture");
+    let [r, _, b] = rgb_at(&original.bytes, original.width / 2, 20);
+    assert!(r > 150 && b < 90);
+
+    fs::write(&files[1], b"not an image").unwrap();
+    assert!(pipeline::prepare_chapter_color(&files, &opts, 2).is_err());
+    let _ = fs::remove_dir_all(dir);
+}
