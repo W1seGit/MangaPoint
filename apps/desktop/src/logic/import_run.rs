@@ -181,6 +181,7 @@ mod tests {
             pages: 1,
             bytes: 1,
             downloaded_at: 1,
+            quality: None,
         }
     }
 

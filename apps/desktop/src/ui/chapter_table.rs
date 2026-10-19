@@ -27,6 +27,10 @@ pub struct GridRow {
     pub size: String,
     /// The source the downloaded copy came from.
     pub from: String,
+    /// The key of the downloaded chapter, when it can be read.
+    pub read_key: Option<String>,
+    /// The reader has read it to the end.
+    pub read: bool,
 }
 
 impl GridRow {
@@ -67,6 +71,9 @@ pub fn ChapterGrid(
     on_toggle: EventHandler<usize>,
     /// The header box: tick (`true`) or clear (`false`) all these rows.
     on_set: EventHandler<(Vec<usize>, bool)>,
+    /// The Read button of a downloaded chapter was pressed (given its key).
+    /// Without it the table has no Read buttons.
+    on_read: Option<EventHandler<String>>,
     /// What to show when there are no rows.
     empty_message: String,
     /// Tallest the table gets before it scrolls, for example "360px".
@@ -144,6 +151,7 @@ pub fn ChapterGrid(
                                 locked: lock_done && r.is_settled(),
                                 row: r,
                                 on_toggle,
+                                on_read,
                             }
                         }
                         if last < total {
@@ -162,7 +170,13 @@ pub fn ChapterGrid(
 /// One row, a component of its own so that ticking a chapter redraws that
 /// row and not the whole table.
 #[component]
-fn ChapterRow(row: GridRow, on: bool, locked: bool, on_toggle: EventHandler<usize>) -> Element {
+fn ChapterRow(
+    row: GridRow,
+    on: bool,
+    locked: bool,
+    on_toggle: EventHandler<usize>,
+    on_read: Option<EventHandler<String>>,
+) -> Element {
     let index = row.index;
     let class = match (on, locked) {
         (_, true) => "locked",
@@ -185,6 +199,17 @@ fn ChapterRow(row: GridRow, on: bool, locked: bool, on_toggle: EventHandler<usiz
             td { class: "status",
                 if row.saved {
                     span { class: "tip", "data-tip": "{from_tip}", Chip { text: "Downloaded", kind: Some("ok".to_string()) } }
+                    if row.read {
+                        span { class: "tip", "data-tip": "You have read this chapter", Chip { text: "Read" } }
+                    }
+                    if let (Some(read), Some(key)) = (on_read, row.read_key.clone()) {
+                        button {
+                            class: "btn small chapter-read", title: "Read this chapter",
+                            "aria-label": "Read chapter {row.number}", "data-chapter": "{key}",
+                            onclick: move |e| { e.stop_propagation(); read.call(key.clone()); },
+                            Icon { name: "book-open", size: 14 } "Read"
+                        }
+                    }
                 } else if let Some((done, total)) = row.progress {
                     Chip {
                         text: if total > 0 { format!("{done} / {total} pages") } else { "Starting…".to_string() },

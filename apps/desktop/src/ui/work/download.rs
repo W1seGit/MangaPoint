@@ -28,6 +28,7 @@ pub(super) fn enqueue_picked(
     loaded: &LoadedChapters,
     mut picked: Vec<usize>,
     choice: SourceChoice,
+    quality: Option<library::PageQuality>,
 ) -> Result<Enqueued, String> {
     let have = downloaded_keys(state, series_id);
     picked.sort_unstable();
@@ -75,7 +76,7 @@ pub(super) fn enqueue_picked(
     }
     // The series is in the library from now on, with where to find it again.
     add_to_library_quietly(state, title, &loaded.saved);
-    let batch = Batch::new(
+    let mut batch = Batch::new(
         series_id.to_string(),
         title.to_string(),
         requests,
@@ -84,6 +85,7 @@ pub(super) fn enqueue_picked(
         source_names,
         now_secs(),
     );
+    batch.quality = quality;
     let added = state.edit_queue(|q| q.add(batch));
     info!(
         "Queued {} of \"{title}\"",
@@ -99,7 +101,7 @@ pub(super) fn enqueue_picked(
 /// asked not to be asked).
 pub fn ask_download(state: AppState, pending: PendingDownload, summary: String) {
     if !state.settings.peek().ask_download_folder {
-        start_pending(state, pending);
+        start_pending(state, pending, None);
         return;
     }
     let mut dialog = state.download_dialog;
@@ -107,10 +109,12 @@ pub fn ask_download(state: AppState, pending: PendingDownload, summary: String) 
 }
 
 /// Begin what the dialog was asked about.
-pub fn start_pending(state: AppState, pending: PendingDownload) {
+/// `quality` is the page quality asked for in the dialog for just this download;
+/// `None` follows the setting.
+pub fn start_pending(state: AppState, pending: PendingDownload, quality: Option<library::PageQuality>) {
     match pending {
-        PendingDownload::Chapters => queue_download(state),
-        PendingDownload::Plan => commit_plan(state),
+        PendingDownload::Chapters => queue_download(state, quality),
+        PendingDownload::Plan => commit_plan(state, quality),
     }
 }
 
@@ -138,7 +142,7 @@ pub fn set_download_folder(state: AppState, dir: std::path::PathBuf) {
 /// Add the ticked chapters that are not downloaded yet to the download queue.
 /// They download in turn, so there is nothing to wait for or start by hand:
 /// keep picking chapters, here or in other series.
-pub fn queue_download(state: AppState) {
+pub fn queue_download(state: AppState, quality: Option<library::PageQuality>) {
     let Some(ws) = state.workspace.peek().clone() else {
         return;
     };
@@ -148,7 +152,7 @@ pub fn queue_download(state: AppState) {
     };
     let picked: Vec<usize> = state.selected.peek().iter().copied().collect();
     let choice = state.download_source.peek().clone();
-    match enqueue_picked(state, &ws.series_id, &ws.title, &loaded, picked, choice) {
+    match enqueue_picked(state, &ws.series_id, &ws.title, &loaded, picked, choice, quality) {
         Err(message) => state.error(message),
         Ok(done) => {
             let mut selected = state.selected;
@@ -247,7 +251,7 @@ pub(super) fn load_plan_entry(state: AppState, id: String) {
 }
 
 /// Queue everything ticked in the planner, and show the downloads.
-pub fn commit_plan(state: AppState) {
+pub fn commit_plan(state: AppState, quality: Option<library::PageQuality>) {
     let entries = state.plan.peek().clone();
     let (mut chapters, mut series, mut not_offered) = (0, 0, 0);
     for entry in entries {
@@ -265,6 +269,7 @@ pub fn commit_plan(state: AppState) {
             loaded,
             picked,
             SourceChoice::Adaptive,
+            quality,
         ) {
             Ok(done) if done.chapters > 0 => {
                 chapters += done.chapters;
@@ -354,13 +359,16 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
     let started = Instant::now();
     let files = library_files();
     let (defaults, default_preset) = state.new_series_defaults();
-    let quality = state.settings.peek().page_quality;
+    // A download can carry a quality of its own (the original, for one asked
+    // for in the dialog or to replace small pages); otherwise the setting rules.
+    let quality = batch.quality.unwrap_or(state.settings.peek().page_quality);
     let policy = RetryPolicy::default();
     let limits = state.settings.peek().download_limits();
     info!(
-        "Download started: \"{}\", {}{}",
+        "Download started: \"{}\", {}{}{}",
         batch.title,
         logic::plural(batch.requests.len(), "chapter"),
+        if batch.replace { " (replacing the saved pages)" } else { "" },
         match quality {
             library::PageQuality::Ultra => " (ultra save-space pages)",
             library::PageQuality::Save => " (saving space)",
@@ -388,6 +396,16 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
     } else {
         Some(batch.requests.clone())
     };
+    // The chapters this run has saved. A chapter that is replaced was
+    // downloaded already, so the library alone cannot say whether it was.
+    let saved_now = std::cell::RefCell::new(HashSet::<String>::new());
+    let done_keys = |state: AppState| -> HashSet<String> {
+        if batch.replace {
+            saved_now.borrow().clone()
+        } else {
+            downloaded_keys(state, &batch.series_id)
+        }
+    };
     let result = match ordered {
         None => {
             state.edit_queue_quiet(|q| {
@@ -399,12 +417,13 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
         }
         Some(requests) => {
         let (tx, mut rx) = unbounded_channel();
-        let run = download_chapters(
+        let run = download_chapters_as(
             &*client,
             &files,
             &batch.series_id,
             &requests,
             quality,
+            batch.replace,
             limits,
             &policy,
             Some(tx),
@@ -426,6 +445,7 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
                 for event in &events {
                     log_event(event, &mut logged);
                     if let JobEvent::ChapterSaved { chapter } = event {
+                        saved_now.borrow_mut().insert(chapter.key.clone());
                         // The series was removed while this was still downloading:
                         // recording would bring it back, so stop instead.
                         let exists = state.library.peek().find(&batch.series_id).is_some();
@@ -466,7 +486,7 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
 
     // Chapters of the batch that did not end up saved.
     let unsaved = |state: AppState| -> Vec<String> {
-        let have = downloaded_keys(state, &batch.series_id);
+        let have = done_keys(state);
         batch
             .plan
             .iter()
@@ -524,7 +544,7 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
         Err(e) => {
             let cancelled = matches!(e, PipelineError::Cancelled);
             if cancelled && state.queue.peek().get(id).is_some_and(|b| b.pausing) {
-                let have = downloaded_keys(state, &batch.series_id);
+                let have = done_keys(state);
                 state.edit_queue(|q| q.park(id, &have));
                 info!("Download of \"{}\" paused", batch.title);
                 ensure_series_info(state, &batch.series_id);
@@ -553,6 +573,56 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
         }
     }
     ensure_series_info(state, &batch.series_id);
+}
+
+/// Download chapters that were saved small again at the original quality,
+/// replacing them. Each is swapped in only once its new copy is complete, so a
+/// failure or a cancel leaves the old one as it was. Chapters that did not come
+/// from a source (imported files) are left out.
+pub fn redownload_original(state: AppState, series_id: &str, keys: Vec<String>) {
+    let Some(series) = state.library.peek().find(series_id).cloned() else {
+        return;
+    };
+    let (mut requests, mut plan) = (Vec::new(), Vec::new());
+    for key in keys {
+        let Some(c) = series.chapter(&key) else { continue };
+        if matches!(c.source_id.as_str(), "" | "import" | "sample") {
+            continue;
+        }
+        requests.push(pipeline::ChapterRequest {
+            number: c.number,
+            name: c.name.clone(),
+            key: Some(c.key.clone()),
+            options: vec![pipeline::ChapterRef { source_id: c.source_id.clone(), chapter_id: c.chapter_id }],
+        });
+        plan.push(c.key.clone());
+    }
+    if requests.is_empty() {
+        state.error("These chapters did not come from a source, so they cannot be downloaded again.");
+        return;
+    }
+    let names: HashMap<String, String> = series
+        .info
+        .as_ref()
+        .map(|i| i.source_names.iter().cloned().collect())
+        .unwrap_or_default();
+    let batch = Batch::new(
+        series.id.clone(),
+        series.title.clone(),
+        requests,
+        plan,
+        SourceChoice::Adaptive,
+        names,
+        now_secs(),
+    )
+    .replacing_at(library::PageQuality::Full);
+    let added = state.edit_queue(|q| q.add(batch));
+    if added.chapters == 0 {
+        state.notify("Those chapters are already waiting to be downloaded.");
+        return;
+    }
+    info!("Queued {} of \"{}\" to be downloaded again in original quality", logic::plural(added.chapters, "chapter"), series.title);
+    ensure_queue_running(state);
 }
 
 /// Stop one batch of the queue (a waiting one is simply dropped).

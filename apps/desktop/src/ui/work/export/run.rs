@@ -79,6 +79,13 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
             );
             export.language = settings.language.clone();
             export.grouping = grouping;
+            if let Some(format) = saved.original_format {
+                let library = state.library.peek();
+                export.original = Some(pipeline::OriginalExport {
+                    format,
+                    rtl: logic::export_rtl(library.reading_of(&series.id).map(|p| &p.prefs), series.info.as_ref()),
+                });
+            }
             let mut job = state.job;
             job.set(Some(JobView {
                 kind: JobKind::Export,
@@ -93,7 +100,11 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
                 "Export started: \"{}\", {} chapter(s) as {}, {}, to {}",
                 series.title,
                 keys.len(),
-                series.settings.output().extension().to_uppercase(),
+                export
+                    .original
+                    .as_ref()
+                    .map_or_else(|| series.settings.output().extension(), |o| o.format.extension())
+                    .to_uppercase(),
                 match grouping {
                     Grouping::Single => "one file".to_string(),
                     Grouping::PerChapter => "one file per chapter".to_string(),
@@ -319,7 +330,11 @@ pub(super) async fn run_export(
                 title: series.title.clone(),
                 chapters: outcome.chapters,
                 pages: outcome.pages,
-                format: series.settings.output().extension().to_string(),
+                format: export
+                    .original
+                    .as_ref()
+                    .map_or_else(|| series.settings.output().extension(), |o| o.format.extension())
+                    .to_string(),
                 files: outcome
                     .files
                     .iter()

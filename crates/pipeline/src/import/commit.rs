@@ -432,6 +432,8 @@ pub fn commit(
             pages: files.page_files(target.series_id, &plan.key).len(),
             bytes: files.chapter_bytes(target.series_id, &plan.key),
             downloaded_at: target.now,
+            // Imported pages are kept exactly as they came.
+            quality: Some(library::PageQuality::Full),
         });
     }
     // Done: what was moved stays; the staging folder (and the chapters it held

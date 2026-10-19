@@ -600,6 +600,7 @@ fn existing(number: f64, key: &str, id: i64) -> DownloadedChapter {
         pages: 2,
         bytes: 10,
         downloaded_at: 1,
+        quality: None,
     }
 }
 

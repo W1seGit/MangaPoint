@@ -73,6 +73,9 @@ pub struct ExportJob {
     pub force_conversion: bool,
     /// Open every file with the series cover (or, without one, its first page).
     pub cover: bool,
+    /// Make the files from the pages as they were saved, with no e-ink
+    /// processing at all (see [`crate::original`]).
+    pub original: Option<crate::original::OriginalExport>,
 }
 
 impl ExportJob {
@@ -94,6 +97,7 @@ impl ExportJob {
             max_pages_per_file: DEFAULT_MAX_PAGES_PER_FILE,
             force_conversion: false,
             cover: true,
+            original: None,
         }
     }
 }
@@ -150,18 +154,18 @@ impl Book {
 }
 
 /// A finished book waiting in the scratch folder to be sent.
-struct Volume {
-    temp: PathBuf,
+pub(crate) struct Volume {
+    pub(crate) temp: PathBuf,
     /// Which group of chapters (see [`Grouping`]) it belongs to.
-    group: usize,
-    chapter_names: Vec<String>,
-    first_number: Option<f64>,
-    last_number: Option<f64>,
+    pub(crate) group: usize,
+    pub(crate) chapter_names: Vec<String>,
+    pub(crate) first_number: Option<f64>,
+    pub(crate) last_number: Option<f64>,
 }
 
 /// Deletes the scratch files however the export ends.
 #[derive(Default)]
-struct Scratch(Vec<PathBuf>);
+pub(crate) struct Scratch(pub(crate) Vec<PathBuf>);
 
 impl Drop for Scratch {
     fn drop(&mut self) {
@@ -208,7 +212,7 @@ fn wifi_page_cap(width: u32, height: u32, format: Format) -> usize {
 }
 
 /// Split `count` chapters (by position) into groups.
-fn group_ranges(count: usize, grouping: Grouping) -> Vec<std::ops::Range<usize>> {
+pub(crate) fn group_ranges(count: usize, grouping: Grouping) -> Vec<std::ops::Range<usize>> {
     let size = match grouping {
         Grouping::Single => count.max(1),
         Grouping::PerChapter => 1,
@@ -220,7 +224,7 @@ fn group_ranges(count: usize, grouping: Grouping) -> Vec<std::ops::Range<usize>>
         .collect()
 }
 
-fn unique_name(kind: &str) -> String {
+pub(crate) fn unique_name(kind: &str) -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     format!(
         "mangapoint-{}-{}.{kind}",
@@ -336,7 +340,7 @@ fn scratch_needed(source_pages: usize, page_bytes: u64, pictures: bool) -> u64 {
 
 /// The room left on the drive that holds `dir`, or `None` for a place that
 /// matches no drive.
-fn available_space(dir: &Path) -> Option<u64> {
+pub(crate) fn available_space(dir: &Path) -> Option<u64> {
     #[cfg(test)]
     if let Some(free) = SCRATCH_FREE.with(|c| c.get()) {
         return Some(free);
@@ -350,7 +354,7 @@ fn available_space(dir: &Path) -> Option<u64> {
         .map(|d| d.available_space())
 }
 
-fn space_verdict(available: Option<u64>, needed: u64, dir: &Path) -> Result<()> {
+pub(crate) fn space_verdict(available: Option<u64>, needed: u64, dir: &Path) -> Result<()> {
     match available {
         Some(available) if available < needed => Err(PipelineError::NoSpace {
             mount: dir.to_path_buf(),
@@ -474,7 +478,7 @@ fn sweep_spool_at(
 
 /// Take back the files this export already sent to a folder or a drive. Files
 /// on the reader's Wi-Fi share are left: there is no way to take them back.
-fn remove_sent(target: &ExportTarget, sent: &[ExportedFile]) {
+pub(crate) fn remove_sent(target: &ExportTarget, sent: &[ExportedFile]) {
     if matches!(target, ExportTarget::WebDav { .. }) {
         return;
     }
@@ -504,6 +508,9 @@ pub async fn export_series(
     events: Option<UnboundedSender<JobEvent>>,
     cancel: &CancelFlag,
 ) -> Result<ExportOutcome> {
+    if let Some(original) = &job.original {
+        return crate::original::export_original(files, job, original, events, cancel).await;
+    }
     let chapters: Vec<&DownloadedChapter> = job
         .series
         .chapters
@@ -931,7 +938,7 @@ fn write_volume(
 /// `Title - Ch 1-12.xtch`; with several files from one group,
 /// `Title - Part 2 - Ch 13-25.xtch`; a lone unnumbered chapter is named
 /// after itself.
-fn volume_name(
+pub(crate) fn volume_name(
     job: &ExportJob,
     volume: &Volume,
     all: &[Volume],
@@ -1228,7 +1235,7 @@ async fn convert_chapter(
     Ok((packed, false))
 }
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1333,6 +1340,7 @@ mod tests {
                     pages,
                     bytes: 0,
                     downloaded_at: 1,
+                    quality: None,
                 },
                 1,
             );
@@ -1537,6 +1545,23 @@ mod tests {
         assert!(rx.try_recv().is_err(), "nothing was started");
         assert!(folder_files(&root).is_empty());
         // And with room, the same export goes through.
+        assert!(export_series(&files, &job, None, &CancelFlag::new()).await.is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn an_original_quality_export_checks_the_room_for_its_scratch_file_first() {
+        let (root, files, series) = fixture("nospace-original", 2, 3);
+        let mut job = folder_job(&root, &series);
+        job.original = Some(crate::original::OriginalExport {
+            format: crate::original::OriginalFormat::Cbz,
+            rtl: false,
+        });
+        SCRATCH_FREE.with(|c| c.set(Some(1_000)));
+        let result = export_series(&files, &job, None, &CancelFlag::new()).await;
+        SCRATCH_FREE.with(|c| c.set(None));
+        assert!(matches!(result, Err(PipelineError::NoSpace { available: 1_000, .. })), "{result:?}");
+        assert!(folder_files(&root).is_empty());
         assert!(export_series(&files, &job, None, &CancelFlag::new()).await.is_ok());
         let _ = fs::remove_dir_all(root);
     }

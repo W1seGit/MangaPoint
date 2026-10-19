@@ -13,6 +13,7 @@ pub(super) fn ExportFooter() -> Element {
     let library = state.library.read();
     let opts = state.export_opts.read().clone();
     let device = state.settings.read().device_profile();
+    let original = device_profiles::is_original(&state.settings.read().device);
     // Whether something runs, not how far it has got: the footer is not drawn
     // again for every page.
     let (busy, exporting) = use_memo(move || {
@@ -41,7 +42,11 @@ pub(super) fn ExportFooter() -> Element {
         chapters += included.len();
         let p: usize = included.iter().map(|c| c.pages).sum();
         pages += p;
-        bytes += logic::estimate_series_bytes(p, &series.settings, &device);
+        bytes += if original {
+            included.iter().map(|c| c.bytes).sum()
+        } else {
+            logic::estimate_series_bytes(p, &series.settings, &device)
+        };
     }
     let every_n_valid = opts.every_n.trim().parse::<usize>().is_ok_and(|n| n >= 1);
 

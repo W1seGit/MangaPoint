@@ -266,6 +266,13 @@ pub fn ChaptersTab() -> Element {
         )
     };
 
+    // The chapters the reader has read to the end.
+    let read_keys: std::collections::HashSet<String> = state
+        .library
+        .read()
+        .reading_of(&ws.series_id)
+        .map(|p| p.chapters.iter().filter(|(_, c)| c.read).map(|(k, _)| k.clone()).collect())
+        .unwrap_or_default();
     let grid_rows: Vec<GridRow> = order
         .iter()
         .map(|&i| {
@@ -305,6 +312,8 @@ pub fn ChaptersTab() -> Element {
                     .map(|(bytes, _)| logic::human_bytes(*bytes))
                     .unwrap_or_default(),
                 from: copy.map(|(_, id)| source_label(id)).unwrap_or_default(),
+                read_key: copy.map(|_| key.clone()),
+                read: copy.is_some() && read_keys.contains(&key),
             }
         })
         .collect();
@@ -389,6 +398,10 @@ pub fn ChaptersTab() -> Element {
             picked: selected_now.clone(),
             sort: current_sort,
             lock_done: false,
+            on_read: {
+                let series_id = ws.series_id.clone();
+                move |key: String| state.open_reader(&series_id, Some(key))
+            },
             on_sort: move |key| {
                 let current = table.peek().sort;
                 table.write().sort = logic::next_sort(current, key);

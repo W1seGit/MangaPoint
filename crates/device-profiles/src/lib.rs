@@ -382,9 +382,39 @@ impl DeviceProfile {
     }
 }
 
-/// Find one of the user's readers.
+/// Find one of the user's readers (or the built-in "phone or tablet", which is
+/// not a reader to make pages for but a way to keep them as they are).
 pub fn find(id: &str, custom: &[DeviceProfile]) -> Option<DeviceProfile> {
+    if id == PHONE_ORIGINAL_ID {
+        return Some(phone_original());
+    }
     all(custom).into_iter().find(|p| p.id == id)
+}
+
+/// The id of the built-in "Phone or tablet" entry in the list of readers.
+pub const PHONE_ORIGINAL_ID: &str = "phone-original";
+
+/// A phone or a tablet: files are made from the pages exactly as they were
+/// saved, in color, with no e-ink processing. It has no screen to make pages
+/// for, so the size is only a placeholder.
+pub fn phone_original() -> DeviceProfile {
+    DeviceProfile {
+        id: PHONE_ORIGINAL_ID.into(),
+        name: "Phone or tablet · original quality".into(),
+        width: 1080,
+        height: 1920,
+        ppi: 400,
+        maker: String::new(),
+        gray_levels: 255,
+        color: true,
+        builtin: true,
+        support: SupportTable::UNKNOWN,
+    }
+}
+
+/// Is this the "Phone or tablet · original quality" entry?
+pub fn is_original(id: &str) -> bool {
+    id == PHONE_ORIGINAL_ID
 }
 
 /// Every reader the user has.
@@ -616,5 +646,14 @@ mod tests {
         assert_eq!(legacy_id("XteinkX4Pro"), Some(X4_PRO_ID));
         assert_eq!(legacy_id("XteinkX4"), Some(X4_ID));
         assert_eq!(legacy_id("other"), None);
+    }
+
+    #[test]
+    fn the_phone_entry_is_found_by_id_but_is_not_one_of_the_readers_to_add() {
+        let p = find(PHONE_ORIGINAL_ID, &[]).unwrap();
+        assert!(is_original(&p.id) && p.builtin);
+        assert!(p.name.contains("original quality"));
+        assert!(builtin().iter().all(|d| d.id != PHONE_ORIGINAL_ID));
+        assert!(all(&[]).is_empty());
     }
 }

@@ -19,16 +19,19 @@ pub mod fetch;
 pub mod import;
 pub mod limiter;
 pub mod options;
+pub mod original;
+pub mod pdf;
 pub mod plan;
 pub mod preview;
 pub mod probe;
 pub mod types;
 
 pub use compose::{export_series, sweep_spool, ExportJob, ExportOutcome, Grouping};
-pub use download::{download_chapters, DownloadOutcome};
+pub use download::{download_chapters, download_chapters_as, DownloadOutcome};
 pub use error::PipelineError;
 pub use export::{ExportTarget, ExportedFile};
 pub use fetch::RetryPolicy;
+pub use original::{OriginalExport, OriginalFormat};
 pub use limiter::Limiter;
 pub use options::{process_options, process_options_for};
 pub use plan::{

@@ -382,3 +382,45 @@ fn a_cancel_after_a_pause_wins_and_a_pause_after_a_cancel_does_not_park() {
     q.cancel_series("d");
     assert!(!q.get(d).unwrap().pausing);
 }
+
+#[test]
+fn a_download_in_original_quality_never_joins_one_that_follows_the_setting() {
+    let mut q = DownloadQueue::default();
+    q.add(batch("a", &[1]));
+    let original = Batch { quality: Some(library::PageQuality::Full), ..batch("a", &[2]) };
+    let added = q.add(original);
+    assert_eq!(added, Added { chapters: 1, joined_existing: false }, "its own batch");
+    assert_eq!(q.batches.len(), 2);
+    // Two of the same kind do join.
+    let again = Batch { quality: Some(library::PageQuality::Full), ..batch("a", &[3]) };
+    assert!(q.add(again).joined_existing);
+    // And replacing is a kind of its own.
+    let replacing = batch("a", &[4]).replacing_at(library::PageQuality::Full);
+    assert!(!q.add(replacing).joined_existing);
+}
+
+#[test]
+fn the_quality_and_replacing_survive_a_restart_and_a_retry() {
+    let mut q = DownloadQueue::default();
+    q.add(batch("a", &[1, 2]).replacing_at(library::PageQuality::Full));
+    q.add(Batch { quality: Some(library::PageQuality::Full), ..batch("b", &[1]) });
+    let json = serde_json::to_string(&q.to_saved()).unwrap();
+    let back = DownloadQueue::from_saved(serde_json::from_str(&json).unwrap());
+    assert_eq!(back.batches[0].quality, Some(library::PageQuality::Full));
+    assert!(back.batches[0].replace);
+    assert_eq!(back.batches[1].quality, Some(library::PageQuality::Full));
+    assert!(!back.batches[1].replace);
+    // A queue saved before these existed follows the setting.
+    let old = r#"{"batches":[{"id":1,"series_id":"a","title":"A","requests":[],"plan":[],"only_source":null,"source_names":{},"status":"Waiting","summary":null,"stats":null,"skipped":[],"failed":[],"added_at":0,"finished_at":0}],"next_id":1,"paused":false}"#;
+    let old = DownloadQueue::from_saved(serde_json::from_str(old).unwrap());
+    assert_eq!((old.batches[0].quality, old.batches[0].replace), (None, false));
+    // Trying a failed chapter again keeps the way it was downloaded.
+    let mut q = DownloadQueue::default();
+    q.add(batch("a", &[1]).replacing_at(library::PageQuality::Full));
+    let id = q.next_to_start().unwrap();
+    q.start(id);
+    q.finish(id, BatchStatus::Failed("x".into()), "x".into(), vec![], vec!["c1".into()]);
+    assert_eq!(q.retry(id, 5), 1);
+    let retried = q.batches.last().unwrap();
+    assert!(retried.replace && retried.quality == Some(library::PageQuality::Full));
+}

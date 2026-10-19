@@ -9,6 +9,7 @@ mod covers;
 mod logfile;
 mod logic;
 mod notify;
+mod pages;
 mod queue;
 mod sample;
 mod state;
@@ -118,6 +119,10 @@ fn main() {
         .with_window(window)
         .with_asynchronous_custom_protocol(covers::SCHEME, |_id, request, responder| {
             covers::serve(request, responder)
+        })
+        // The reader's pages, straight from the library on disk; see `pages`.
+        .with_asynchronous_custom_protocol(pages::SCHEME, |_id, request, responder| {
+            pages::serve(request, responder)
         });
     // No menu bar on Windows and Linux. On macOS the menu is also where copy,
     // paste, select all, quit and hide come from, so the default one stays.

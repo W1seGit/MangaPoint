@@ -102,6 +102,25 @@ impl CbzBuilder {
         } else {
             return Err(fail("a page is neither a PNG nor a JPEG picture"));
         };
+        self.add_named(picture, kind)
+    }
+
+    /// Add a page picture as it was saved: a JPEG, a PNG or a WebP, kept
+    /// byte for byte.
+    pub fn add_original(&mut self, picture: &[u8]) -> Result<()> {
+        let kind = if picture.starts_with(&[0x89, b'P', b'N', b'G']) {
+            "png"
+        } else if picture.starts_with(&[0xff, 0xd8]) {
+            "jpg"
+        } else if picture.len() > 12 && &picture[..4] == b"RIFF" && &picture[8..12] == b"WEBP" {
+            "webp"
+        } else {
+            return Err(fail("a page is not a JPEG, PNG or WebP picture"));
+        };
+        self.add_named(picture, kind)
+    }
+
+    fn add_named(&mut self, picture: &[u8], kind: &str) -> Result<()> {
         let (width, height) = image::ImageReader::new(Cursor::new(picture))
             .with_guessed_format()
             .ok()

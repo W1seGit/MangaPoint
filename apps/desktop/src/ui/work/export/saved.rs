@@ -18,6 +18,9 @@ pub struct SavedExport {
     pub(super) drive: Option<logic::DriveIdentity>,
     /// The first series that is not finished.
     pub(super) next: usize,
+    /// Set when the files are made from the pages as they are (a phone or
+    /// tablet), and as what.
+    pub(super) original_format: Option<pipeline::OriginalFormat>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -92,6 +95,7 @@ mod saved_export_tests {
             target: Some(ExportTarget::Folder { path: "out".into() }),
             drive: None,
             next: 1,
+            original_format: Some(pipeline::OriginalFormat::Pdf),
         };
         let back: SavedExport = serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
         assert_eq!(back.next, 1);
@@ -99,6 +103,9 @@ mod saved_export_tests {
         assert_eq!(back.items[0].keys, ["c1", "c2"]);
         assert_eq!(back.target, saved.target);
         assert_eq!(Grouping::from(back.grouping), Grouping::EveryN(25));
+        assert_eq!(back.original_format, Some(pipeline::OriginalFormat::Pdf));
+        // A plan saved before this existed is an ordinary one.
+        assert_eq!(serde_json::from_str::<SavedExport>(r#"{"next":2}"#).unwrap().original_format, None);
         // Nothing saved is nothing to resume.
         assert!(serde_json::from_str::<SavedExport>("{}").unwrap().items.is_empty());
     }

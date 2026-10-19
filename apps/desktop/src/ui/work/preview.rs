@@ -60,6 +60,11 @@ pub fn prepare_preview(state: AppState) {
 type DecodedChapter = (String, Arc<Vec<converter::GrayImage>>);
 pub(super) static DECODED: Mutex<Option<DecodedChapter>> = Mutex::new(None);
 
+/// The tests that use [`DECODED`] take this first: it is one cache for the whole
+/// program, so two of them at once would find each other's chapters in it.
+#[cfg(test)]
+pub(super) static DECODED_TEST_LOCK: Mutex<()> = Mutex::new(());
+
 /// The preview the background thread has finished for a chapter and options,
 /// waiting for the screen to take it.
 pub(super) static PREPARED_PREVIEW: Mutex<
@@ -325,6 +330,10 @@ pub(super) fn signature_of(
 }
 
 pub fn schedule_preview(state: AppState, delay_ms: u64) {
+    // For a phone or tablet the pages are shown as they are, not converted.
+    if device_profiles::is_original(&state.settings.peek().device) {
+        return;
+    }
     let mut preview = state.preview;
     let signature = preview_signature(state);
     let generation = {
@@ -815,7 +824,9 @@ mod page_editor_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn preview_reloads_replaced_sources_with_the_same_page_count() {
+        let _only_one = super::DECODED_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!(
             "mangapoint-preview-revision-{}",
             std::process::id()
@@ -885,6 +896,7 @@ mod tests {
 
     #[test]
     fn a_decoded_chapter_is_found_by_the_files_stamps_without_reading_them() {
+        let _only_one = DECODED_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("mp-decode-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // Not pictures: if they were read and decoded this would be an error.

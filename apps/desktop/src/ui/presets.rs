@@ -93,6 +93,10 @@ fn set_output_of(
 /// for a Kindle that takes only EPUB, say), switch it to the first thing the
 /// reader does. Returns whether anything was changed.
 pub fn fit_output_to_reader(state: AppState) -> bool {
+    // A phone or tablet takes the pages as they are: there is no format to fit.
+    if device_profiles::is_original(&state.settings.peek().device) {
+        return false;
+    }
     let setup = state.settings.peek().reader_setup();
     let listed = |o: library::OutputFormat| setup.formats.iter().any(|f| f.eq_ignore_ascii_case(o.label()));
     let Some(first) = library::OutputFormat::ALL.into_iter().find(|o| listed(*o)) else {

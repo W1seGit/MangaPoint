@@ -224,6 +224,7 @@ pub fn ensure_sample(state: AppState) -> String {
             pages: pages.len(),
             bytes,
             downloaded_at: now_secs(),
+            quality: None,
         };
         let mut library = state.library;
         {

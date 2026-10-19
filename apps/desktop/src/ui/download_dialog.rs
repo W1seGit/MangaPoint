@@ -10,6 +10,8 @@ use dioxus::prelude::*;
 pub fn DownloadDialogHost() -> Element {
     let state = use_context::<AppState>();
     let mut dont_ask = use_signal(|| false);
+    // Original quality for just this download; the setting is left alone.
+    let mut original = use_signal(|| false);
     let Some(dialog) = state.download_dialog.read().clone() else {
         return rsx! {};
     };
@@ -41,6 +43,26 @@ pub fn DownloadDialogHost() -> Element {
                         "Choose folder…"
                     }
                 }
+                div { class: "px-label", style: "margin-top: 14px", "Page quality" }
+                div { class: "seg", id: "download-quality", role: "group", "aria-label": "Page quality",
+                    button {
+                        id: "download-quality-setting", class: if original() { "" } else { "on" },
+                        "aria-pressed": "{!original()}", onclick: move |_| original.set(false),
+                        "Use my setting"
+                    }
+                    button {
+                        id: "download-quality-original", class: if original() { "on" } else { "" },
+                        "aria-pressed": "{original()}", onclick: move |_| original.set(true),
+                        "Original"
+                    }
+                }
+                p { class: "muted small", style: "margin: 6px 0 0",
+                    if original() {
+                        "Pages are kept exactly as downloaded, in color. They take the most space. Good for reading on a phone or tablet."
+                    } else {
+                        "Pages are saved as your setting in Settings → Downloads says."
+                    }
+                }
                 div { class: "check-line", style: "margin-top: 14px",
                     Toggle { on: dont_ask(), onchange: move |on: bool| dont_ask.set(on) }
                     span { "Don't ask again. You can change it in Settings → Files." }
@@ -55,7 +77,7 @@ pub fn DownloadDialogHost() -> Element {
                                 state.save_settings();
                             }
                             close();
-                            start_pending(state, pending);
+                            start_pending(state, pending, original().then_some(library::PageQuality::Full));
                         },
                         Icon { name: "download", size: 16 }
                         "Download"

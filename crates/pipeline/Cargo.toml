@@ -28,6 +28,8 @@ lopdf = { version = "0.45", default-features = false }
 sevenz-rust = { version = "0.6", default-features = false }
 unrar = "0.5"
 tiff = { version = "0.11", default-features = false, features = ["deflate", "lzw"] }
+# The lossless pictures of a PDF (zlib, already a dependency of zip).
+flate2 = "1"
 # 0.39 needs Rust 1.95; 0.37 works on 1.90 and has the same Disks API.
 sysinfo = { version = "0.39", default-features = false, features = ["disk"] }
 
