@@ -416,10 +416,14 @@ fn black_and_white_and_xtc_ignore_colour() {
     assert!(rgb.pixels().all(|p| p.0[0].abs_diff(p.0[2]) < 8), "gray");
     // ...and an XTC book is the same on a colour reader as with black and white chosen.
     let xtc = Case::new("colour-xtc", colour_chapters(), "kobo-libra-colour", FileType::Xtc);
-    let made = assert_same_as_desktop(&xtc);
+    assert_same_as_desktop(&xtc);
     let mut forced = Case::new("colour-xtc-bw", colour_chapters(), "kobo-libra-colour", FileType::Xtc);
     forced.settings.black_and_white = true;
-    assert_eq!(made[0].1, assert_same_as_desktop(&forced)[0].1);
+    assert_same_as_desktop(&forced);
+    // Compared with one fixed time stamp: two desktop runs carry the second
+    // they ran in, which would make this fail whenever they cross a second.
+    const FIXED: u64 = 1_781_000_000;
+    assert_eq!(xtc.run_web(FIXED)[0].1, forced.run_web(FIXED)[0].1);
 }
 
 #[test]
