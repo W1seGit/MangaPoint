@@ -34,6 +34,7 @@ try {
 
   // ---- save (a browser without the picker downloads the file) ----
   await nav(page, 'Settings');
+  await page.click('#settings-nav-state');
   await page.shot(`${viewport}-40-settings`);
   await clearToasts(page);
   await page.click('#state-save');
@@ -55,6 +56,7 @@ try {
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: noPicker });
   await openApp(page, server.url, viewport);
   await nav(page, 'Settings');
+  await page.click('#settings-nav-state');
   page.answerFileChooser([join(dl, saved[0])]);
   await clearToasts(page);
   await page.click('#state-load');
@@ -91,6 +93,7 @@ try {
     };
   })()`);
   await nav(page, 'Settings');
+  await page.click('#settings-nav-state');
   await page.waitFor("!!document.querySelector('#state-save')", 5, 'settings');
   await clearToasts(page);
   await page.click('#state-save');

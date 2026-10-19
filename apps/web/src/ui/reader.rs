@@ -608,11 +608,6 @@ fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
                 SettingRow { label: "Zoom", help: "Fit the whole page, fit its width, show it at its original size, or pick a percentage. Pinching, or Ctrl and the mouse wheel, also zoom.",
                     ZoomMenu { look }
                 }
-                SettingRow { label: "Full screen", help: "Hide the browser's own bars while you read.",
-                    button { class: "btn", id: "reader-fullscreen", onclick: move |_| apply_action(ctx, Action::Fullscreen),
-                        Icon { name: "maximize", size: 16 } "Full screen"
-                    }
-                }
             }
         }
     }

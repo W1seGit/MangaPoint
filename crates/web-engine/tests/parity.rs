@@ -609,3 +609,24 @@ fn the_output_format_enum_matches_the_options() {
         assert_eq!(t.extension(), o.extension());
     }
 }
+
+// ---- Looking at pages before saving them ---------------------------------------------
+
+#[test]
+fn a_preview_shows_the_pages_the_file_would_hold() {
+    let pages = vec![gray_png(800, 1200, 1), gray_png(800, 1200, 2)];
+    let options = ExportOptions::from_json(&web_engine::options::default_options_json("xteink-x4", "manga").unwrap()).unwrap();
+    let screen = options.resolve_device().unwrap();
+    let made = web_engine::export::preview_pages(&options, &pages).unwrap();
+    assert_eq!(made.len(), 2, "one picture for each page");
+    for bytes in &made {
+        let img = image::load_from_memory(bytes).expect("a picture a browser can show");
+        assert_eq!((img.width(), img.height()), (screen.width, screen.height), "made for the reader's screen");
+    }
+    // A phone or tablet keeps its pages as they are.
+    let phone = ExportOptions::from_json(&web_engine::options::default_options_json("phone-original", "manga").unwrap()).unwrap();
+    let same = web_engine::export::preview_pages(&phone, &pages).unwrap();
+    assert_eq!(same, pages);
+    assert!(web_engine::export::preview_pages(&options, &Vec::<Vec<u8>>::new()).unwrap().is_empty());
+    assert!(web_engine::export::preview_pages(&options, &[b"not a picture".to_vec()]).is_err());
+}

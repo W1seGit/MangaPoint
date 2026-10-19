@@ -115,6 +115,9 @@ pub enum Event {
     OfflineReady,
     #[serde(rename = "online")]
     Online { online: bool },
+    /// The window is as narrow as a phone's (the Export screen changes its layout).
+    #[serde(rename = "narrow")]
+    Narrow { narrow: bool },
     #[serde(rename = "can_install")]
     CanInstall,
     #[serde(rename = "installed")]

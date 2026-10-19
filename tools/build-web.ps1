@@ -65,7 +65,7 @@ Remove-Item -Recurse -Force (Join-Path $dist 'js\test') -ErrorAction SilentlyCon
 Copy-Item -Recurse (Join-Path $root 'web\icons') (Join-Path $dist 'icons')
 Copy-Item (Join-Path $root 'web\css\web.css') (Join-Path $dist 'css')
 # The desktop app's own style sheets, unchanged (one source of truth for the look).
-foreach ($css in 'style.css', 'import.css', 'reader.css') {
+foreach ($css in 'style.css', 'import.css', 'reader.css', 'editor-controls.css') {
     Copy-Item (Join-Path $root "apps\desktop\src\$css") (Join-Path $dist 'css')
 }
 

@@ -11,6 +11,7 @@ pub mod art;
 #[path = "../../desktop/src/logic/format.rs"]
 pub mod format;
 pub mod model;
+pub mod ranges;
 pub mod reader_logic;
 pub mod review;
 

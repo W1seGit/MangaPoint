@@ -60,11 +60,23 @@ try {
   await importBooks(page, [fx('Color Test.cbz')]);
   await clearToasts(page);
   await nav(page, 'Export');
-  await page.waitFor("!!document.querySelector('#export-device')", 10, 'export screen');
+  const narrow = viewport !== 'desktop';
+  await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-device')", 10, 'export screen');
+  // On a phone the panels are in a sheet that opens from the Settings tab; open every panel.
+  if (narrow) {
+    await page.tap('#export-settings-tab');
+    await sleep(400);
+    await page.eval("document.querySelectorAll('.px-panel.collapsed .px-panel-head').forEach((h) => h.click())");
+    await sleep(300);
+  }
   await page.shot(`${viewport}-30-export`);
   const devices = await page.eval("[...document.querySelectorAll('#export-device option')].map(o => o.textContent)");
   r.check('reader list comes from the engine, with the phone entry last', devices.length > 5 && /Phone or tablet/.test(devices[devices.length - 1]), `${devices.length} readers; first ${devices[0]}`);
-  r.check('presets offered', (await page.eval("document.querySelectorAll('#export-preset .pill').length")) === 3);
+  r.check('the three built-in presets are offered', (await page.eval("document.querySelectorAll('#export-preset .px-preset').length")) === 3);
+  r.check('the edit groups of the app are there (Layout, Spreads and zoom, Crop, Look)', (await page.eval("[...document.querySelectorAll('.mp-group-title')].map((e) => e.textContent).join()")) === 'Layout,Spreads and zoom,Crop,Look');
+  r.check('no way to send to a reader, only downloads', !(await page.eval("/USB|Wi-?Fi|Send to/i.test(document.querySelector('#panel-send').innerText)")));
+  await page.waitFor("!!document.querySelector('#export-col-reader img')", 30, 'the converted pages');
+  r.check('the pages are shown as they will be', (await page.eval("document.querySelectorAll('#export-col-reader img').length")) > 0);
 
   // The book picker: choose Hero Saga.
   await page.eval("(() => { const s = document.querySelector('#export-book'); const o = [...s.options].find(o => /Hero/.test(o.textContent)); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); })()");

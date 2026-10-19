@@ -170,6 +170,50 @@ function exportStart(job) {
   w.postMessage({ cmd: 'start', ...job, session });
 }
 
+// A second worker only for looking at pages: a newer request replaces an older one still running.
+let previewWorker = null;
+let previewId = 0;
+let previewUrls = [];
+
+function freePreview() {
+  for (const u of previewUrls) URL.revokeObjectURL(u);
+  previewUrls = [];
+}
+
+/** The converted pictures of a few pages of a chapter, as blob: URLs (the last ones are freed). */
+function preview({ options, book, first, count }) {
+  previewWorker?.terminate();
+  const id = ++previewId;
+  const w = new Worker(new URL('./export-worker.js', import.meta.url), { type: 'module' });
+  previewWorker = w;
+  return new Promise((resolve, reject) => {
+    w.onmessage = (e) => {
+      const m = e.data;
+      if (m.id !== id) return;
+      w.terminate();
+      if (previewWorker === w) previewWorker = null;
+      if (m.t === 'preview') {
+        freePreview();
+        previewUrls = m.images.map((bytes) => URL.createObjectURL(new Blob([bytes], { type: sniff(bytes) })));
+        resolve({ id, urls: previewUrls.slice() });
+      } else {
+        reject(new Error(m.message));
+      }
+    };
+    w.onerror = (e) => {
+      w.terminate();
+      if (previewWorker === w) previewWorker = null;
+      reject(new Error(e.message || 'The preview worker stopped.'));
+    };
+    const session = importer.sessionFiles.get(book) || null;
+    w.postMessage({ cmd: 'preview', id, options, book, first, count, session });
+  });
+}
+
+function sniff(bytes) {
+  return bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg' : 'image/png';
+}
+
 function exportCancel() {
   if (worker) {
     worker.terminate();
@@ -336,6 +380,27 @@ const handlers = {
     return true;
   },
 
+  async preview(args) {
+    return preview(args);
+  },
+
+  async preview_free() {
+    previewWorker?.terminate();
+    previewWorker = null;
+    freePreview();
+    return true;
+  },
+
+  /** Blob URL of the picture of page `i` as it is stored (acquired until preview_free_original). */
+  async original_url({ book, index }) {
+    return pages.acquire(book, index);
+  },
+
+  async original_release({ book, index }) {
+    pages.release(book, index);
+    return true;
+  },
+
   async export_status() {
     return { files: exportResult.map((f, i) => ({ index: i, name: f.name, size: f.size })), running: !!worker };
   },
@@ -442,6 +507,11 @@ window.addEventListener('pagehide', () => store.flushPending());
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') store.flushPending();
 });
+{
+  const narrow = matchMedia('(max-width: 900px)');
+  emit({ t: 'narrow', narrow: narrow.matches });
+  narrow.addEventListener('change', (e) => emit({ t: 'narrow', narrow: e.matches }));
+}
 window.addEventListener('online', () => emit({ t: 'online', online: true }));
 window.addEventListener('offline', () => emit({ t: 'online', online: false }));
 window.addEventListener('beforeinstallprompt', (e) => {

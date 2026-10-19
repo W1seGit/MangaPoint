@@ -171,3 +171,21 @@ impl Exporter {
         Ok(out.into())
     }
 }
+
+/// Convert some pages to look at (worker build only): `pages` is an array of `Uint8Array`, the
+/// stored pictures in reading order; the result is an array of `Uint8Array` pictures.
+#[cfg(feature = "convert")]
+#[wasm_bindgen]
+pub fn preview_pages(options_json: &str, pages: Array) -> Result<Array, JsError> {
+    let options = crate::options::ExportOptions::from_json(options_json).map_err(error)?;
+    let mut bytes: Vec<Vec<u8>> = Vec::with_capacity(pages.length() as usize);
+    for page in pages.iter() {
+        bytes.push(Uint8Array::new(&page).to_vec());
+    }
+    let made = crate::export::preview_pages(&options, &bytes).map_err(error)?;
+    let out = Array::new();
+    for image in made {
+        out.push(&Uint8Array::from(image.as_slice()));
+    }
+    Ok(out)
+}

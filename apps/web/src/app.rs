@@ -66,6 +66,7 @@ pub enum ModalAction {
     RemoveBook { id: String, forget: bool },
     ForgetWaiting(String),
     ClearAll,
+    DeletePreset(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -113,6 +114,12 @@ pub struct Ctx {
     pub offline_ready: Signal<bool>,
     pub can_install: Signal<bool>,
     pub export: Signal<ui::export::ExportUi>,
+    /// The presets of the user's own (and changes to the built-in ones), kept in the browser.
+    pub presets: Signal<library::PresetsDb>,
+    /// How each book was last exported, by book id.
+    pub last_exports: Signal<std::collections::BTreeMap<String, ui::export::LastExport>>,
+    /// The window is as narrow as a phone's.
+    pub narrow: Signal<bool>,
     pub next_id: Signal<u64>,
     pub state_file: Signal<Option<String>>,
 }
@@ -180,6 +187,14 @@ impl Ctx {
         }
     }
 
+    pub fn save_presets(self) {
+        bridge::put_soon("meta", "presets", &*self.presets.peek());
+    }
+
+    pub fn save_last_exports(self) {
+        bridge::put_soon("meta", "last_exports", &*self.last_exports.peek());
+    }
+
     pub fn save_settings(self) {
         bridge::put_soon("meta", "settings", &*self.settings.peek());
     }
@@ -214,6 +229,9 @@ pub fn App() -> Element {
         offline_ready: use_signal(|| false),
         can_install: use_signal(|| false),
         export: use_signal(ui::export::ExportUi::default),
+        presets: use_signal(library::PresetsDb::default),
+        last_exports: use_signal(Default::default),
+        narrow: use_signal(|| false),
         next_id: use_signal(|| 0),
         state_file: use_signal(|| None),
     };
@@ -236,6 +254,18 @@ pub fn App() -> Element {
                 if let Some(s) = b.meta.get("settings") {
                     if let Ok(s) = serde_json::from_value::<Settings>(s.clone()) {
                         settings.set(s);
+                    }
+                }
+                if let Some(p) = b.meta.get("presets") {
+                    if let Ok(p) = serde_json::from_value::<library::PresetsDb>(p.clone()) {
+                        let mut presets = ctx.presets;
+                        presets.set(p);
+                    }
+                }
+                if let Some(l) = b.meta.get("last_exports") {
+                    if let Ok(l) = serde_json::from_value(l.clone()) {
+                        let mut last = ctx.last_exports;
+                        last.set(l);
                     }
                 }
                 caps.set(b.caps);
@@ -321,6 +351,10 @@ fn handle_event(ctx: Ctx, ev: Event) {
         Event::OfflineReady => {
             let mut s = ctx.offline_ready;
             s.set(true);
+        }
+        Event::Narrow { narrow } => {
+            let mut s = ctx.narrow;
+            s.set(narrow);
         }
         Event::Online { online } => {
             let mut s = ctx.online;
@@ -457,6 +491,15 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                 let mut lib = ctx.library;
                 lib.write().forget_state(&id);
                 let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
+            }
+            ModalAction::DeletePreset(id) => {
+                let mut presets = ctx.presets;
+                let result = presets.write().delete(&id);
+                match result {
+                    Ok(_) => ctx.save_presets(),
+                    Err(e) => ctx.error(e.to_string()),
+                }
+                ui::export::forget_preset(ctx, &id);
             }
             ModalAction::ClearAll => {
                 ui::reader::close_reader(ctx);

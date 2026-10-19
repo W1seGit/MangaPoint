@@ -40,11 +40,33 @@ async function run(job) {
   post({ t: 'done', pages: pagesMade });
 }
 
+/** Convert a few pages of a chapter to look at (not to save). */
+async function preview(job) {
+  const { id, options, book, first, count, session } = job;
+  const engine = await import('../engine/web_engine.js');
+  await engine.default();
+  const [record, table] = await Promise.all([dbGet('books', book), dbGet('pages', book)]);
+  if (!record || !table) throw new Error('This book is not in the library any more.');
+  const source = new BookSource(record, table, session);
+  const pages = [];
+  for (let k = 0; k < count; k++) pages.push(await source.bytes(first + k));
+  const made = engine.preview_pages(JSON.stringify(options), pages);
+  const images = [];
+  for (const m of made) images.push(m);
+  self.postMessage({ t: 'preview', id, images }, images.map((b) => b.buffer));
+}
+
 function post(m) {
   self.postMessage(m);
 }
 
 self.onmessage = (e) => {
+  if (e.data.cmd === 'preview') {
+    preview(e.data).catch((err) => {
+      post({ t: 'preview_error', id: e.data.id, message: err && err.message ? err.message : String(err) });
+    });
+    return;
+  }
   if (e.data.cmd !== 'start') return;
   run(e.data).catch((err) => {
     post({ t: 'error', message: err && err.message ? err.message : String(err) });

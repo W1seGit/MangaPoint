@@ -624,6 +624,21 @@ fn convert_chapter<P: AsRef<[u8]>>(
     }
 }
 
+/// Convert some pages only to look at them: what a chapter's pages would be in a file for
+/// this reader, as pictures (PNG or JPEG) whatever the file type. A phone or tablet keeps its pages
+/// as they are, so they come back unchanged.
+pub fn preview_pages<P: AsRef<[u8]>>(options: &ExportOptions, pages: &[P]) -> Result<Vec<Vec<u8>>, String> {
+    let device = options.resolve_device()?;
+    if pages.is_empty() {
+        return Ok(Vec::new());
+    }
+    if device_profiles::is_original(&device.id) {
+        return Ok(pages.iter().map(|p| p.as_ref().to_vec()).collect());
+    }
+    let process = process_options_for(&device, &options.settings, options.file_type());
+    convert_chapter("the preview", pages, &process, true)
+}
+
 /// The cover as one page for the device: the whole picture, fitted to the
 /// screen, uncropped. `None` if it cannot be made, in which case the file simply
 /// starts with the first chapter.
