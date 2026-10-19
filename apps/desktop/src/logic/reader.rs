@@ -58,10 +58,15 @@ pub fn default_mode(info: Option<&SeriesInfo>, aspect: Option<f32>) -> ReadMode 
 
 /// What the user chose for a series, and the defaults for what they did not.
 pub fn resolve_look(prefs: &ReaderPrefs, info: Option<&SeriesInfo>, aspect: Option<f32>) -> ReaderLook {
+    let mode = prefs.mode.unwrap_or_else(|| default_mode(info, aspect));
     ReaderLook {
-        mode: prefs.mode.unwrap_or_else(|| default_mode(info, aspect)),
+        mode,
         direction: prefs.direction.unwrap_or_else(|| default_direction(info)),
-        fit: prefs.fit.unwrap_or_default(),
+        // A page shown alone is seen whole; a strip fills the width.
+        fit: prefs.fit.unwrap_or(match mode {
+            ReadMode::Paged => ReadFit::Height,
+            ReadMode::Scroll => ReadFit::Width,
+        }),
         zoom: prefs.zoom.unwrap_or(100).clamp(ZOOM_MIN, ZOOM_MAX),
     }
 }
@@ -434,7 +439,11 @@ mod tests {
         let look = resolve_look(&prefs, Some(&info(&["Webtoon", "Manga"])), Some(3.0));
         assert_eq!(look, ReaderLook { mode: ReadMode::Paged, direction: Ltr, fit: ReadFit::Height, zoom: ZOOM_MAX });
         let look = resolve_look(&ReaderPrefs::default(), Some(&info(&["Manga"])), None);
-        assert_eq!((look.mode, look.direction, look.fit, look.zoom), (ReadMode::Paged, Rtl, ReadFit::Width, 100));
+        assert_eq!((look.mode, look.direction, look.fit, look.zoom), (ReadMode::Paged, Rtl, ReadFit::Height, 100));
+        let strip = resolve_look(&ReaderPrefs::default(), Some(&info(&["Webtoon"])), None);
+        assert_eq!((strip.mode, strip.fit), (ReadMode::Scroll, ReadFit::Width), "a strip keeps the width");
+        let chosen = ReaderPrefs { fit: Some(ReadFit::Width), ..Default::default() };
+        assert_eq!(resolve_look(&chosen, None, None).fit, ReadFit::Width, "what the user chose wins");
     }
 
     #[test]
