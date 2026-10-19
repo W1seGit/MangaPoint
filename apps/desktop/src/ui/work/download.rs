@@ -356,7 +356,7 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
     let (defaults, default_preset) = state.new_series_defaults();
     let quality = state.settings.peek().page_quality;
     let policy = RetryPolicy::default();
-    let limits = state.settings.peek().download.limits();
+    let limits = state.settings.peek().download_limits();
     info!(
         "Download started: \"{}\", {}{}",
         batch.title,

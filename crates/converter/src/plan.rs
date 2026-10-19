@@ -1519,6 +1519,37 @@ fn source_of_plane<'a>(
     }
 }
 
+/// [`page_source`] in colour: the prepared section before fitting, with its
+/// chroma. A chapter prepared without colour gives its gray picture.
+pub fn page_source_color(prepared: &Prepared, page: &PlannedPage) -> ColorImage {
+    color_of_planes(|plane| source_of_plane(prepared, page, None, plane).into_owned(), prepared)
+}
+
+/// [`whole_source`] in colour.
+pub fn whole_source_color(prepared: &Prepared, page: &PlannedPage) -> ColorImage {
+    match (&prepared.kind, page.source) {
+        (Kind::Paged(_), Source::Image { index, .. }) => color_of_planes(
+            |plane| match plane_kind(prepared, plane) {
+                Kind::Paged(images) => images[index].clone(),
+                Kind::Strip(_) => unreachable!("planes of a chapter are alike"),
+            },
+            prepared,
+        ),
+        _ => page_source_color(prepared, page),
+    }
+}
+
+fn color_of_planes(plane: impl Fn(usize) -> GrayImage, prepared: &Prepared) -> ColorImage {
+    let luma = plane(0);
+    let neutral = || GrayImage::new(luma.width, luma.height, 128).expect("non-zero size");
+    let (cb, cr) = if prepared.chroma.is_some() {
+        (plane(1), plane(2))
+    } else {
+        (neutral(), neutral())
+    };
+    ColorImage::from_ycc(&luma, &cb, &cr)
+}
+
 /// The downloaded picture a page comes from, whole: for a split double page
 /// both halves, for a zoomed page all of it. A strip page has no picture of
 /// its own, so it is its rows, as in [`page_source`].
