@@ -121,6 +121,9 @@ pub struct Ctx {
     pub last_exports: Signal<std::collections::BTreeMap<String, ui::export::LastExport>>,
     /// The window is as narrow as a phone's.
     pub narrow: Signal<bool>,
+    /// The user's readers (and the one in use), as the app keeps them in its settings: the
+    /// list, each one's size, colour and file types. Kept in this browser.
+    pub readers: Signal<library::Settings>,
     /// Which part of Settings is open.
     pub settings_section: Signal<ui::settings::Section>,
     pub next_id: Signal<u64>,
@@ -190,6 +193,10 @@ impl Ctx {
         }
     }
 
+    pub fn save_readers(self) {
+        bridge::put_soon("meta", "readers", &*self.readers.peek());
+    }
+
     pub fn save_presets(self) {
         bridge::put_soon("meta", "presets", &*self.presets.peek());
     }
@@ -238,6 +245,7 @@ pub fn App() -> Element {
         presets: use_signal(library::PresetsDb::default),
         last_exports: use_signal(Default::default),
         narrow: use_signal(|| false),
+        readers: use_signal(library::Settings::default),
         settings_section: use_signal(|| ui::settings::Section::Library),
         next_id: use_signal(|| 0),
         state_file: use_signal(|| None),
@@ -262,6 +270,21 @@ pub fn App() -> Element {
                     if let Ok(s) = serde_json::from_value::<Settings>(s.clone()) {
                         settings.set(s);
                     }
+                }
+                {
+                    let mut readers = ctx.readers;
+                    let saved = b.meta.get("readers").and_then(|v| serde_json::from_value::<library::Settings>(v.clone()).ok());
+                    let r = saved.unwrap_or_else(|| {
+                        // A first visit starts with the three Xteink readers, as the app does.
+                        let mut r = library::Settings { readers_listed: false, ..Default::default() };
+                        r.list_old_readers();
+                        let chosen = settings.peek().device.clone();
+                        if r.devices().iter().any(|d| d.id == chosen) {
+                            r.device = chosen;
+                        }
+                        r
+                    });
+                    readers.set(r);
                 }
                 if let Some(p) = b.meta.get("presets") {
                     if let Ok(p) = serde_json::from_value::<library::PresetsDb>(p.clone()) {
@@ -509,20 +532,16 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                 ui::export::forget_preset(ctx, &id);
             }
             ModalAction::RemoveReader(id) => {
-                let mut settings = ctx.settings;
+                let mut readers = ctx.readers;
                 {
-                    let mut st = settings.write();
-                    let mut list = readers(&st);
-                    list.retain(|x| *x != id);
-                    if list.is_empty() {
-                        return;
-                    }
-                    if st.device == id {
-                        st.device = list[0].clone();
-                    }
-                    set_readers(&mut st, &list);
+                    let mut st = readers.write();
+                    st.custom_devices.retain(|d| d.id != id);
+                    st.device_presets.remove(&id);
+                    st.reader_setups.remove(&id);
+                    st.device = st.custom_devices.first().map(|d| d.id.clone()).unwrap_or_default();
                 }
-                ctx.save_settings();
+                ctx.save_readers();
+                ui::export::reader_changed(ctx);
             }
             ModalAction::ClearAll => {
                 ui::reader::close_reader(ctx);
@@ -532,6 +551,10 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                         *lib.write() = Library::default();
                         let mut settings = ctx.settings;
                         settings.set(Settings::default());
+                        let mut readers = ctx.readers;
+                        let mut fresh = library::Settings { readers_listed: false, ..Default::default() };
+                        fresh.list_old_readers();
+                        readers.set(fresh);
                         let mut sf = ctx.state_file;
                         sf.set(None);
                         ctx.notify("Everything MangaPoint kept on this device was deleted.");
@@ -604,17 +627,3 @@ pub fn state_count(lib: &Library) -> usize {
 }
 
 pub fn _unused(_: &BookState, _: &Value) {}
-
-/// The ids of the readers the user keeps (Settings > Your readers), in the order they added them.
-/// Kept as a plain text in the settings, so it travels in the reading-state file. A first visit
-/// has the three Xteink readers.
-pub fn readers(s: &Settings) -> Vec<String> {
-    match s.extra.get("readers").and_then(|v| v.as_str()) {
-        Some(list) => list.split(',').filter(|id| !id.is_empty()).map(str::to_string).collect(),
-        None => [device_profiles::X4_PRO_ID, device_profiles::X4_ID, device_profiles::X3_ID].map(str::to_string).to_vec(),
-    }
-}
-
-pub fn set_readers(s: &mut Settings, ids: &[String]) {
-    s.extra.insert("readers".into(), Value::String(ids.join(",")));
-}

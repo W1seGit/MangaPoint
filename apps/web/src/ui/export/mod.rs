@@ -24,7 +24,6 @@ use preview::Preview;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeSet;
-use web_engine::devices::{self, DeviceInfo};
 use web_engine::options::{default_options_json, ExportOptions, FileType, Grouping};
 
 /// Above this many pages in one file the whole result is a lot to hold in one tab.
@@ -246,14 +245,17 @@ fn export_book_quiet(ctx: Ctx, id: &str) {
 
 fn start_book(ctx: Ctx, book: &Book, fresh: bool) {
     let settings = ctx.settings.peek().clone();
-    let device = if settings.device.is_empty() { device_profiles::X4_PRO_ID.to_string() } else { settings.device };
+    let (profile, formats) = {
+        let r = ctx.readers.peek();
+        (r.device_profile(), r.reader_setup().formats)
+    };
     let wanted = if settings.preset.is_empty() { "manga".to_string() } else { settings.preset };
     let mut export = ctx.export;
     let first = !export.peek().started || fresh || export.peek().opts == ExportOptions::default();
     if first {
         let presets = ctx.presets.peek().clone();
         let id = if presets.find(&wanted).is_some() { wanted } else { "manga".to_string() };
-        if let Ok(mut opts) = options_for(&device, "manga") {
+        if let Ok(mut opts) = reader_options(&profile, &formats, "manga") {
             if let Some(entry) = presets.find(&id) {
                 opts.settings = keep_output(entry.preset.settings, &opts.settings);
             }
@@ -275,10 +277,7 @@ pub fn edit(ctx: Ctx, f: impl FnOnce(&mut ExportUi)) {
 }
 
 fn remember_choices(ctx: Ctx) {
-    let (device, preset) = {
-        let e = ctx.export.peek();
-        (e.opts.device.clone(), e.preset.clone())
-    };
+    let (device, preset) = (ctx.readers.peek().device_profile().id, ctx.export.peek().preset.clone());
     let mut settings = ctx.settings;
     {
         let mut s = settings.write();
@@ -290,18 +289,58 @@ fn remember_choices(ctx: Ctx) {
     ctx.save_settings();
 }
 
-pub fn set_device(ctx: Ctx, id: &str) {
-    let Ok(mut opts) = options_for(id, "manga") else { return };
+/// The options a reader and a preset start from: the preset's settings, and the first file type
+/// the reader opens. The user's readers go to the converter as the device of the export.
+pub fn reader_options(profile: &device_profiles::DeviceProfile, formats: &[String], preset: &str) -> Result<ExportOptions, String> {
+    if device_profiles::is_original(&profile.id) {
+        return options_for(device_profiles::PHONE_ORIGINAL_ID, preset);
+    }
+    let mut opts = options_for(device_profiles::X4_PRO_ID, preset)?;
+    opts.device = String::new();
+    opts.custom_device = Some(profile.clone());
+    let first = ["XTC", "XTCH", "EPUB", "CBZ"].into_iter().find(|f| formats.is_empty() || formats.iter().any(|r| r.eq_ignore_ascii_case(f)));
+    let format = first.map_or(FileType::Cbz, type_of);
+    opts.format = Some(format);
+    if let Some(out) = format.output() {
+        opts.settings.set_output(out);
+    }
+    Ok(opts)
+}
+
+/// Make pages for the reader `id` (one of the user's, or the phone entry), as the app's reader list
+/// does: how pages are made, the grouping and the file type carry over when the new reader opens it.
+pub fn use_reader(ctx: Ctx, id: &str) {
+    {
+        let mut readers = ctx.readers;
+        readers.write().device = id.to_string();
+    }
+    ctx.save_readers();
+    reader_changed(ctx);
+}
+
+/// The reader in use changed (picked, edited, removed): the screen follows it.
+pub fn reader_changed(ctx: Ctx) {
+    let (profile, formats) = {
+        let r = ctx.readers.peek();
+        (r.device_profile(), r.reader_setup().formats)
+    };
+    if !ctx.export.peek().started {
+        remember_choices(ctx);
+        return;
+    }
     let old = ctx.export.peek().opts.clone();
+    let Ok(mut opts) = reader_options(&profile, &formats, "manga") else { return };
     // What carries over from one reader to the next: how pages are made, the grouping, and the
     // file type if the new reader opens it too.
-    let mut settings = old.settings.clone();
+    let mut settings = keep_output(old.settings.clone(), &opts.settings);
     let wanted = old.file_type();
-    let keeps = devices::devices()
-        .iter()
-        .find(|d| d.id == id)
-        .is_some_and(|d| d.formats.iter().any(|f| type_of(f) == wanted));
-    if keeps {
+    let phone = device_profiles::is_original(&profile.id);
+    let opens = if phone {
+        matches!(wanted, FileType::Cbz | FileType::Pdf)
+    } else {
+        wanted != FileType::Pdf && (formats.is_empty() || formats.iter().any(|f| type_of(f) == wanted))
+    };
+    if opens {
         opts.format = Some(wanted);
     }
     if let Some(out) = opts.format.and_then(FileType::output) {
@@ -583,8 +622,7 @@ pub fn ExportPage() -> Element {
     let Some(book) = book else {
         return rsx! { EmptyState { title: "Choose a book", message: "Pick the book to export.", compact: true } };
     };
-    let device = devices::devices().into_iter().find(|d| d.id == e.opts.device);
-    let original = device.as_ref().is_some_and(|d| d.original);
+    let original = device_profiles::is_original(&e.opts.device);
     drop(lib);
 
     let panels_left = rsx! {
@@ -606,7 +644,7 @@ pub fn ExportPage() -> Element {
     };
     let panels_right = rsx! {
         ChaptersPanel { book: book.clone(), open: !narrow }
-        SendPanel { device: device.clone(), book: book.clone(), open: !narrow }
+        SendPanel { book: book.clone(), open: !narrow }
     };
 
     if narrow {
@@ -675,17 +713,6 @@ fn BottomBar(sheet: bool) -> Element {
 
 pub fn on(yes: bool) -> &'static str {
     if yes { "on" } else { "" }
-}
-
-#[component]
-pub fn DeviceNote(d: DeviceInfo) -> Element {
-    rsx! {
-        div { class: "muted small device-note", id: "export-device-note",
-            "{d.width} \u{d7} {d.height} \u{b7} {d.ppi} ppi \u{b7} "
-            if d.color { "colour" } else { "{d.grays} grays" }
-            if !d.note.is_empty() { div { "{d.note}" } }
-        }
-    }
 }
 
 /// The reading direction the settings carry, for the Original tab's note.

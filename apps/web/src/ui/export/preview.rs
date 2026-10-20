@@ -12,11 +12,7 @@ use dioxus::prelude::*;
 pub fn Preview(book: Book, narrow: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
-    let device_name = web_engine::devices::devices()
-        .into_iter()
-        .find(|d| d.id == e.opts.device)
-        .map(|d| d.name)
-        .unwrap_or_default();
+    let device_name = super::device_of(&e.opts).map(|d| d.name).unwrap_or_default();
     let chapter = book.chapters.get(e.shown).cloned();
     let Some(chapter) = chapter else {
         return rsx! { EmptyState { title: "Nothing to show", message: "This book has no chapters.", compact: true } };

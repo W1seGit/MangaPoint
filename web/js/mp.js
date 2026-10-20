@@ -423,6 +423,19 @@ const handlers = {
     return { files: exportResult.map((f, i) => ({ index: i, name: f.name, size: f.size })), running: !!worker };
   },
 
+  /** Keep the row the adder would take in view when its list is long (only the list scrolls). */
+  adder_scroll() {
+    const o = document.querySelector('.adder-opt.active');
+    const l = o && o.closest('.adder-list');
+    if (l) {
+      const lr = l.getBoundingClientRect();
+      const r = o.getBoundingClientRect();
+      if (r.top < lr.top) l.scrollTop += r.top - lr.top;
+      else if (r.bottom > lr.bottom) l.scrollTop += r.bottom - lr.bottom;
+    }
+    return true;
+  },
+
   export_cancel() {
     exportCancel();
     return true;

@@ -68,45 +68,64 @@ try {
   await clearToasts(page);
   await nav(page, 'Export');
   const narrow = viewport !== 'desktop';
-  await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-device')", 10, 'export screen');
+  await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-format')", 10, 'export screen');
   // On a phone the panels are in a sheet that opens from the Settings tab; open every panel.
-  if (narrow) {
-    await page.tap('#export-settings-tab');
-    await sleep(400);
-    await page.eval("document.querySelectorAll('.px-panel.collapsed .px-panel-head').forEach((h) => h.click())");
-    await sleep(300);
-  }
+  const openPanels = async () => {
+    if (narrow) {
+      if (!(await page.eval("!!document.querySelector('#export-sheet')"))) await page.tap('#export-settings-tab');
+      await sleep(400);
+      await page.eval("document.querySelectorAll('.px-panel.collapsed .px-panel-head').forEach((h) => h.click())");
+      await sleep(300);
+    }
+  };
+  await openPanels();
+  // A reader in the list of the Send to panel: scrolled into view, then a real click.
+  const pickReader = async (pattern) => {
+    const at = await page.eval(`(() => { const el = [...document.querySelectorAll('#panel-send .px-preset')].find((e) => ${pattern}.test(e.textContent)); if (!el) return null; el.scrollIntoView({ block: 'center' }); const b = el.getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()`);
+    if (!at) throw new Error('no reader like ' + pattern);
+    await sleep(150);
+    await page.clickAt(at[0], at[1]);
+    await sleep(500);
+  };
   await page.shot(`${viewport}-30-export`);
-  const devices = await page.eval("[...document.querySelectorAll('#export-device option')].map(o => o.textContent)");
-  r.check('the picker holds the readers kept in Settings (three Xteink) and the phone entry last', devices.length === 4 && /Xteink/.test(devices[0]) && /Phone or tablet/.test(devices[devices.length - 1]) && !devices.some((d) => /Kobo/.test(d)), devices.join(' | '));
+  const devices = await page.eval("[...document.querySelectorAll('#panel-send .px-preset .px-item-name')].map(o => o.textContent)");
+  r.check('the reader list holds the readers kept in Settings (three Xteink) and the phone entry first', devices.length === 4 && /Phone or tablet/.test(devices[0]) && devices.slice(1).every((d) => /Xteink/.test(d)), devices.join(' | '));
+  r.check('the panel is the app\'s Send to panel', /Send to/i.test(await page.eval("document.querySelector('#panel-send .px-panel-head').innerText")) && !!(await page.rect('#panel-send .px-new')));
 
-  // Readers are added in Settings, not on the Export screen.
-  await page.click('#export-readers');
-  await page.waitFor("!!document.querySelector('#readers-list')", 10, 'the readers in Settings');
-  r.check('Settings lists the readers, one in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 3 && (await page.eval("document.querySelectorAll('#readers-list .pill.on').length")) === 1);
-  await page.click('#readers-add');
-  await page.click('#readers-search');
+  // Readers are added and edited in Settings, as in the app.
+  await page.eval("document.querySelector('#panel-send .px-new').scrollIntoView({ block: 'center' })");
+  await page.click('#panel-send .px-new');
+  await page.waitFor("!!document.querySelector('.settings .pills')", 10, 'the readers in Settings');
+  const pills = () => page.eval("[...document.querySelectorAll('.settings-content .pills .pill:not(.add)')].map((p) => p.innerText)");
+  r.check('Settings lists the readers as pills, with Add device', (await pills()).length === 3 && !!(await page.rect('.settings-content .pill.add')));
+  await page.click('.settings-content .pill.add');
+  await sleep(500);
+  await page.click('.adder-box input');
   await page.type('libra colour');
-  await page.waitFor("!!document.querySelector('#readers-found [data-add]')", 10, 'a reader found');
-  await page.click('#readers-found [data-add]');
-  await sleep(300);
-  r.check('the picked reader shows its screen and formats', /Screen/.test(await page.eval("document.querySelector('.settings-content').innerText")) && /EPUB/.test(await page.eval("document.querySelector('.settings-content').innerText")));
-  r.check('the reader was added and is in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 4 && /Libra/.test(await page.eval("document.querySelector('#readers-list .pill.on')?.innerText || ''")));
+  await page.waitFor("!!document.querySelector('.adder-opt')", 10, 'a reader found');
+  await page.click('.adder-opt');
+  await sleep(400);
+  r.check('the reader was added and is in use', (await pills()).length === 4 && /Libra/.test(await page.eval("document.querySelector('.settings-content .pill.on')?.innerText || ''")));
+  r.check('the reader form is there: name, size, colour, formats, firmware, Save', !!(await page.rect('.reader-line .title-input')) && !!(await page.rect('.size-boxes')) && /Color screen/.test(await page.eval("document.querySelector('.settings-content').innerText")) && /File formats/.test(await page.eval("document.querySelector('.settings-content').innerText")) && /Firmware/.test(await page.eval("document.querySelector('.settings-content').innerText")) && !!(await page.rect('.form-footer .btn.primary')));
+  r.check('no USB or Wi-Fi in the reader form', !/USB|Wi-?Fi/.test(await page.eval("document.querySelector('.settings-content').innerText")));
+  // Edit: rename it, save, and see it in the list.
+  await page.eval("(() => { const i = document.querySelector('.reader-line .title-input'); i.focus(); i.select(); })()");
+  await page.type('Libra Test');
+  r.check('Save is enabled after a change', !(await page.eval("document.querySelector('.form-footer .btn.primary').disabled")));
+  await page.click('.form-footer .btn.primary');
+  await sleep(400);
+  r.check('the renamed reader is saved', (await pills()).some((n) => /Libra Test/.test(n)), (await pills()).join(' | '));
   await page.shot(`${viewport}-29-readers`);
   await nav(page, 'Export');
-  await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-device')", 10, 'export screen again');
-  if (narrow) {
-    await page.tap('#export-settings-tab');
-    await sleep(400);
-    await page.eval("document.querySelectorAll('.px-panel.collapsed .px-panel-head').forEach((h) => h.click())");
-    await sleep(300);
-  }
-  // The reader just added is the one in use; the first export below is on an Xteink reader.
-  await page.eval("(() => { const s = document.querySelector('#export-device'); const o = [...s.options].find(o => /Xteink X4 Pro/.test(o.textContent)); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
-  await sleep(400);
+  await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-format')", 10, 'export screen again');
+  await clearToasts(page);
+  await openPanels();
+  r.check('the new reader is in the Export list', (await page.eval("[...document.querySelectorAll('#panel-send .px-preset .px-item-name')].some((o) => /Libra Test/.test(o.textContent))")));
+  // The first export below is on an Xteink reader.
+  await pickReader('/Xteink X4 Pro/');
   r.check('the three built-in presets are offered', (await page.eval("document.querySelectorAll('#export-preset .px-preset').length")) === 3);
   r.check('the edit groups of the app are there (Layout, Spreads and zoom, Crop, Look)', (await page.eval("[...document.querySelectorAll('.mp-group-title')].map((e) => e.textContent).join()")) === 'Layout,Spreads and zoom,Crop,Look');
-  r.check('no way to send to a reader, only downloads', !(await page.eval("/USB|Wi-?Fi|Send to/i.test(document.querySelector('#panel-send').innerText)")));
+  r.check('no way to send to a reader, only downloads', !(await page.eval("/USB|Wi-?Fi|Folder on/i.test(document.querySelector('#panel-send').innerText)")));
   await page.waitFor("!!document.querySelector('#export-col-reader img')", 30, 'the converted pages');
   r.check('the pages are shown as they will be', (await page.eval("document.querySelectorAll('#export-col-reader img').length")) > 0);
 
@@ -130,7 +149,7 @@ try {
   await page.click('#export-again');
 
   // EPUB / CBZ on a colour reader
-  await page.eval("(() => { const s = document.querySelector('#export-device'); const o = [...s.options].find(o => /Kobo Libra Colou?r/i.test(o.textContent)); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await pickReader('/Libra Test/');
   await sleep(400);
   r.check('colour reader offers the colour choice', !!(await page.rect('#export-color')));
   await runExport('EPUB');
@@ -159,9 +178,9 @@ try {
   await page.click('#export-again');
 
   // Phone or tablet: original quality
-  await page.eval("(() => { const s = document.querySelector('#export-device'); const o = [...s.options].find(o => /Phone or tablet/.test(o.textContent)); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await pickReader('/Phone or tablet/');
   await sleep(400);
-  const fm = await page.eval("[...document.querySelectorAll('#export-format .pill')].map(b => b.textContent)");
+  const fm = await page.eval("[...document.querySelectorAll('#export-format button')].map(b => b.id.replace('export-format-', ''))");
   r.check('Phone or tablet offers CBZ and PDF', fm.join() === 'CBZ,PDF', fm.join());
   await page.shot(`${viewport}-32-export-phone`);
   await runExport('PDF');
@@ -172,7 +191,7 @@ try {
   await page.click('#export-again');
 
   // Cancel mid-export
-  await page.eval("(() => { const s = document.querySelector('#export-device'); const o = [...s.options].find(o => /Kobo Libra Colou?r/i.test(o.textContent)); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await pickReader('/Libra Test/');
   await sleep(400);
   await page.click('#export-format-EPUB');
   await page.eval("document.querySelector('#export-start').click()");

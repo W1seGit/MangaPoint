@@ -4,11 +4,12 @@
 
 use super::conversion::ConversionControls;
 use super::{
-    cancel_export, chosen_size, edit, export_book_quiet, group_of, is_big, is_edited, keep_output, on, set_device, set_format,
-    start_export, use_preset, DeviceNote, Group, LastExport, Panel, Run, LAST,
+    cancel_export, chosen_size, edit, export_book_quiet, group_of, is_big, is_edited, keep_output, on, set_format,
+    start_export, use_preset, Group, LastExport, Panel, Run, LAST,
 };
 use crate::app::{Ctx, Modal, ModalAction};
 use crate::bridge::{self};
+use crate::ui::readers::ReaderPicker;
 use crate::format::{human_bytes, human_duration, plural};
 use crate::model::Book;
 use crate::ranges::select_by_text;
@@ -17,7 +18,6 @@ use dioxus::prelude::*;
 use library::PresetEntry;
 use serde_json::json;
 use std::collections::BTreeSet;
-use web_engine::devices::{self, DeviceInfo};
 use web_engine::options::{FileType, Grouping};
 
 // ---- presets ---------------------------------------------------------------------------------
@@ -330,100 +330,111 @@ pub fn ChaptersPanel(book: Book, open: bool) -> Element {
 
 // ---- the reader and the files ----------------------------------------------------------------
 
+/// The app's "Send to" panel: the reader (a short list, and a way to Settings to add one), the
+/// format, the colour of the pages and how the files are split. The files are downloaded, so the
+/// app's "Send to" (folder, USB, Wi-Fi) has nothing to choose here.
 #[component]
-pub fn SendPanel(device: Option<DeviceInfo>, book: Book, open: bool) -> Element {
+pub fn SendPanel(book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
-    // The readers the user added in Settings, and the phone entry; the one in use is always there.
-    let mine = crate::app::readers(&ctx.settings.read());
-    let all_devices: Vec<DeviceInfo> = devices::devices()
-        .into_iter()
-        .filter(|d| d.original || d.id == e.opts.device || mine.contains(&d.id))
-        .collect();
+    let setup = ctx.readers.read().reader_setup();
     let profile = super::device_of(&e.opts);
     let ftype = e.opts.file_type();
-    let original = device.as_ref().is_some_and(|d| d.original);
+    let phone = device_profiles::is_original(&e.opts.device);
     let offers_color = profile.as_ref().is_some_and(|p| e.opts.settings.offers_color(p));
     let keeps_color = profile.as_ref().is_some_and(|p| e.opts.settings.keeps_color(p));
     let grouping = group_of(e.opts.grouping);
     let running = matches!(e.run, Run::Running { .. });
+    let every_n_valid = e.every >= 1;
     let _ = &book;
+    // What the book is made as: only the formats this reader lists (all of them if it lists none,
+    // so there is always something to pick). Each has its explanation behind a question mark.
+    let reader_formats = setup.formats.clone();
+    let formats: Vec<FileType> = [FileType::Xtc, FileType::Xtch, FileType::Epub, FileType::Cbz]
+        .into_iter()
+        .filter(|f| reader_formats.is_empty() || reader_formats.iter().any(|r| r.eq_ignore_ascii_case(format_label(*f))))
+        .collect();
     rsx! {
-        Panel { title: "Reader and files", icon: "hard-drive", id: "send", height: 380, open,
-            div { class: "panel-section",
-                span { class: "panel-label", "Your reader" Help { text: "The pages are made to fit this reader's screen. Choose \"Phone or tablet\" to keep them exactly as they are." } }
-                select { id: "export-device", "aria-label": "Reader", disabled: running,
-                    value: "{e.opts.device}",
-                    onchange: move |ev| set_device(ctx, &ev.value()),
-                    for d in all_devices.iter() {
-                        option { key: "{d.id}", value: "{d.id}", selected: d.id == e.opts.device, "{d.name}" }
-                    }
-                }
-                if let Some(d) = &device {
-                    DeviceNote { d: d.clone() }
-                }
-                button { class: "btn small", id: "export-readers", style: "margin-top: 8px", title: "Readers are added and removed in Settings",
-                    onclick: move |_| {
-                        let mut section = ctx.settings_section;
-                        section.set(crate::ui::settings::Section::Readers);
-                        ctx.go(crate::app::Page::Settings);
-                    },
-                    Icon { name: "settings", size: 14 } "Your readers"
-                }
-            }
-            div { class: "panel-section", style: "margin-top: 14px",
-                span { class: "panel-label", "File type" }
-                div { class: "pills", id: "export-format",
-                    for f in device.as_ref().map(|d| d.formats.clone()).unwrap_or_default() {
-                        {
-                            let ft = super::type_of(&f);
-                            rsx! {
-                                button { key: "{f}", id: "export-format-{f}", disabled: running,
-                                    class: if ftype == ft { "pill on" } else { "pill" },
-                                    title: format_help(ft),
-                                    onclick: move |_| set_format(ctx, ft), "{f}" }
-                            }
+        Panel { title: "Send to", icon: "file-down", id: "send", height: 600, open,
+            div { class: "px-label", "Reader" }
+            ReaderPicker {}
+            div { class: "px-label", style: "margin-top: 16px", "Format" }
+            if phone {
+                div { class: "seg", id: "export-format", role: "group", "aria-label": "Format",
+                    for f in [FileType::Cbz, FileType::Pdf] {
+                        button { key: "{format_label(f)}", id: "export-format-{format_label(f)}", disabled: running,
+                            class: on(ftype == f), "aria-pressed": "{ftype == f}",
+                            onclick: move |_| set_format(ctx, f),
+                            "{format_label(f)}"
+                            Help { text: format_help(f) }
                         }
                     }
                 }
-                p { class: "muted small panel-note", "{format_help(ftype)}" }
+            } else {
+                div { class: "seg", id: "export-format",
+                    for f in formats {
+                        button { key: "{format_label(f)}", id: "export-format-{format_label(f)}", disabled: running,
+                            class: on(ftype == f),
+                            onclick: move |_| set_format(ctx, f),
+                            "{format_label(f)}"
+                            Help { text: format_help(f) }
+                        }
+                    }
+                }
             }
             if offers_color {
-                div { class: "panel-section", style: "margin-top: 14px",
-                    span { class: "panel-label", "Colour" }
-                    div { class: "seg", role: "group", "aria-label": "Colour",
-                        button { id: "export-color", disabled: running, class: on(keeps_color), onclick: move |_| edit(ctx, |e| e.opts.settings.black_and_white = false), "Colour" }
-                        button { id: "export-bw", disabled: running, class: on(!keeps_color), onclick: move |_| edit(ctx, |e| e.opts.settings.black_and_white = true), "Black & white" }
-                    }
+                div { class: "px-label", style: "margin-top: 16px",
+                    "Pages"
+                    Help { text: "Color keeps each page in color, resized to your reader's screen with no tone changes, dithering or sharpening: the reader does the rest. Black & white makes the usual high-contrast gray pages. The preview shows the pages in color too." }
                 }
-            } else if !original {
-                p { class: "muted small panel-note", id: "export-color-note", style: "margin-top: 10px",
-                    if ftype == FileType::Xtc || ftype == FileType::Xtch {
-                        "XTC and XTCH books are black and white (gray levels). Choose EPUB or CBZ on a colour reader to keep colour."
-                    } else {
-                        "This reader shows grays, so the pages are made in black and white."
-                    }
+                div { class: "seg", role: "group", "aria-label": "Page colors",
+                    button { id: "export-bw", disabled: running, class: on(!keeps_color), onclick: move |_| edit(ctx, |e| e.opts.settings.black_and_white = true), "Black & white" }
+                    button { id: "export-color", disabled: running, class: on(keeps_color), onclick: move |_| edit(ctx, |e| e.opts.settings.black_and_white = false), "Color" }
                 }
             }
-            div { class: "panel-section", style: "margin-top: 14px",
-                span { class: "panel-label", "Files" Help { text: "One file with every chapter, one file per chapter, or one file for every few chapters. Smaller files are easier on this tab's memory and on the reader." } }
-                div { class: "seg", role: "group", "aria-label": "Files",
-                    button { id: "export-group-one", disabled: running, class: on(grouping == Group::One), onclick: move |_| edit(ctx, |e| e.opts.grouping = Grouping::Single), "One file" }
-                    button { id: "export-group-chapter", disabled: running, class: on(grouping == Group::PerChapter), onclick: move |_| edit(ctx, |e| e.opts.grouping = Grouping::PerChapter), "Per chapter" }
-                    button { id: "export-group-every", disabled: running, class: on(grouping == Group::EveryN), onclick: move |_| edit(ctx, |e| { let n = e.every; e.opts.grouping = Grouping::EveryN { n } }), "Every few" }
+            div { class: "px-label", style: "margin-top: 16px", "Files" }
+            div { class: "seg stack", role: "group", "aria-label": "Files",
+                button { id: "export-group-one", disabled: running, class: on(grouping == Group::One),
+                    onclick: move |_| edit(ctx, |e| e.opts.grouping = Grouping::Single),
+                    Icon { name: "book-open", size: 16 } "One file per book"
                 }
-                if grouping == Group::EveryN {
-                    div { class: "row", style: "margin-top: 8px",
-                        span { class: "muted small", "Chapters per file" }
-                        input { r#type: "number", min: "1", max: "999", value: "{e.every}", style: "width: 80px", id: "export-every", "aria-label": "Chapters per file", disabled: running,
-                            oninput: move |ev| { let n = ev.value().parse::<usize>().unwrap_or(1).clamp(1, 999); edit(ctx, |e| { e.every = n; e.opts.grouping = Grouping::EveryN { n }; }); } }
-                    }
+                button { id: "export-group-chapter", disabled: running, class: on(grouping == Group::PerChapter),
+                    onclick: move |_| edit(ctx, |e| e.opts.grouping = Grouping::PerChapter),
+                    Icon { name: "layers", size: 16 } "One file per chapter"
+                }
+                button { id: "export-group-every", disabled: running, class: on(grouping == Group::EveryN),
+                    onclick: move |_| edit(ctx, |e| { let n = e.every; e.opts.grouping = Grouping::EveryN { n } }),
+                    Icon { name: "list-checks", size: 16 } "One file every N chapters"
                 }
             }
-            p { class: "muted small panel-note", style: "margin-top: 14px",
-                "The files are made here, on this device, and downloaded by your browser. Nothing is uploaded."
+            if grouping == Group::EveryN {
+                div { class: "row", style: "margin-top: 8px",
+                    span { class: "muted small", "Every" }
+                    input {
+                        r#type: "text", id: "export-every", style: "width: 64px; text-align: center", value: "{e.every}", "aria-label": "Chapters per file", disabled: running,
+                        oninput: move |ev| {
+                            if let Ok(n) = ev.value().trim().parse::<usize>() {
+                                let n = n.clamp(1, 999);
+                                edit(ctx, |e| { e.every = n; e.opts.grouping = Grouping::EveryN { n }; });
+                            }
+                        },
+                    }
+                    span { class: "muted small", "chapters" }
+                    if !every_n_valid { span { class: "small", style: "color: var(--bad)", "Type a number" } }
+                }
             }
         }
+    }
+}
+
+/// How a file type is written on its button.
+fn format_label(t: FileType) -> &'static str {
+    match t {
+        FileType::Xtc => "XTC",
+        FileType::Xtch => "XTCH",
+        FileType::Epub => "EPUB",
+        FileType::Cbz => "CBZ",
+        FileType::Pdf => "PDF",
     }
 }
 
