@@ -189,3 +189,15 @@ pub fn preview_pages(options_json: &str, pages: Array) -> Result<Array, JsError>
     }
     Ok(out)
 }
+
+/// `sample_pages()`: the four made-up pages the Export screen shows before a book is imported,
+/// as an array of `Uint8Array` PNG pictures.
+#[cfg(feature = "convert")]
+#[wasm_bindgen]
+pub fn sample_pages() -> Array {
+    let out = Array::new();
+    for png in crate::sample::sample_pages() {
+        out.push(&Uint8Array::from(png.as_slice()));
+    }
+    out
+}

@@ -56,6 +56,13 @@ const runExport = async (format, { group } = {}) => {
 try {
   await page.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl });
   await openApp(page, server.url, viewport);
+  // Nothing imported yet: the screen still opens, on the sample pages, and cannot export them.
+  await nav(page, 'Export');
+  await page.waitFor("!!document.querySelector('#export-col-reader img')", 30, 'the sample pages');
+  r.check('with no book the sample pages are shown, converted', (await page.eval("document.querySelectorAll('#export-col-reader img').length")) >= 4);
+  r.check('the sample cannot be exported', await page.eval("document.querySelector('#export-start').disabled"));
+  await page.shot(`${viewport}-28-sample`);
+  await nav(page, 'Library');
   await importBooks(page, [fx('Hero Saga Vol 2.zip')]);
   await importBooks(page, [fx('Color Test.cbz')]);
   await clearToasts(page);
@@ -76,13 +83,15 @@ try {
   // Readers are added in Settings, not on the Export screen.
   await page.click('#export-readers');
   await page.waitFor("!!document.querySelector('#readers-list')", 10, 'the readers in Settings');
-  r.check('Settings lists the readers, one in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 3 && (await page.eval("document.querySelectorAll('#readers-list .chip.ok').length")) === 1);
+  r.check('Settings lists the readers, one in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 3 && (await page.eval("document.querySelectorAll('#readers-list .pill.on').length")) === 1);
+  await page.click('#readers-add');
   await page.click('#readers-search');
   await page.type('libra colour');
   await page.waitFor("!!document.querySelector('#readers-found [data-add]')", 10, 'a reader found');
   await page.click('#readers-found [data-add]');
   await sleep(300);
-  r.check('the reader was added and is in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 4 && /Libra/.test(await page.eval("document.querySelector('#readers-list .px-preset.on')?.innerText || ''")));
+  r.check('the picked reader shows its screen and formats', /Screen/.test(await page.eval("document.querySelector('.settings-content').innerText")) && /EPUB/.test(await page.eval("document.querySelector('.settings-content').innerText")));
+  r.check('the reader was added and is in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 4 && /Libra/.test(await page.eval("document.querySelector('#readers-list .pill.on')?.innerText || ''")));
   await page.shot(`${viewport}-29-readers`);
   await nav(page, 'Export');
   await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-device')", 10, 'export screen again');

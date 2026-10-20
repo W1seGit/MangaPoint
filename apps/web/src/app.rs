@@ -67,6 +67,7 @@ pub enum ModalAction {
     ForgetWaiting(String),
     ClearAll,
     DeletePreset(String),
+    RemoveReader(String),
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -202,6 +203,9 @@ impl Ctx {
     }
 
     pub fn book(self, id: &str) -> Option<Book> {
+        if id == ui::export::SAMPLE {
+            return Some(ui::export::sample_book());
+        }
         self.library.peek().find(id).cloned()
     }
 
@@ -503,6 +507,22 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                     Err(e) => ctx.error(e.to_string()),
                 }
                 ui::export::forget_preset(ctx, &id);
+            }
+            ModalAction::RemoveReader(id) => {
+                let mut settings = ctx.settings;
+                {
+                    let mut st = settings.write();
+                    let mut list = readers(&st);
+                    list.retain(|x| *x != id);
+                    if list.is_empty() {
+                        return;
+                    }
+                    if st.device == id {
+                        st.device = list[0].clone();
+                    }
+                    set_readers(&mut st, &list);
+                }
+                ctx.save_settings();
             }
             ModalAction::ClearAll => {
                 ui::reader::close_reader(ctx);

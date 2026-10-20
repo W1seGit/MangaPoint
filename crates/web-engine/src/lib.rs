@@ -74,6 +74,8 @@ pub mod state;
 
 #[cfg(feature = "convert")]
 pub mod export;
+#[cfg(feature = "convert")]
+pub mod sample;
 
 #[cfg(target_arch = "wasm32")]
 mod glue;

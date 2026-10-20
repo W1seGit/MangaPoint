@@ -45,6 +45,14 @@ async function preview(job) {
   const { id, options, book, first, count, session } = job;
   const engine = await import('../engine/web_engine.js');
   await engine.default();
+  if (book === 'sample') {
+    // The made-up pages of the Export screen when no book is imported.
+    const made = engine.preview_pages(JSON.stringify(options), engine.sample_pages());
+    const images = [];
+    for (const m of made) images.push(m);
+    self.postMessage({ t: 'preview', id, images }, images.map((b) => b.buffer));
+    return;
+  }
   const [record, table] = await Promise.all([dbGet('books', book), dbGet('pages', book)]);
   if (!record || !table) throw new Error('This book is not in the library any more.');
   const source = new BookSource(record, table, session);
@@ -61,6 +69,15 @@ function post(m) {
 }
 
 self.onmessage = (e) => {
+  if (e.data.cmd === 'sample') {
+    import('../engine/web_engine.js').then(async (engine) => {
+      await engine.default();
+      const images = [];
+      for (const m of engine.sample_pages()) images.push(m);
+      self.postMessage({ t: 'sample', images }, images.map((b) => b.buffer));
+    }).catch((err) => post({ t: 'sample_error', message: String(err && err.message || err) }));
+    return;
+  }
   if (e.data.cmd === 'preview') {
     preview(e.data).catch((err) => {
       post({ t: 'preview_error', id: e.data.id, message: err && err.message ? err.message : String(err) });

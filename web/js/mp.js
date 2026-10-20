@@ -210,6 +210,22 @@ function preview({ options, book, first, count }) {
   });
 }
 
+// The made-up pages shown on Export before a book is imported: made once, by the engine.
+let samplePromise = null;
+function sampleUrls() {
+  samplePromise ??= new Promise((resolve, reject) => {
+    const w = new Worker(new URL('./export-worker.js', import.meta.url), { type: 'module' });
+    w.onmessage = (e) => {
+      w.terminate();
+      if (e.data.t === 'sample') resolve(e.data.images.map((b) => URL.createObjectURL(new Blob([b], { type: 'image/png' }))));
+      else reject(new Error(e.data.message));
+    };
+    w.onerror = (e) => { w.terminate(); reject(new Error(e.message || 'The sample worker stopped.')); };
+    w.postMessage({ cmd: 'sample' });
+  }).catch((err) => { samplePromise = null; throw err; });
+  return samplePromise;
+}
+
 function sniff(bytes) {
   return bytes[0] === 0xff && bytes[1] === 0xd8 ? 'image/jpeg' : 'image/png';
 }
@@ -393,10 +409,12 @@ const handlers = {
 
   /** Blob URL of the picture of page `i` as it is stored (acquired until preview_free_original). */
   async original_url({ book, index }) {
+    if (book === 'sample') return (await sampleUrls())[index];
     return pages.acquire(book, index);
   },
 
   async original_release({ book, index }) {
+    if (book === 'sample') return true;
     pages.release(book, index);
     return true;
   },

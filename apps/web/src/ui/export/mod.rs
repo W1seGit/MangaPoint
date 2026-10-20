@@ -15,7 +15,7 @@ use super::widgets::{EmptyState, Icon};
 use crate::app::{Ctx, Page};
 use crate::bridge::{self, Event, ExportFile};
 use crate::format::plural;
-use crate::model::Book;
+use crate::model::{Book, Chapter};
 use converter::xtc::ReadDirection;
 use dioxus::prelude::*;
 use library::ConversionSettings;
@@ -33,6 +33,8 @@ pub const BIG_PAGES: usize = 600;
 pub const BIG_BYTES: u64 = 300_000_000;
 /// How many pages of a chapter the preview shows (it converts them in one go).
 pub const PREVIEW_PAGES: usize = 24;
+/// The made-up book the screen shows before anything is imported (like the app's sample pages).
+pub const SAMPLE: &str = "sample";
 /// The preset entry that stands for "how this book was last exported".
 pub const LAST: &str = "last-export";
 
@@ -205,6 +207,18 @@ pub fn keep_output(mut settings: ConversionSettings, like: &ConversionSettings) 
     settings
 }
 
+/// The sample: one chapter of four pages that the engine makes (three upright, one double page).
+pub fn sample_book() -> Book {
+    Book {
+        id: SAMPLE.into(),
+        title: "Sample pages".into(),
+        file_name: String::new(),
+        page_count: 4,
+        chapters: vec![Chapter { name: "Sample pages".into(), number: Some(1.0), first: 0, count: 4 }],
+        ..Book::default()
+    }
+}
+
 /// Is the book in use set up as this preset (or last export) says?
 pub fn is_edited(current: &ConversionSettings, preset: &ConversionSettings) -> bool {
     keep_output(preset.clone(), current) != *current
@@ -335,6 +349,9 @@ pub fn forget_preset(ctx: Ctx, id: &str) {
 fn start_export(ctx: Ctx) {
     let e = ctx.export.peek().clone();
     let Some(book) = e.book.as_ref().and_then(|id| ctx.book(id)) else { return };
+    if book.id == SAMPLE {
+        return;
+    }
     let chapters: Vec<_> = e
         .chosen
         .iter()
@@ -525,12 +542,16 @@ pub fn ExportPage() -> Element {
     // Open on the first book when none was chosen (done after drawing, never during it).
     use_effect(move || {
         let first = ctx.library.read().books.iter().find(|b| !b.needs_file).map(|b| b.id.clone());
-        let none_yet = {
+        let (current, started) = {
             let e = ctx.export.peek();
-            e.book.is_none() && !e.started
+            (e.book.clone(), e.started)
         };
-        if let (true, Some(id)) = (none_yet, first) {
-            export_book_quiet(ctx, &id);
+        // With nothing imported the sample pages stand in; a book that arrives takes their place.
+        match (current.as_deref(), first) {
+            (None, Some(id)) if !started => export_book_quiet(ctx, &id),
+            (None, None) if !started => export_book_quiet(ctx, SAMPLE),
+            (Some(SAMPLE), Some(id)) => export_book_quiet(ctx, &id),
+            _ => {}
         }
     });
     // The pages on show change with the book, the chapter and every setting that changes a page.
@@ -558,18 +579,7 @@ pub fn ExportPage() -> Element {
     let e = ctx.export.read().clone();
     let narrow = *ctx.narrow.read();
     let usable: Vec<Book> = lib.books.iter().filter(|b| !b.needs_file).cloned().collect();
-    if usable.is_empty() {
-        return rsx! {
-            div { class: "q-head", div { class: "grow", h1 { "Export" } p { class: "muted", "Make files for your e-reader, phone or tablet from the books in your library." } } }
-            EmptyState {
-                title: "Nothing to export yet",
-                message: "Import a book first. The files are made here, on this device.",
-                shelf: true,
-                button { class: "btn primary", onclick: move |_| ctx.go(Page::Library), Icon { name: "book-open", size: 16 } "Go to the library" }
-            }
-        };
-    }
-    let book = e.book.as_ref().and_then(|id| lib.find(id)).cloned();
+    let book = e.book.as_ref().and_then(|id| ctx.book(id));
     let Some(book) = book else {
         return rsx! { EmptyState { title: "Choose a book", message: "Pick the book to export.", compact: true } };
     };

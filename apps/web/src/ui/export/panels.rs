@@ -449,8 +449,11 @@ pub fn ExportFooter(book: Book, compact: bool) -> Element {
     let (pages, bytes) = chosen_size(&book, &e.chosen);
     let chapters = e.chosen.len();
     let every_ok = !matches!(e.opts.grouping, Grouping::EveryN { .. }) || e.every >= 1;
+    let sample = book.id == super::SAMPLE;
     let label = if running {
         "Exporting\u{2026}".to_string()
+    } else if sample {
+        "Import a book to export it".to_string()
     } else if chapters == 0 {
         "Nothing to export yet".to_string()
     } else {
@@ -461,13 +464,13 @@ pub fn ExportFooter(book: Book, compact: bool) -> Element {
             if !compact {
                 div { class: "summary-line", span { class: "muted", "Chapters" } span { "{chapters}" } }
                 div { class: "summary-line", span { class: "muted", "Pages" } span { "{pages}" } }
-                div { class: "summary-line", span { class: "muted", "Source pictures, about" } span { "{human_bytes(bytes)}" } }
+                if !sample { div { class: "summary-line", span { class: "muted", "Source pictures, about" } span { "{human_bytes(bytes)}" } } }
             }
             button {
                 class: "btn primary big", id: "export-start", style: if compact { "" } else { "margin-top: 10px" },
-                disabled: chapters == 0 || running || !every_ok,
+                disabled: sample || chapters == 0 || running || !every_ok,
                 onclick: move |_| start_export(ctx),
-                if running { "{label}" } else if chapters == 0 { "{label}" } else { Icon { name: "file-down", size: 18 } "{label}" }
+                if running || sample || chapters == 0 { "{label}" } else { Icon { name: "file-down", size: 18 } "{label}" }
             }
         }
     }
