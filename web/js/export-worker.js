@@ -47,10 +47,10 @@ async function preview(job) {
   await engine.default();
   if (book === 'sample') {
     // The made-up pages of the Export screen when no book is imported.
-    const made = engine.preview_pages(JSON.stringify(options), engine.sample_pages());
+    const made = engine.preview_chapter(JSON.stringify(options), engine.sample_pages());
     const images = [];
-    for (const m of made) images.push(m);
-    self.postMessage({ t: 'preview', id, images }, images.map((b) => b.buffer));
+    for (const m of made.images) images.push(m);
+    self.postMessage({ t: 'preview', id, images, sources: made.sources }, images.map((b) => b.buffer));
     return;
   }
   const [record, table] = await Promise.all([dbGet('books', book), dbGet('pages', book)]);
@@ -58,10 +58,10 @@ async function preview(job) {
   const source = new BookSource(record, table, session);
   const pages = [];
   for (let k = 0; k < count; k++) pages.push(await source.bytes(first + k));
-  const made = engine.preview_pages(JSON.stringify(options), pages);
+  const made = engine.preview_chapter(JSON.stringify(options), pages);
   const images = [];
-  for (const m of made) images.push(m);
-  self.postMessage({ t: 'preview', id, images }, images.map((b) => b.buffer));
+  for (const m of made.images) images.push(m);
+  self.postMessage({ t: 'preview', id, images, sources: made.sources }, images.map((b) => b.buffer));
 }
 
 function post(m) {

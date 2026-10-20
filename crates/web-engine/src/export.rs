@@ -583,6 +583,48 @@ fn convert_chapter<P: AsRef<[u8]>>(
     opts: &ProcessOptions,
     pictures: bool,
 ) -> Result<Vec<Vec<u8>>, String> {
+    convert_chapter_planned(name, pages, opts, pictures).map(|(made, _)| made)
+}
+
+/// Where a converted page of a preview comes from.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct PreviewSource {
+    /// The picture it was made from (an index into the pages given); none for a strip.
+    pub image: Option<usize>,
+    /// `whole`, `rotated`, `left`, `right`, `piece` (one screen of a zoomed piece) or `strip`.
+    pub part: String,
+    /// For a strip: the rows of the joined strip the page holds.
+    pub top: u32,
+    pub height: u32,
+}
+
+fn source_of(page: &converter::plan::PlannedPage) -> PreviewSource {
+    use converter::plan::{Part, Source};
+    match page.source {
+        Source::Image { index, part } => PreviewSource {
+            image: Some(index),
+            part: match part {
+                Part::Whole => "whole",
+                Part::Rotated => "rotated",
+                Part::Half(0) => "left",
+                Part::Half(_) => "right",
+                Part::Tile { .. } => "piece",
+            }
+            .into(),
+            top: 0,
+            height: 0,
+        },
+        Source::Strip { top, height } => PreviewSource { image: None, part: "strip".into(), top, height },
+    }
+}
+
+/// [`convert_chapter`], with where each page came from.
+fn convert_chapter_planned<P: AsRef<[u8]>>(
+    name: &str,
+    pages: &[P],
+    opts: &ProcessOptions,
+    pictures: bool,
+) -> Result<(Vec<Vec<u8>>, Vec<PreviewSource>), String> {
     let unreadable = |index: usize, e: String| {
         format!("page {} of {name} could not be read ({e}); check that the file is a picture", index + 1)
     };
@@ -601,7 +643,8 @@ fn convert_chapter<P: AsRef<[u8]>>(
             epub::encode_color_page(&image)
         })
         .map_err(|e| e.to_string())?;
-        packed.into_iter().collect()
+        let made: Vec<Vec<u8>> = packed.into_iter().collect::<Result<_, _>>()?;
+        Ok((made, plan.pages.iter().map(source_of).collect()))
     } else {
         let mut grays: Vec<GrayImage> = Vec::with_capacity(pages.len());
         for (index, page) in pages.iter().enumerate() {
@@ -620,7 +663,8 @@ fn convert_chapter<P: AsRef<[u8]>>(
                 }
             })
             .map_err(|e| e.to_string())?;
-        packed.into_iter().collect()
+        let made: Vec<Vec<u8>> = packed.into_iter().collect::<Result<_, _>>()?;
+        Ok((made, plan.pages.iter().map(source_of).collect()))
     }
 }
 
@@ -637,6 +681,27 @@ pub fn preview_pages<P: AsRef<[u8]>>(options: &ExportOptions, pages: &[P]) -> Re
     }
     let process = process_options_for(&device, &options.settings, options.file_type());
     convert_chapter("the preview", pages, &process, true)
+}
+
+/// [`preview_pages`], and where each page of the result comes from (which picture, and which
+/// part of it), so the screen can set the originals beside them.
+pub fn preview_pages_with_sources<P: AsRef<[u8]>>(
+    options: &ExportOptions,
+    pages: &[P],
+) -> Result<(Vec<Vec<u8>>, Vec<PreviewSource>), String> {
+    let device = options.resolve_device()?;
+    if pages.is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    if device_profiles::is_original(&device.id) {
+        let same = pages.iter().map(|p| p.as_ref().to_vec()).collect();
+        let sources = (0..pages.len())
+            .map(|i| PreviewSource { image: Some(i), part: "whole".into(), top: 0, height: 0 })
+            .collect();
+        return Ok((same, sources));
+    }
+    let process = process_options_for(&device, &options.settings, options.file_type());
+    convert_chapter_planned("the preview", pages, &process, true)
 }
 
 /// The cover as one page for the device: the whole picture, fitted to the

@@ -630,3 +630,16 @@ fn a_preview_shows_the_pages_the_file_would_hold() {
     assert!(web_engine::export::preview_pages(&options, &Vec::<Vec<u8>>::new()).unwrap().is_empty());
     assert!(web_engine::export::preview_pages(&options, &[b"not a picture".to_vec()]).is_err());
 }
+
+#[test]
+fn a_preview_says_which_picture_each_page_comes_from() {
+    // A double page is split in two: both halves come from the second picture.
+    let pages = vec![gray_png(800, 1200, 1), gray_png(1600, 1000, 2), gray_png(800, 1200, 3)];
+    let options = ExportOptions::from_json(&web_engine::options::default_options_json("xteink-x4", "manga").unwrap()).unwrap();
+    let (made, sources) = web_engine::export::preview_pages_with_sources(&options, &pages).unwrap();
+    assert_eq!(made.len(), sources.len());
+    assert_eq!(made.len(), 4, "the spread became two pages");
+    let from: Vec<_> = sources.iter().map(|s| s.image).collect();
+    assert_eq!(from, [Some(0), Some(1), Some(1), Some(2)]);
+    assert!(sources[1].part != "whole" && sources[2].part != "whole", "the halves say which part they are");
+}

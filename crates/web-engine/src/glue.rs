@@ -201,3 +201,25 @@ pub fn sample_pages() -> Array {
     }
     out
 }
+
+/// `preview_chapter(options_json, pages)`: like `preview_pages`, and says where each page comes
+/// from. The result is `{ images: Uint8Array[], sources: string }` (`sources` is JSON).
+#[cfg(feature = "convert")]
+#[wasm_bindgen]
+pub fn preview_chapter(options_json: &str, pages: Array) -> Result<js_sys::Object, JsError> {
+    let options = crate::options::ExportOptions::from_json(options_json).map_err(error)?;
+    let mut bytes: Vec<Vec<u8>> = Vec::with_capacity(pages.length() as usize);
+    for page in pages.iter() {
+        bytes.push(Uint8Array::new(&page).to_vec());
+    }
+    let (made, sources) = crate::export::preview_pages_with_sources(&options, &bytes).map_err(error)?;
+    let images = Array::new();
+    for image in made {
+        images.push(&Uint8Array::from(image.as_slice()));
+    }
+    let out = js_sys::Object::new();
+    js_sys::Reflect::set(&out, &"images".into(), &images).map_err(|_| JsError::new("could not build the answer"))?;
+    let json = serde_json::to_string(&sources).map_err(|e| JsError::new(&e.to_string()))?;
+    js_sys::Reflect::set(&out, &"sources".into(), &json.into()).map_err(|_| JsError::new("could not build the answer"))?;
+    Ok(out)
+}

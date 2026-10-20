@@ -311,7 +311,7 @@ pub fn ChaptersPanel(book: Book, open: bool) -> Element {
                                 }
                                 button {
                                     class: "px-chapter-open", title: "Show this chapter in the preview",
-                                    onclick: move |_| edit(ctx, |e| e.shown = i),
+                                    onclick: move |_| { edit(ctx, |e| { e.shown = i; e.selected = 0; }); bridge::send("editor_top", json!({})); },
                                     span { class: "px-chapter-no", { c.number.map(crate::format::format_number).unwrap_or_else(|| "\u{2013}".into()) } }
                                     span { class: "grow px-chapter-name", title: "{c.name}", "{c.label(i)}" }
                                 }

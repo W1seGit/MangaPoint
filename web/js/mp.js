@@ -10,6 +10,8 @@
 import * as store from './store.js';
 import * as importer from './importer.js';
 import * as pages from './pages.js';
+import { startEditor } from './preview-editor.js';
+import { startSplit } from './export-split.js';
 import * as fsa from './fsa.js';
 import { installReader, commands, setCoverLoader } from './reader.js';
 
@@ -195,7 +197,7 @@ function preview({ options, book, first, count }) {
       if (m.t === 'preview') {
         freePreview();
         previewUrls = m.images.map((bytes) => URL.createObjectURL(new Blob([bytes], { type: sniff(bytes) })));
-        resolve({ id, urls: previewUrls.slice() });
+        resolve({ id, urls: previewUrls.slice(), sources: JSON.parse(m.sources || '[]') });
       } else {
         reject(new Error(m.message));
       }
@@ -436,6 +438,46 @@ const handlers = {
     return true;
   },
 
+  /** Size the page list of the Export screen and report the pages in view. */
+  editor_start() {
+    startEditor((m) => emit({ t: 'editor', first: m[0], last: m[1], current: m[2] }));
+    return true;
+  },
+
+  /** Make the bars of the Export screen draggable. */
+  export_split() {
+    startSplit();
+    return true;
+  },
+
+  /** Scroll the list (and the thumbnails) to page `index`. */
+  editor_scroll({ index }) {
+    document.querySelector(`[data-editor-page="${index}"]`)?.scrollIntoView({ block: 'nearest' });
+    document.querySelector(`.editor-row[data-row="${index}"]`)?.scrollIntoView({ block: 'start' });
+    return true;
+  },
+
+  editor_thumb({ index }) {
+    document.querySelector(`[data-editor-page="${index}"]`)?.scrollIntoView({ block: 'nearest' });
+    return true;
+  },
+
+  editor_top() {
+    document.querySelector('.editor-scroll')?.scrollTo(0, 0);
+    return true;
+  },
+
+  /** The size in pixels of each picture at these URLs. */
+  async image_sizes({ urls }) {
+    return Promise.all(urls.map((u) => new Promise((resolve) => {
+      if (!u) return resolve([0, 0]);
+      const img = new Image();
+      img.onload = () => resolve([img.naturalWidth, img.naturalHeight]);
+      img.onerror = () => resolve([0, 0]);
+      img.src = u;
+    })));
+  },
+
   export_cancel() {
     exportCancel();
     return true;
@@ -506,6 +548,9 @@ const immediate = {
   blur: () => document.activeElement?.blur?.(),
   reload: () => location.reload(),
 };
+
+// Run at once (`send`): the page asks the browser to size or scroll something it just drew.
+for (const name of ['export_split', 'editor_start', 'editor_scroll', 'editor_thumb', 'editor_top', 'adder_scroll']) immediate[name] = handlers[name];
 
 const mp = {
   async call(name, json) {

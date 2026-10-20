@@ -12,6 +12,8 @@ pub mod art;
 pub mod format;
 pub mod model;
 pub mod ranges;
+#[cfg(target_arch = "wasm32")]
+mod update_cat;
 pub mod reader_logic;
 pub mod review;
 

@@ -58,15 +58,38 @@ pub enum Look {
         /// The pages of the chapter, and how many are shown.
         total: usize,
         shown: usize,
+        /// Where each converted page comes from.
+        sources: Vec<PageSource>,
+        /// The size of each original, in pixels.
+        sizes: Vec<(u32, u32)>,
     },
     Failed(String),
 }
 
-/// Which of the two pictures a phone shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum View {
-    Original,
-    Reader,
+/// Where a page of the preview comes from: the converter's plan for it.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct PageSource {
+    pub image: Option<usize>,
+    pub part: String,
+    pub top: u32,
+    pub height: u32,
+}
+
+/// How big the pages are on screen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Zoom {
+    /// As large as fits without scrolling.
+    #[default]
+    Fit,
+    /// As wide as the space allows; scroll down for the rest.
+    Width,
+    /// A percentage of the reader's own size.
+    Custom(u16),
+}
+
+impl Zoom {
+    pub const MIN_PERCENT: u16 = 25;
+    pub const MAX_PERCENT: u16 = 400;
 }
 
 /// How a book was last exported (kept in the browser, by book).
@@ -97,7 +120,13 @@ pub struct ExportUi {
     pub look: Look,
     /// Side by side with the originals (wide screens).
     pub compare: bool,
-    pub view: View,
+    /// A narrow window shows the originals instead of the reader's pages.
+    pub source_focus: bool,
+    pub zoom: Zoom,
+    /// The page at the top of the list.
+    pub selected: usize,
+    /// The overview of every page is open.
+    pub overview: bool,
     /// The settings sheet is open (phones).
     pub sheet: bool,
     /// Show the controls most people never need.
@@ -124,8 +153,11 @@ impl Default for ExportUi {
             started: false,
             shown: 0,
             look: Look::Idle,
-            compare: false,
-            view: View::Reader,
+            compare: true,
+            source_focus: false,
+            zoom: Zoom::Fit,
+            selected: 0,
+            overview: false,
             sheet: false,
             advanced: false,
             groups: vec!["Layout"],
@@ -267,8 +299,14 @@ fn start_book(ctx: Ctx, book: &Book, fresh: bool) {
     e.book = Some(book.id.clone());
     e.chosen = (0..book.chapters.len()).collect();
     e.shown = 0;
+    e.selected = 0;
     e.look = Look::Idle;
     e.started = true;
+}
+
+/// The page at the top of the list changed because the list was scrolled.
+pub fn scrolled(ctx: Ctx, current: i64) {
+    preview::scrolled(ctx, current);
 }
 
 pub fn edit(ctx: Ctx, f: impl FnOnce(&mut ExportUi)) {
@@ -424,6 +462,8 @@ fn start_export(ctx: Ctx) {
 
 pub fn handle_export_event(ctx: Ctx, ev: Event) {
     let mut recorded = false;
+    let mut failed: Option<String> = None;
+    let mut finished: Option<usize> = None;
     edit(ctx, |e| match ev {
         Event::ExportStatus { message } => {
             if let Run::Running { status, .. } = &mut e.run {
@@ -439,13 +479,24 @@ pub fn handle_export_event(ctx: Ctx, ev: Event) {
             e.run = Run::Running { fraction: fraction as f32, label, status, elapsed };
         }
         Event::ExportDone { files, pages } => {
+            finished = Some(files.len());
             e.run = Run::Done { files, pages };
             recorded = true;
         }
-        Event::ExportError { message } => e.run = Run::Failed(message),
+        Event::ExportError { message } => {
+            failed = Some(message.clone());
+            e.run = Run::Failed(message);
+        }
         Event::ExportCancelled => e.run = Run::Idle,
         _ => {}
     });
+    let title = ctx.export.peek().book.as_ref().and_then(|id| ctx.book(id)).map(|b| b.title).unwrap_or_default();
+    if let Some(n) = finished {
+        ctx.notify(format!("{title}: exported {}", plural(n, "file")));
+    }
+    if let Some(message) = failed {
+        ctx.error(format!("{title}: {message}"));
+    }
     if recorded {
         let pending = ctx.export.peek().pending.clone();
         if let Some((book, last)) = pending {
@@ -467,6 +518,8 @@ pub fn cancel_export(ctx: Ctx) {
 #[derive(Deserialize)]
 struct Previewed {
     urls: Vec<String>,
+    #[serde(default)]
+    sources: Vec<PageSource>,
 }
 
 /// Let go of the pages held open for the preview.
@@ -521,9 +574,15 @@ fn request_preview(ctx: Ctx) {
             release_held(ctx);
             return;
         }
+        let sizes = bridge::call::<Vec<(u32, u32)>>("image_sizes", json!({ "urls": originals })).await.unwrap_or_default();
+        if !fresh(ctx) {
+            edit(ctx, |e| e.held.extend(held));
+            release_held(ctx);
+            return;
+        }
         edit(ctx, |e| {
             e.held = held;
-            e.look = Look::Ready { originals: originals.clone(), converted: Vec::new(), total, shown };
+            e.look = Look::Ready { originals: originals.clone(), converted: Vec::new(), total, shown, sources: Vec::new(), sizes: sizes.clone() };
         });
         let made = bridge::call::<Previewed>("preview", json!({ "options": opts, "book": book_id, "first": first, "count": shown })).await;
         if !fresh(ctx) {
@@ -531,7 +590,7 @@ fn request_preview(ctx: Ctx) {
         }
         edit(ctx, |e| {
             e.look = match made {
-                Ok(p) => Look::Ready { originals, converted: p.urls, total, shown },
+                Ok(p) => Look::Ready { originals, converted: p.urls, total, shown, sources: p.sources, sizes },
                 Err(message) => Look::Failed(message),
             }
         });
@@ -650,13 +709,7 @@ pub fn ExportPage() -> Element {
     if narrow {
         return rsx! {
             div { class: "export-screen narrow", id: "export-screen",
-                div { class: "xm-tabs", role: "tablist",
-                    button { id: "export-tab-original", role: "tab", class: if e.view == View::Original { "on" } else { "" },
-                        onclick: move |_| edit(ctx, |e| e.view = View::Original), "Original" }
-                    button { id: "export-tab-reader", role: "tab", class: if e.view == View::Reader { "on" } else { "" },
-                        onclick: move |_| edit(ctx, |e| e.view = View::Reader), "Reader" }
-                }
-                main { class: "export-center", Preview { book: book.clone(), narrow: true } }
+                main { class: "export-center", Preview { book: book.clone() } }
                 if !e.sheet {
                     BottomBar { sheet: false }
                 }
@@ -675,16 +728,49 @@ pub fn ExportPage() -> Element {
 
     rsx! {
         div { class: "export-screen", id: "export-screen",
+            onmounted: move |_| bridge::send("export_split", json!({})),
             div { class: "export-body",
-                aside { class: "export-side left", {panels_left} }
-                main { class: "export-center", Preview { book: book.clone(), narrow: false } }
+                aside { class: "export-side left",
+                    if !original {
+                        PresetsPanel { book: book.clone(), open: true }
+                        Split { target: "presets", dir: 1 }
+                        EditPanel { open: true }
+                        Split { target: "series", dir: -1 }
+                    } else {
+                        div { class: "banner", id: "original-note",
+                            Icon { name: "info", size: 16 }
+                            div { class: "grow",
+                                strong { "Original quality" }
+                                p { class: "muted small", style: "margin: 4px 0 0",
+                                    "Nothing is resized, grayed, dithered or split. Each page goes into the file exactly as it was, in the original quality, so it looks its best on a phone or tablet."
+                                }
+                            }
+                        }
+                    }
+                    BookPanel { books: usable.clone(), book: book.clone(), open: true }
+                    div { class: "px-split-v", "data-split": "left", title: "Drag to make this column wider or narrower" }
+                }
+                main { class: "export-center", Preview { book: book.clone() } }
                 aside { class: "export-side right",
-                    {panels_right}
+                    div { class: "px-split-v", "data-split": "right", title: "Drag to make this column wider or narrower" }
+                    ChaptersPanel { book: book.clone(), open: true }
+                    Split { target: "send", dir: -1 }
+                    SendPanel { book: book.clone(), open: true }
                     RunCard { book: book.clone() }
                     ExportFooter { book: book.clone(), compact: false }
                 }
             }
         }
+    }
+}
+
+/// The bar between two panels, which can be dragged to resize them. `target` is the panel that
+/// changes size; `dir` is -1 when dragging down shrinks it.
+#[component]
+fn Split(target: &'static str, dir: i32) -> Element {
+    rsx! {
+        div { class: "px-split", "data-split": "panel", "data-target": "{target}", "data-dir": "{dir}",
+            title: "Drag to resize the panels" }
     }
 }
 

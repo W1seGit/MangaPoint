@@ -382,6 +382,7 @@ fn handle_event(ctx: Ctx, ev: Event) {
             let mut s = ctx.offline_ready;
             s.set(true);
         }
+        Event::Editor { current, .. } => ui::export::scrolled(ctx, current),
         Event::Narrow { narrow } => {
             let mut s = ctx.narrow;
             s.set(narrow);
@@ -428,6 +429,7 @@ fn Shell() -> Element {
     let reading = ctx.reading.read().is_some();
     let online = *ctx.online.read();
     let update = *ctx.update_ready.read();
+    let mut later = use_signal(|| false);
     rsx! {
         div { class: "app", "data-motion": "clean", "data-reading": "{reading}",
             nav { class: "nav",
@@ -448,13 +450,6 @@ fn Shell() -> Element {
                             div { "You are offline. Your library still works." }
                         }
                     }
-                    if update {
-                        div { class: "banner small update-note",
-                            Icon { name: "download", size: 16 }
-                            div { class: "grow", "A new version of MangaPoint is ready." }
-                            button { class: "btn small primary", onclick: move |_| bridge::send("apply_update", json!({})), "Reload" }
-                        }
-                    }
                     {match page {
                         Page::Library => rsx! { ui::library::LibraryPage {} },
                         Page::Export => rsx! { ui::export::ExportPage {} },
@@ -464,6 +459,22 @@ fn Shell() -> Element {
             }
             if reading {
                 ui::reader::ReaderHost {}
+            }
+            if update && !*later.read() {
+                div { class: "overlay", id: "update-dialog", onclick: move |_| later.set(true),
+                    div { class: "modal update-modal", onclick: move |e| e.stop_propagation(),
+                        div { class: "upd-top", crate::update_cat::UpdateCat {} }
+                        h2 { "A new version of MangaPoint is ready" }
+                        p { class: "muted small", style: "margin: 0 0 10px", "Reload to use it. Your library and settings are not touched." }
+                        div { class: "actions",
+                            button { class: "btn", id: "update-later", onclick: move |_| later.set(true), "Later" }
+                            button { class: "btn primary", id: "update-now", onclick: move |_| bridge::send("apply_update", json!({})),
+                                Icon { name: "refresh-cw", size: 15 }
+                                "Update and reload"
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -526,7 +537,14 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                 let mut presets = ctx.presets;
                 let result = presets.write().delete(&id);
                 match result {
-                    Ok(_) => ctx.save_presets(),
+                    Ok(library::Deleted::Removed) => {
+                        ctx.save_presets();
+                        ctx.notify("Preset deleted.");
+                    }
+                    Ok(library::Deleted::Reset) => {
+                        ctx.save_presets();
+                        ctx.notify("Back to the original settings.");
+                    }
                     Err(e) => ctx.error(e.to_string()),
                 }
                 ui::export::forget_preset(ctx, &id);

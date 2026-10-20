@@ -305,3 +305,13 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   .px-chapter { min-height: 44px; }
   .px-chapter input { width: 22px; height: 22px; }
 }
+
+/* The page list on a narrow window: one pane at a time (the Original / Reader switch picks it), so
+   the page takes the whole width and Compare, which the switch replaces, is not drawn. */
+@media (max-width: 1100px) {
+  .editor-group.comparing { grid-template-columns: minmax(0, 1fr); }
+  .editor-group.comparing > .editor-row { grid-column: 1; }
+  .compare-tab { display: none; }
+  .editor-columns.solo { padding-top: 12px; }
+  .source-cell { padding-top: 0; }
+}

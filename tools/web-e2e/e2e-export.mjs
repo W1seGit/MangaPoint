@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
 const viewport = process.argv[2] || 'desktop';
+const narrow = viewport !== 'desktop';
 const r = new Report();
 const server = await startServer();
 const page = await launch({ headless: true });
@@ -58,8 +59,10 @@ try {
   await openApp(page, server.url, viewport);
   // Nothing imported yet: the screen still opens, on the sample pages, and cannot export them.
   await nav(page, 'Export');
-  await page.waitFor("!!document.querySelector('#export-col-reader img')", 30, 'the sample pages');
-  r.check('with no book the sample pages are shown, converted', (await page.eval("document.querySelectorAll('#export-col-reader img').length")) >= 4);
+  await page.waitFor("!!document.querySelector('.editor-row img')", 30, 'the sample pages');
+  r.check('with no book the sample pages are shown, converted', (await page.eval("document.querySelectorAll('.editor-row img').length")) >= 4);
+  r.check('the top bar: page jump and zoom, thumbnails, Compare and Overview, as in the app', !!(await page.rect('.editor-toolbar .editor-page-jump input')) && !!(await page.rect('.editor-toolbar .zoom-menu')) && (narrow ? true : !!(await page.rect('.editor-thumbnails .editor-thumb')) && !!(await page.rect('#export-overview'))) && (narrow ? !!(await page.rect('#export-tab-original')) : !!(await page.rect('#export-compare'))));
+  r.check('Compare shows the original beside each page (wide screens)', narrow || (await page.eval("document.querySelectorAll('.source-cell img').length")) >= 3);
   r.check('the sample cannot be exported', await page.eval("document.querySelector('#export-start').disabled"));
   await page.shot(`${viewport}-28-sample`);
   await nav(page, 'Library');
@@ -67,7 +70,6 @@ try {
   await importBooks(page, [fx('Color Test.cbz')]);
   await clearToasts(page);
   await nav(page, 'Export');
-  const narrow = viewport !== 'desktop';
   await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-format')", 10, 'export screen');
   // On a phone the panels are in a sheet that opens from the Settings tab; open every panel.
   const openPanels = async () => {
@@ -126,8 +128,8 @@ try {
   r.check('the three built-in presets are offered', (await page.eval("document.querySelectorAll('#export-preset .px-preset').length")) === 3);
   r.check('the edit groups of the app are there (Layout, Spreads and zoom, Crop, Look)', (await page.eval("[...document.querySelectorAll('.mp-group-title')].map((e) => e.textContent).join()")) === 'Layout,Spreads and zoom,Crop,Look');
   r.check('no way to send to a reader, only downloads', !(await page.eval("/USB|Wi-?Fi|Folder on/i.test(document.querySelector('#panel-send').innerText)")));
-  await page.waitFor("!!document.querySelector('#export-col-reader img')", 30, 'the converted pages');
-  r.check('the pages are shown as they will be', (await page.eval("document.querySelectorAll('#export-col-reader img').length")) > 0);
+  await page.waitFor("!!document.querySelector('.editor-row img')", 30, 'the converted pages');
+  r.check('the pages are shown as they will be', (await page.eval("document.querySelectorAll('.editor-row img').length")) > 0);
 
   // The book picker: choose Hero Saga.
   await page.eval("(() => { const s = document.querySelector('#export-book'); const o = [...s.options].find(o => /Hero/.test(o.textContent)); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); })()");

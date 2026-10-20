@@ -115,6 +115,9 @@ pub enum Event {
     OfflineReady,
     #[serde(rename = "online")]
     Online { online: bool },
+    /// The pages in view in the Export screen's list: the first, the last and the one at the top.
+    #[serde(rename = "editor")]
+    Editor { first: i64, last: i64, current: i64 },
     /// The window is as narrow as a phone's (the Export screen changes its layout).
     #[serde(rename = "narrow")]
     Narrow { narrow: bool },
