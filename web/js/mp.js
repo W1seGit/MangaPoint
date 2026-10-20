@@ -468,7 +468,7 @@ const handlers = {
   /** Scroll the list (and the thumbnails) to page `index`. */
   editor_scroll({ index }) {
     document.querySelector(`[data-editor-page="${index}"]`)?.scrollIntoView({ block: 'nearest' });
-    document.querySelector(`.editor-row[data-row="${index}"]`)?.scrollIntoView({ block: 'start' });
+    document.querySelector(`.editor-row[data-row="${index}"], .original-tile[data-row="${index}"]`)?.scrollIntoView({ block: 'start' });
     return true;
   },
 

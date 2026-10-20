@@ -187,7 +187,21 @@ try {
   await page.shot(`${viewport}-32-export-phone`);
   // A phone or tablet gets the pages as they are: one long page, nothing between them, no Compare.
   await page.waitFor("document.querySelectorAll('.original-preview .reader-tile img').length > 1", 30, 'the original pages');
-  r.check('phone or tablet: no Compare, no switch, no page list', !(await page.eval("!!document.querySelector('#export-compare, .compare-tab, .editor-mobile-switch, .editor-thumbnails, .editor-row')")));
+  r.check('phone or tablet: no Compare, no switch, no converted rows', !(await page.eval("!!document.querySelector('#export-compare, .compare-tab, .editor-mobile-switch, .editor-row')")));
+  r.check('phone or tablet keeps the top bar: page jump and zoom', await page.eval("!!document.querySelector('.editor-toolbar .editor-page-jump input') && !!document.querySelector('.editor-toolbar .zoom-menu')"));
+  if (!narrow) {
+    const tileW = () => page.eval("Math.round(document.querySelector('.original-preview .reader-tile').getBoundingClientRect().width)");
+    const w100 = await tileW();
+    await page.click('.editor-toolbar .zoom-chevron');
+    await sleep(300);
+    await page.click('.zoom-list .menu-item', '50%');
+    await sleep(400);
+    r.check('zoom changes the size of the pages', (await tileW()) < w100 - 5, `${w100} -> ${await tileW()}`);
+    await page.click('.editor-toolbar .zoom-chevron');
+    await sleep(300);
+    await page.click('.zoom-list .menu-item', 'Fit page');
+    await sleep(300);
+  }
   r.check('the pages touch each other, with no gap', await page.eval("(() => { const a = [...document.querySelectorAll('.original-preview .reader-tile')]; return a.length > 1 && a.slice(1).every((im, i) => Math.abs(im.getBoundingClientRect().top - a[i].getBoundingClientRect().bottom) < 1); })()"));
   await runExport('PDF');
   r.check('PDF export finished', await page.eval("!!document.querySelector('#export-done')"), await page.eval("document.querySelector('#export-error')?.innerText || ''"));

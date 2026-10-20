@@ -75,11 +75,9 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .reader { --bar-h: 0px; --top-h: calc(64px + var(--sat)); --bottom-h: calc(104px + var(--sab)); }
 .reader[data-mode="paged"] .reader-stage { padding-top: 0; }
 .reader[data-mode="paged"] .reader-page-wrap { min-height: 100vh; min-height: 100dvh; }
-.reader[data-mode="paged"][data-fit="height"] .reader-tile { height: calc(100vh * var(--zoom)); height: calc(100dvh * var(--zoom)); }
-.reader[data-fit="height"] .reader-tile { height: calc(100dvh * var(--zoom)); }
 /* "Fit page" shows the whole page: as tall as the window, but never wider than it
    (a phone held upright), whichever is tighter. Zoom multiplies that. */
-.reader[data-mode="paged"][data-fit="height"] .reader-tile {
+.reader[data-fit="height"] .reader-tile {
   height: auto; max-width: none;
   width: min(calc(100% * var(--zoom)), calc(100vh * var(--zoom) * var(--arn, 0.66)));
   width: min(calc(100% * var(--zoom)), calc(100dvh * var(--zoom) * var(--arn, 0.66)));
@@ -321,8 +319,9 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 }
 
 /* A phone or tablet gets the pages as they are: one long page, nothing between them. */
-.original-preview.continuous { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #000; }
-.original-preview.continuous .original-pages { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; }
-.original-preview.continuous .reader-tile { width: 100%; max-width: 760px; margin: 0 auto; background: transparent; }
+.original-editor .editor-body { grid-template-columns: minmax(0, 1fr); }
+.original-editor .editor-scroll { padding: 0; background: #000; }
+.original-preview.continuous { display: block; background: #000; }
+.original-preview.continuous .reader-tile { display: block; margin: 0 auto; background: transparent; max-width: none; }
 .original-preview.continuous .reader-tile img { pointer-events: none; }
-.original-preview.continuous .original-img { display: block; width: 100%; max-width: 760px; height: auto; flex: none; }
+.original-preview.continuous .original-img { display: block; margin: 0 auto; height: auto; }

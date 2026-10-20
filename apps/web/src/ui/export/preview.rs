@@ -193,37 +193,80 @@ fn select_page(ctx: Ctx, index: usize) {
     bridge::send("editor_scroll", json!({ "index": index }));
 }
 
-/// The pages of a chapter for a phone or tablet: as they were imported, one after the other like
-/// a long page, with nothing between them. Nothing is converted, so there is nothing to compare.
+/// The pages of a chapter for a phone or tablet: the same top bar as the other readers (page jump
+/// and zoom), and the pages as they were imported, one after the other like a long page, with
+/// nothing between them. Nothing is converted, so there is nothing to compare.
 #[component]
 fn OriginalPages(book: Book) -> Element {
     let ctx = use_context::<Ctx>();
+    // This page list is a new element (the readers' one was replaced), so it is sized to the window again.
+    use_effect(move || bridge::send("editor_start", json!({})));
     let e = ctx.export.read().clone();
     let chapter = book.chapters.get(e.shown).cloned();
+    let from_library = book.id != super::SAMPLE;
+    let total = match (&chapter, &e.look) {
+        (Some(c), _) if from_library => c.count,
+        (_, Look::Ready { originals, .. }) => originals.len(),
+        _ => 0,
+    };
+    let selected = e.selected.min(total.saturating_sub(1));
+    let number = if total == 0 { 0 } else { selected + 1 };
+    // Fit and Width both fill the column; a percentage is that much of it.
+    let width = match e.zoom {
+        Zoom::Custom(percent) => format!("width:{percent}%;"),
+        _ => "width:100%;".to_string(),
+    };
     rsx! {
-        div { class: "original-preview continuous", id: "export-preview",
-            div { class: "original-pages", id: "export-pages",
-                // A book of the library: every page of the chapter is a tile that the page glue fills as
-                // it comes near the screen (the reader's own tiles), so a long chapter is not loaded at once.
-                if let (Some(chapter), false) = (&chapter, book.id == super::SAMPLE) {
-                    for n in 0..chapter.count {
-                        div { class: "reader-tile", key: "{book.id}-{chapter.first + n}", "data-book": "{book.id}", "data-page": "{chapter.first + n}" }
+        div { id: "page-editor", class: "page-editor original-editor", tabindex: "0",
+            div { class: "editor-toolbar",
+                label { class: "editor-page-jump",
+                    span { "Page" }
+                    input {
+                        id: "export-page-jump", r#type: "number", min: "1", max: "{total}", step: "1",
+                        value: "{number}", disabled: total == 0, "aria-label": "Go to page",
+                        onchange: move |ev| {
+                            if let Ok(n) = ev.value().trim().parse::<usize>() {
+                                if (1..=total).contains(&n) { select_page(ctx, n - 1); }
+                            }
+                        },
                     }
-                } else {
-                {match &e.look {
-                    Look::Idle | Look::Loading => rsx! { Loading { label: "Opening the pages\u{2026}" } },
-                    Look::Failed(message) => rsx! { EmptyState { title: "These pages could not be shown", message: "{message}", compact: true } },
-                    Look::Ready { originals, total, shown, .. } => rsx! {
-                        for (n, url) in originals.iter().enumerate() {
-                            if !url.is_empty() {
-                                img { key: "{n}", class: "original-img", src: "{url}", alt: "Page {n + 1}", decoding: "async" }
+                    span { class: "muted", "/ {total}" }
+                }
+                div { class: "editor-toolbar-actions",
+                    ZoomMenu {}
+                }
+            }
+            div { class: "editor-body",
+                main { class: "editor-main",
+                    div { class: "editor-scroll", id: "export-pages",
+                        div { class: "original-preview continuous", id: "export-preview",
+                            // A book of the library: every page of the chapter is a tile that the page glue fills as
+                            // it comes near the screen (the reader's own tiles), so a long chapter is not loaded at once.
+                            if let (Some(chapter), true) = (&chapter, from_library) {
+                                for n in 0..chapter.count {
+                                    div {
+                                        class: "reader-tile original-tile", key: "{book.id}-{chapter.first + n}", style: "{width}",
+                                        "data-row": "{n}", "data-book": "{book.id}", "data-page": "{chapter.first + n}",
+                                    }
+                                }
+                            } else {
+                                {match &e.look {
+                                    Look::Idle | Look::Loading => rsx! { Loading { label: "Opening the pages\u{2026}" } },
+                                    Look::Failed(message) => rsx! { EmptyState { title: "These pages could not be shown", message: "{message}", compact: true } },
+                                    Look::Ready { originals, total, shown, .. } => rsx! {
+                                        for (n, url) in originals.iter().enumerate() {
+                                            if !url.is_empty() {
+                                                img { key: "{n}", class: "original-img original-tile", "data-row": "{n}", style: "{width}", src: "{url}", alt: "Page {n + 1}", decoding: "async" }
+                                            }
+                                        }
+                                        if total > shown {
+                                            p { class: "muted small px-more", id: "export-more", "Showing the first {shown} of {total} pages of this chapter." }
+                                        }
+                                    },
+                                }}
                             }
                         }
-                        if total > shown {
-                            p { class: "muted small px-more", id: "export-more", "Showing the first {shown} of {total} pages of this chapter." }
-                        }
-                    },
-                }}
+                    }
                 }
             }
         }

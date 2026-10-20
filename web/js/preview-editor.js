@@ -33,7 +33,7 @@ export function startEditor(report) {
     const box = scroller.getBoundingClientRect();
     const probe = box.top + box.height * 0.3;
     let lo = -1, hi = -1, cur = -1;
-    for (const row of scroller.querySelectorAll('.editor-row')) {
+    for (const row of scroller.querySelectorAll('.editor-row, .original-tile')) {
      const b = row.getBoundingClientRect(), i = Number(row.dataset.row);
      if (b.bottom >= box.top - box.height * 0.5 && b.top <= box.bottom + box.height * 0.5) {
       if (lo < 0) lo = i;
