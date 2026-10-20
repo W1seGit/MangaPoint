@@ -116,7 +116,8 @@ function ensureObserver() {
         else unfillTile(c.target);
       }
     },
-    { rootMargin: '150% 0px 150% 0px' },
+    // Well ahead of the screen (and some behind), so the next pages are there before they are scrolled to.
+    { rootMargin: '300% 0px 800% 0px' },
   );
 }
 
