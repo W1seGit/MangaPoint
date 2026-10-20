@@ -245,16 +245,8 @@ pub fn handle_reader_event(ctx: Ctx, ev: Event) {
                 apply_action(ctx, a);
             }
         }
-        // A tap anywhere, even beside the page, shows or hides the bars. Pages turn by the wheel,
-        // a swipe, the keys or the arrows, so a tap never turns one by mistake.
+        // A tap anywhere, even beside the page, shows or hides the bars; it never turns a page.
         Event::Tap { .. } => apply_action(ctx, Action::ToggleBar),
-        Event::Turn { forward } => {
-            if look.mode == ReadMode::Paged {
-                apply_action(ctx, if forward { Action::Next } else { Action::Prev });
-                // Scrolling back brings the bars in; scrolling on takes them away.
-                set_reading(ctx, |r| r.bar = !forward);
-            }
-        }
         Event::Swipe { dx } => {
             if look.mode == ReadMode::Paged {
                 if let Some(a) = logic::swipe_action(dx, look.direction) {
@@ -513,13 +505,9 @@ fn ReaderBar(
     let mut menu = use_signal(|| false);
     let mut settings = use_signal(|| false);
     let counter = page.or(strip_page);
-    let rtl = look.direction == PageDirection::RightToLeft && look.mode == ReadMode::Paged;
-    // The left arrow is always on the left: in right-to-left reading it goes on.
-    let (left_action, left_label, right_action, right_label) = if rtl {
-        (Action::Next, "Next page", Action::Prev, "Previous page")
-    } else {
-        (Action::Prev, "Previous page", Action::Next, "Next page")
-    };
+    // The arrows are back and forward between chapters, whichever way the book reads.
+    let (left_action, left_label, right_action, right_label) =
+        (Action::PrevChapter, "Previous chapter", Action::NextChapter, "Next chapter");
     rsx! {
         header { class: "reader-bar reader-top",
             button { class: "reader-arrow", id: "reader-arrow-left", "aria-label": "{left_label}", title: "{left_label}",

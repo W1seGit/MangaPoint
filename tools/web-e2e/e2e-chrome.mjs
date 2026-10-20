@@ -3,7 +3,7 @@
 // and the swipe from the left edge.
 //   node tools/web-e2e/e2e-chrome.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { fx, openApp, nav, importBooks, openBook, counter, clearToasts, readerSetting } from './helpers.mjs';
+import { fx, openApp, nav, importBooks, openBook, counter, chapterLabel, clearToasts, readerSetting } from './helpers.mjs';
 
 const viewport = process.argv[2] || 'desktop';
 const touch = viewport !== 'desktop';
@@ -26,7 +26,10 @@ try {
   // ---- the bars ----
   await openBook(page, 'Hero Saga');
   await page.waitFor("(() => { const i = document.querySelector('.reader-tile img'); return i && i.complete && i.naturalWidth > 0; })()", 15, 'a page');
-  await sleep(400);
+  // One page at a time is a choice (a book opens as one long page to scroll).
+  await readerSetting(page, '#reader-mode-paged', touch);
+  await sleep(600);
+  await page.waitFor("(() => { const i = document.querySelector('.reader-tile img'); return i && i.complete && i.naturalWidth > 0; })()", 15, 'a page');
   const left = await center('#reader-arrow-left');
   const right = await center('#reader-arrow-right');
   const pick = await center('#reader-chapter-picker');
@@ -48,16 +51,20 @@ try {
   await page.shot(`${viewport}-40-chrome`);
 
   // ---- arrows ----
+  // The arrows are back and forward between chapters, not pages.
   await press('#reader-arrow-right');
-  r.check('right arrow turns to the next page', (await counter(page)) === '2 / 8', await counter(page));
-  r.check('percentage follows (2 of 8 is 25%)', (await page.eval("document.querySelector('#reader-percent').textContent")) === '25%');
+  await sleep(400);
+  r.check('the right arrow goes to the next chapter', /Ch\. 3/.test(await chapterLabel(page)) && (await counter(page)) === '1 / 8', `${await chapterLabel(page)} ${await counter(page)}`);
   await press('#reader-arrow-left');
-  r.check('left arrow goes back', (await counter(page)) === '1 / 8', await counter(page));
-  // right to left: the left arrow goes on
+  await sleep(400);
+  r.check('the left arrow goes back a chapter', /Ch\. 2/.test(await chapterLabel(page)), await chapterLabel(page));
   await readerSetting(page, '#reader-dir-rtl', touch);
   if (!(await barShown())) { const s = await center('#reader-stage'); touch ? await page.tapAt(s.x, s.y) : await page.clickAt(s.x, s.y); await sleep(300); }
+  await press('#reader-arrow-right');
+  await sleep(400);
+  r.check('right to left: the right arrow still goes to the next chapter', /Ch\. 3/.test(await chapterLabel(page)), await chapterLabel(page));
   await press('#reader-arrow-left');
-  r.check('right to left: the left arrow goes forward', (await counter(page)) === '2 / 8', await counter(page));
+  await sleep(400);
   await readerSetting(page, '#reader-dir-ltr', touch);
 
   // ---- reading settings ----

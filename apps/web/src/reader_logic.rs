@@ -22,13 +22,10 @@ pub struct ReaderLook {
 }
 
 /// What the visitor chose for a book, and the defaults for what they did not:
-/// a strip for very tall pages, one page at a time otherwise; left to right
-/// unless the book says it reads right to left.
+/// one long page to scroll (its pictures load as they come near), left to right
+/// unless the book says it reads right to left. One page at a time is a choice.
 pub fn resolve_look(prefs: &Prefs, book: &Book) -> ReaderLook {
-    let mode = prefs.mode.unwrap_or(match book.aspect {
-        Some(a) if a >= 2.2 => ReadMode::Scroll,
-        _ => ReadMode::Paged,
-    });
+    let mode = prefs.mode.unwrap_or(ReadMode::Scroll);
     ReaderLook {
         mode,
         direction: prefs.direction.unwrap_or(if book.rtl == Some(true) {
@@ -320,7 +317,7 @@ mod tests {
     fn defaults_follow_the_book_and_the_visitors_choices_win() {
         let plain = book(&[3]);
         let look = resolve_look(&Prefs::default(), &plain);
-        assert_eq!((look.mode, look.direction, look.fit, look.zoom), (ReadMode::Paged, Ltr, ReadFit::Height, 100));
+        assert_eq!((look.mode, look.direction, look.fit, look.zoom), (ReadMode::Scroll, Ltr, ReadFit::Width, 100));
         let strip = Book { aspect: Some(3.0), ..plain.clone() };
         let look = resolve_look(&Prefs::default(), &strip);
         assert_eq!((look.mode, look.fit), (ReadMode::Scroll, ReadFit::Width));

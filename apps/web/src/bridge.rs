@@ -118,9 +118,6 @@ pub enum Event {
     /// The address bar says (at the start, or after Back) which screen to show.
     #[serde(rename = "route")]
     Route { path: String, hash: String },
-    /// A wheel or a swipe along the page asks for the next page (or the one before).
-    #[serde(rename = "turn")]
-    Turn { forward: bool },
     /// The pages in view in the Export screen's list: the first, the last and the one at the top.
     #[serde(rename = "editor")]
     Editor { first: i64, last: i64, current: i64 },

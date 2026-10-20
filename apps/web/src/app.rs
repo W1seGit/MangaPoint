@@ -372,7 +372,7 @@ fn handle_event(ctx: Ctx, ev: Event) {
         }
         Event::StateFile { name, text } => ui::settings::state_file_loaded(ctx, name, text),
         Event::Route { path, hash } => apply_route(ctx, &path, &hash),
-        Event::Key { .. } | Event::Turn { .. } | Event::Tap { .. } | Event::Swipe { .. } | Event::Zoom { .. } | Event::Wheel { .. } | Event::Pos { .. } | Event::Scrolled { .. } | Event::EdgeBack => {
+        Event::Key { .. } | Event::Tap { .. } | Event::Swipe { .. } | Event::Zoom { .. } | Event::Wheel { .. } | Event::Pos { .. } | Event::Scrolled { .. } | Event::EdgeBack => {
             ui::reader::handle_reader_event(ctx, ev)
         }
         Event::ExportStatus { .. }

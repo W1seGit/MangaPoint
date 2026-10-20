@@ -186,9 +186,9 @@ try {
   r.check('Phone or tablet offers CBZ and PDF', fm.join() === 'CBZ,PDF', fm.join());
   await page.shot(`${viewport}-32-export-phone`);
   // A phone or tablet gets the pages as they are: one long page, nothing between them, no Compare.
-  await page.waitFor("document.querySelectorAll('.original-img').length > 1", 30, 'the original pages');
+  await page.waitFor("document.querySelectorAll('.original-preview .reader-tile img').length > 1", 30, 'the original pages');
   r.check('phone or tablet: no Compare, no switch, no page list', !(await page.eval("!!document.querySelector('#export-compare, .compare-tab, .editor-mobile-switch, .editor-thumbnails, .editor-row')")));
-  r.check('the pages touch each other, with no gap', await page.eval("(() => { const a = [...document.querySelectorAll('.original-img')]; return a.length > 1 && a.slice(1).every((im, i) => Math.abs(im.getBoundingClientRect().top - a[i].getBoundingClientRect().bottom) < 1); })()"));
+  r.check('the pages touch each other, with no gap', await page.eval("(() => { const a = [...document.querySelectorAll('.original-preview .reader-tile')]; return a.length > 1 && a.slice(1).every((im, i) => Math.abs(im.getBoundingClientRect().top - a[i].getBoundingClientRect().bottom) < 1); })()"));
   await runExport('PDF');
   r.check('PDF export finished', await page.eval("!!document.querySelector('#export-done')"), await page.eval("document.querySelector('#export-error')?.innerText || ''"));
   await page.click('.export-download');

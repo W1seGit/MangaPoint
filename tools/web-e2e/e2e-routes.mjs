@@ -98,6 +98,23 @@ try {
   r.check('Back returns to the book', !(await page.eval("!!document.querySelector('#reader-settings')")) && !!(await page.eval("!!document.querySelector('#reader')")));
   await closeReader(page);
 
+  // ---- scrolling is scrolling: one long page whose pictures load as you go ----
+  await importBooks(page, [fx('Big Book.cbz')]);
+  await openBook(page, 'Big Book');
+  await sleep(1200);
+  r.check('a book opens as one long page to scroll', (await page.eval("document.querySelector('#reader').dataset.mode")) === 'scroll');
+  const tiles = await page.eval("document.querySelectorAll('.reader-tile').length");
+  const loaded = () => page.eval("[...document.querySelectorAll('.reader-tile img')].map((i) => Number(i.closest('.reader-tile').dataset.page))");
+  const before = await loaded();
+  r.check('only the pages near the screen are loaded', tiles >= 100 && before.length > 0 && before.length < tiles / 3, `${before.length} of ${tiles}`);
+  const st = await page.rect('#reader-stage');
+  await page.wheel(st[0] + st[2] / 2, st[1] + st[3] / 2, 4000);
+  await sleep(1200);
+  const after = await loaded();
+  r.check('the wheel scrolls the page', (await page.eval("document.querySelector('#reader-stage').scrollTop")) > 1500);
+  r.check('pages load as it scrolls and the ones left behind are let go', Math.max(...after) > Math.max(...before) && Math.min(...after) > Math.min(...before) && after.length < tiles / 3, `${before[0]}-${before.at(-1)} -> ${after[0]}-${after.at(-1)}`);
+  await closeReader(page);
+
   // ---- the update dialog ----
   await page.eval("window.__mark = 1; window.__mp.emit({ t: 'sw_update' })");
   await page.waitFor("!!document.querySelector('#update-dialog')", 10, 'the update dialog');

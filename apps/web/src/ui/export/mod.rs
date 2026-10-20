@@ -637,7 +637,10 @@ fn request_preview(ctx: Ctx) {
         w.stamp
     };
     let original = device_profiles::is_original(&e.opts.device);
-    let shown = chapter.count.min(if original { ORIGINAL_PAGES } else { PREVIEW_PAGES });
+    // A phone or tablet shows the chapter's pages as tiles that load as they come near the screen; only
+    // the sample pages (which are not in the library) are fetched here.
+    let tiled = original && book.id != SAMPLE;
+    let shown = if tiled { 0 } else { chapter.count.min(if original { ORIGINAL_PAGES } else { PREVIEW_PAGES }) };
     let (first, total) = (chapter.first, chapter.count);
     let opts = e.opts.clone();
     let book_id = book.id.clone();

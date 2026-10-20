@@ -73,8 +73,9 @@ export const hScroll = (page) => page.eval("({ doc: document.documentElement.scr
 
 export async function closeReader(page) {
   if (!(await page.eval("document.querySelector('#reader')?.classList.contains('show-bar')"))) {
+    await sleep(800); // a swipe's momentum may still be scrolling, which hides the bars again
     const [x, y, w, h] = await page.rect('#reader-stage');
-    await page.clickAt(x + w / 2, y + h * 0.55); // the middle third shows the bar
+    await page.clickAt(x + w / 2, y + h * 0.55); // a tap anywhere shows the bar
     await sleep(250);
     // A tap can land on the end card (which takes no taps): scrolling up shows the bars too.
     if (!(await page.eval("document.querySelector('#reader')?.classList.contains('show-bar')"))) {

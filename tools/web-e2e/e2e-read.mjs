@@ -51,6 +51,12 @@ try {
   // ---- open and page through ----
   const id = await openBook(page, 'Hero Saga');
   await imgLoaded();
+  r.check('a book opens as one long page to scroll', (await page.eval("document.querySelector('#reader').dataset.mode")) === 'scroll');
+  // The rest of this test is about reading one page at a time.
+  await showBar();
+  await readerSetting(page, '#reader-mode-paged', touch);
+  await sleep(700);
+  await imgLoaded();
   r.check('reader opened on page 1', (await counter(page)) === '1 / 8', await counter(page));
   r.check('first chapter is Ch. 2', /Ch\. 2/.test(await chapterLabel(page)), await chapterLabel(page));
   await page.shot(`${viewport}-11-reader-bar`);
@@ -74,19 +80,6 @@ try {
     r.check(`a tap in the ${zone} third toggles the bar`, (await barShown()) !== was, `${was} -> ${await barShown()}`);
   }
   r.check('taps did not turn a page', (await counter(page)) === '1 / 8', await counter(page));
-  // Scrolling the page itself (wheel, or dragging it up) turns it; scrolling back brings the bars.
-  const sg = await stage();
-  const scrollOn = async (down) => {
-    if (touch) await page.swipe(sg.x + sg.w / 2, sg.y + sg.h * (down ? 0.75 : 0.25), sg.x + sg.w / 2, sg.y + sg.h * (down ? 0.25 : 0.75));
-    else await page.wheel(sg.x + sg.w / 2, sg.y + sg.h / 2, down ? 300 : -300);
-    await sleep(700);
-  };
-  await scrollOn(true);
-  r.check('scrolling down the page turns to page 2', (await counter(page)) === '2 / 8', await counter(page));
-  r.check('scrolling down hides the bars', !(await barShown()));
-  await scrollOn(false);
-  r.check('scrolling up turns back', (await counter(page)) === '1 / 8', await counter(page));
-  r.check('scrolling up shows the bars again', await barShown());
   await turnNext();
   await showBar();
   await page.shot(`${viewport}-12-reader-page2`);

@@ -196,12 +196,20 @@ fn select_page(ctx: Ctx, index: usize) {
 /// The pages of a chapter for a phone or tablet: as they were imported, one after the other like
 /// a long page, with nothing between them. Nothing is converted, so there is nothing to compare.
 #[component]
-fn OriginalPages() -> Element {
+fn OriginalPages(book: Book) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
+    let chapter = book.chapters.get(e.shown).cloned();
     rsx! {
         div { class: "original-preview continuous", id: "export-preview",
             div { class: "original-pages", id: "export-pages",
+                // A book of the library: every page of the chapter is a tile that the page glue fills as
+                // it comes near the screen (the reader's own tiles), so a long chapter is not loaded at once.
+                if let (Some(chapter), false) = (&chapter, book.id == super::SAMPLE) {
+                    for n in 0..chapter.count {
+                        div { class: "reader-tile", key: "{book.id}-{chapter.first + n}", "data-book": "{book.id}", "data-page": "{chapter.first + n}" }
+                    }
+                } else {
                 {match &e.look {
                     Look::Idle | Look::Loading => rsx! { Loading { label: "Opening the pages\u{2026}" } },
                     Look::Failed(message) => rsx! { EmptyState { title: "These pages could not be shown", message: "{message}", compact: true } },
@@ -216,6 +224,7 @@ fn OriginalPages() -> Element {
                         }
                     },
                 }}
+                }
             }
         }
     }
@@ -227,7 +236,7 @@ pub fn Preview(book: Book) -> Element {
     use_effect(move || bridge::send("editor_start", json!({})));
     let e = ctx.export.read().clone();
     if device_profiles::is_original(&e.opts.device) {
-        return rsx! { OriginalPages {} };
+        return rsx! { OriginalPages { book: book.clone() } };
     }
     let Some(device) = super::device_of(&e.opts) else {
         return rsx! { EmptyState { title: "Nothing to show", message: "Choose a reader first.", compact: true } };
