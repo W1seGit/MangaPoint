@@ -964,19 +964,27 @@ table.chapters tbody tr[data-cursor] { outline: 2px solid var(--accent); outline
 .drive.on { border-color: var(--accent); background: var(--panel-2); }
 
 /* ---- the cards of the library ---- */
-/* A card is a cover over a short block of text. The cards of a row are as tall as the tallest, and the
-   Read button sits at the bottom of each, so the buttons line up whatever the text above them holds. */
-.poster { height: 100%; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; transition: border-color 0.15s, box-shadow 0.15s; }
+/* A card is a small cover beside its details, wider than it is tall. The cards of a row are as tall as the
+   tallest, and the Read button sits at the bottom of each, so the buttons line up. */
+.poster-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.poster { display: grid; grid-template-columns: 96px minmax(0, 1fr); grid-template-rows: 1fr auto auto; gap: 0; height: 100%; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; transition: border-color 0.15s, box-shadow 0.15s; }
 .poster:hover { border-color: var(--line-strong); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
 .poster:hover .poster-art { transform: none; }
-.poster-art { border-radius: 11px 11px 0 0; }
-.poster-art .cover, .poster-art::after { border-radius: 0; }
-.poster-art .cover.empty { border: 0; border-bottom: 1px solid var(--line); background: var(--panel-2); }
-.poster-text { flex: 1 1 auto; margin: 0; padding: 10px 12px 12px; gap: 1px; border-radius: 0; font-size: 0.9rem; }
+.poster-art { grid-column: 1; grid-row: 1 / span 3; min-height: 150px; position: relative; border-radius: 11px 0 0 11px; }
+/* The picture fills the cover column whatever its shape: a tall webtoon cover must not make the card tall. */
+.poster-art > .cover, .poster-art > .cover-box { position: absolute; inset: 0; width: 100%; height: 100%; }
+.poster-art .cover { height: 100%; aspect-ratio: auto; border-radius: 0; }
+.poster-art::after { border-radius: 0; }
+.poster-art .cover.empty { border: 0; border-right: 1px solid var(--line); background: var(--panel-2); }
+.poster-text { grid-column: 2; grid-row: 1; margin: 0; padding: 12px 14px 6px; gap: 2px; border-radius: 0; font-size: 0.9rem; }
 .poster:hover .poster-text { background: transparent; }
-.poster-title { margin-top: 0; margin-bottom: 3px; font-size: 1rem; }
+.poster-title { margin: 0; font-size: 1rem; }
 .poster-about { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .poster-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.poster-stats { display: flex; gap: 22px; margin-top: 10px; }
+.poster-stats > div { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.poster-stat-label { font-size: 0.7rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.poster-stats strong { font-size: 0.95rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .poster.on { border-color: var(--accent); }
 .poster.on .poster-art { outline: 0; }
 /* ---- the overview ---- */

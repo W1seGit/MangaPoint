@@ -249,12 +249,12 @@ pub fn LibraryPage() -> Element {
                         let cover_key = saved_cover_key(&s.id);
                         let chapters = s.chapters.len();
                         let size = human_bytes(s.bytes());
-                        let sub = match (chapters, s.chapter_total) {
-                            (0, Some(total)) => format!("{} · not downloaded", plural(total, "chapter")),
-                            (0, None) => "Not downloaded yet".to_string(),
-                            (done, Some(total)) if total >= done => format!("{done} of {total} chapters · {size}"),
-                            _ => format!("{} · {size}", plural(chapters, "chapter")),
+                        // What is downloaded of the series, and what it takes on this computer.
+                        let have = match s.chapter_total {
+                            Some(total) if total >= chapters => format!("{chapters} of {total}"),
+                            _ => chapters.to_string(),
                         };
+                        let stored = if chapters == 0 { "-".to_string() } else { size.clone() };
                         let about = s
                             .info
                             .as_ref()
@@ -383,7 +383,10 @@ pub fn LibraryPage() -> Element {
                                         }
                                     },
                                     strong { class: "poster-title", title: "{s.title}", "{s.title}" }
-                                    span { class: "muted small", "{sub}" }
+                                    div { class: "poster-stats",
+                                        div { span { class: "poster-stat-label", "Chapters" } strong { "{have}" } }
+                                        div { span { class: "poster-stat-label", "Storage" } strong { "{stored}" } }
+                                    }
                                     if !about.is_empty() {
                                         span { class: "muted small poster-about", title: "{about}", "{about}" }
                                     }

@@ -202,7 +202,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   .q-head { gap: 8px; }
   .lib-tools { gap: 8px; }
   .lib-filter { width: 100%; order: 3; }
-  .poster-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 18px 12px; }
+  .poster-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
   .poster-read { min-height: 44px; }
 
   /* Dialogs fill the screen */
@@ -239,7 +239,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 }
 
 @media (max-width: 420px) {
-  .poster-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .poster-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {

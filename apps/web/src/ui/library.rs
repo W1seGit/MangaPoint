@@ -130,7 +130,8 @@ pub fn LibraryPage() -> Element {
                         let menu_open = menu().as_deref() == Some(b.id.as_str());
                         let reading = lib.read_button(&b);
                         let finished = lib.finished(&b);
-                        let sub = format!("{} \u{b7} {}", plural(b.chapters.len(), "chapter"), human_bytes(b.size));
+                        let have = b.chapters.len().to_string();
+                        let stored = human_bytes(b.size);
                         let (open_id, read_id, text_id, menu_id, export_id, remove_id, again_id) =
                             (id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone());
                         let remove_title = b.title.clone();
@@ -189,7 +190,10 @@ pub fn LibraryPage() -> Element {
                                 div { class: "poster-text", title: "Open {b.title}",
                                     onclick: move |_| open_book(ctx, &text_id),
                                     strong { class: "poster-title", title: "{b.title}", "{b.title}" }
-                                    span { class: "muted small", "{sub}" }
+                                    div { class: "poster-stats",
+                                        div { span { class: "poster-stat-label", "Chapters" } strong { "{have}" } }
+                                        div { span { class: "poster-stat-label", "Storage" } strong { "{stored}" } }
+                                    }
                                     span { class: "muted small poster-status",
                                         "{kind_label(&b)}"
                                         if finished { " · Finished" }
