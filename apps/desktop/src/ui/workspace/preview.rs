@@ -345,7 +345,7 @@ fn track_scroll(state: AppState, first: i64, last: i64, current: i64) {
 
 /// The zoom of the page preview, in the shared zoom menu.
 #[component]
-fn ZoomMenu() -> Element {
+pub(crate) fn ZoomMenu() -> Element {
     let mut state = use_context::<AppState>();
     let selected = match state.preview.read().view.zoom {
         Zoom::Fit => ZoomPick::Fit,

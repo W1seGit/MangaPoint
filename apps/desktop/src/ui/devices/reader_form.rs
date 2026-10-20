@@ -227,16 +227,15 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
         div { class: "sx-row",
             div { class: "sx-text",
                 div { class: "sx-label", "Color screen"
-                    Help { text: "Tick this if the reader's screen shows color (Kaleido, Gallery). An EPUB or CBZ for it can then keep the pages in color; the Export screen offers the choice. XTC and XTCH are always gray." }
+                    Help { text: "Pick Color if the reader's screen shows color (Kaleido, Gallery). An EPUB or CBZ for it can then keep the pages in color; the Export screen offers the choice. XTC and XTCH are always gray." }
                 }
             }
             div { class: "sx-control",
-                label { class: "check-line",
-                    input {
-                        r#type: "checkbox", checked: color(), "aria-label": "Color screen",
-                        onchange: move |e| color.set(e.checked()),
-                    }
-                    span { class: "muted", "Shows color" }
+                div { class: "seg", id: "reader-color", role: "group", "aria-label": "Color screen",
+                    button { r#type: "button", id: "reader-color-no", class: if !color() { "on" } else { "" },
+                        onclick: move |_| color.set(false), "No color" }
+                    button { r#type: "button", id: "reader-color-yes", class: if color() { "on" } else { "" },
+                        onclick: move |_| color.set(true), "Color" }
                 }
             }
         }

@@ -28,7 +28,14 @@ const WORKERS = 4;
 let running = 0;
 const waiting = new Map(); // tile -> resolve
 
+function thumbDistance(tile) {
+  const r = tile.getBoundingClientRect();
+  return r.bottom < 0 ? -r.bottom : r.top > innerHeight ? r.top - innerHeight : 0;
+}
+
 function distance(tile) {
+  // The small pictures beside a page list wait for the pages themselves.
+  if (tile.classList.contains('original-thumb')) return 1e6 + thumbDistance(tile);
   const r = tile.getBoundingClientRect();
   if (r.bottom < 0) return -r.bottom * 2.5;
   if (r.top > innerHeight) return r.top - innerHeight;

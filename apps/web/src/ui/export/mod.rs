@@ -789,16 +789,6 @@ pub fn ExportPage() -> Element {
         if !original {
             PresetsPanel { book: book.clone(), open: true }
             EditPanel { open: !narrow }
-        } else {
-            div { class: "banner", id: "original-note",
-                Icon { name: "info", size: 16 }
-                div { class: "grow",
-                    strong { "Original quality" }
-                    p { class: "muted small", style: "margin: 4px 0 0",
-                        "Nothing is resized, grayed, dithered or split. Each page goes into the file exactly as it was, in the original quality, so it looks its best on a phone or tablet."
-                    }
-                }
-            }
         }
         BookPanel { books: usable.clone(), book: book.clone(), open: !narrow }
     };
@@ -837,16 +827,6 @@ pub fn ExportPage() -> Element {
                         Split { target: "presets", dir: 1 }
                         EditPanel { open: true }
                         Split { target: "series", dir: -1 }
-                    } else {
-                        div { class: "banner", id: "original-note",
-                            Icon { name: "info", size: 16 }
-                            div { class: "grow",
-                                strong { "Original quality" }
-                                p { class: "muted small", style: "margin: 4px 0 0",
-                                    "Nothing is resized, grayed, dithered or split. Each page goes into the file exactly as it was, in the original quality, so it looks its best on a phone or tablet."
-                                }
-                            }
-                        }
                     }
                     BookPanel { books: usable.clone(), book: book.clone(), open: true }
                     div { class: "px-split-v", "data-split": "left", title: "Drag to make this column wider or narrower" }

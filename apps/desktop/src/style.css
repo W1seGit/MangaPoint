@@ -964,8 +964,21 @@ table.chapters tbody tr[data-cursor] { outline: 2px solid var(--accent); outline
 .drive.on { border-color: var(--accent); background: var(--panel-2); }
 
 /* ---- the cards of the library ---- */
+/* A card is a cover over a short block of text. The cards of a row are as tall as the tallest, and the
+   Read button sits at the bottom of each, so the buttons line up whatever the text above them holds. */
+.poster { height: 100%; gap: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; transition: border-color 0.15s, box-shadow 0.15s; }
+.poster:hover { border-color: var(--line-strong); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); }
+.poster:hover .poster-art { transform: none; }
+.poster-art { border-radius: 11px 11px 0 0; }
+.poster-art .cover, .poster-art::after { border-radius: 0; }
+.poster-art .cover.empty { border: 0; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.poster-text { flex: 1 1 auto; margin: 0; padding: 10px 12px 12px; gap: 1px; border-radius: 0; font-size: 0.9rem; }
+.poster:hover .poster-text { background: transparent; }
+.poster-title { margin-top: 0; font-size: 0.95rem; }
 .poster-about { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.poster-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.poster-tags { display: flex; flex-wrap: nowrap; overflow: hidden; gap: 4px; margin-top: 6px; }
+.poster.on { border-color: var(--accent); }
+.poster.on .poster-art { outline: 0; }
 /* ---- the overview ---- */
 .overview { grid-template-columns: 150px minmax(0, 1fr); }
 .read-more { display: inline-block; margin-top: 2px; color: #6ea8fe; cursor: pointer; font-size: 0.92rem; transition: color 0.15s; }

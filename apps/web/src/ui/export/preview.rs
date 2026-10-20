@@ -237,6 +237,39 @@ fn OriginalPages(book: Book) -> Element {
                 }
             }
             div { class: "editor-body",
+                nav { class: "editor-thumbnails", id: "export-thumbnails", "aria-label": "Pages",
+                    if let (Some(chapter), true) = (&chapter, from_library) {
+                        for n in 0..chapter.count {
+                            button {
+                                key: "{book.id}-{chapter.first + n}",
+                                class: if n == selected { "editor-thumb selected" } else { "editor-thumb" },
+                                "data-editor-page": "{n}",
+                                "aria-label": "Open page {n + 1}",
+                                "aria-current": if n == selected { "page" } else { "false" },
+                                onclick: move |_| select_page(ctx, n),
+                                div { class: "editor-thumb-art",
+                                    div { class: "reader-tile original-thumb", "data-book": "{book.id}", "data-page": "{chapter.first + n}" }
+                                }
+                                span { "{n + 1}" }
+                            }
+                        }
+                    } else if let Look::Ready { originals, .. } = &e.look {
+                        for (n, url) in originals.iter().enumerate() {
+                            button {
+                                key: "{n}",
+                                class: if n == selected { "editor-thumb selected" } else { "editor-thumb" },
+                                "data-editor-page": "{n}",
+                                "aria-label": "Open page {n + 1}",
+                                "aria-current": if n == selected { "page" } else { "false" },
+                                onclick: move |_| select_page(ctx, n),
+                                div { class: "editor-thumb-art",
+                                    if url.is_empty() { Icon { name: "file-image", size: 23 } } else { img { src: "{url}", alt: "Page {n + 1}" } }
+                                }
+                                span { "{n + 1}" }
+                            }
+                        }
+                    }
+                }
                 main { class: "editor-main",
                     div { class: "editor-scroll", id: "export-pages",
                         div { class: "original-preview continuous", id: "export-preview",
