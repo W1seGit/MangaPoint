@@ -475,7 +475,7 @@ td.status, th.status { width: 170px; }
 .lib-tools .pillrow { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
 .lib-filter { width: 220px; }
 .lib-sort { width: auto; }
-.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; }
+.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 22px 18px; }
 .poster { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .poster-art { position: relative; cursor: pointer; border-radius: 10px; overflow: hidden; transition: transform 0.15s; }
 .poster:hover .poster-art { transform: translateY(-3px); }
@@ -974,9 +974,9 @@ table.chapters tbody tr[data-cursor] { outline: 2px solid var(--accent); outline
 .poster-art .cover.empty { border: 0; border-bottom: 1px solid var(--line); background: var(--panel-2); }
 .poster-text { flex: 1 1 auto; margin: 0; padding: 10px 12px 12px; gap: 1px; border-radius: 0; font-size: 0.9rem; }
 .poster:hover .poster-text { background: transparent; }
-.poster-title { margin-top: 0; font-size: 0.95rem; }
+.poster-title { margin-top: 0; margin-bottom: 3px; font-size: 1rem; }
 .poster-about { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.poster-tags { display: flex; flex-wrap: nowrap; overflow: hidden; gap: 4px; margin-top: 6px; }
+.poster-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .poster.on { border-color: var(--accent); }
 .poster.on .poster-art { outline: 0; }
 /* ---- the overview ---- */
@@ -1303,3 +1303,6 @@ img.cover { background: var(--panel-2); }
 .cover-box { position: relative; display: block; width: 100%; border-radius: inherit; }
 .cover-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--panel-2); border-radius: inherit; pointer-events: none; }
 .loading-note { max-width: 420px; margin: 0; text-align: center; }
+/* With only the series in the left column (original quality) there is nothing to divide it from. */
+.export-side.left.alone .px-panel { border-bottom: 0; }
+.export-side.left.alone .px-panel-head { border-top: 0; }

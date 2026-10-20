@@ -199,8 +199,6 @@ fn select_page(ctx: Ctx, index: usize) {
 #[component]
 fn OriginalPages(book: Book) -> Element {
     let ctx = use_context::<Ctx>();
-    // This page list is a new element (the readers' one was replaced), so it is sized to the window again.
-    use_effect(move || bridge::send("editor_start", json!({})));
     let e = ctx.export.read().clone();
     let chapter = book.chapters.get(e.shown).cloned();
     let from_library = book.id != super::SAMPLE;
@@ -309,7 +307,12 @@ fn OriginalPages(book: Book) -> Element {
 #[component]
 pub fn Preview(book: Book) -> Element {
     let ctx = use_context::<Ctx>();
-    use_effect(move || bridge::send("editor_start", json!({})));
+    // The page list is a new element when the original pages and the converted ones swap, so it is sized again.
+    let original = use_memo(move || device_profiles::is_original(&ctx.export.read().opts.device));
+    use_effect(move || {
+        let _ = original();
+        bridge::send("editor_start", json!({}));
+    });
     let e = ctx.export.read().clone();
     if device_profiles::is_original(&e.opts.device) {
         return rsx! { OriginalPages { book: book.clone() } };

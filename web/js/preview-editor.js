@@ -4,9 +4,10 @@
 export function startEditor(report) {
   let tries = 0;
   const start = () => {
-   const root = document.getElementById('page-editor');
+   // The editor that is not wired yet: switching between the converted pages and the original ones
+   // replaces the element, and for a moment the old one is still there.
+   const root = [...document.querySelectorAll('#page-editor')].find(r => !r.dataset.bound);
    if (!root) { if (tries++ < 120) requestAnimationFrame(start); return; }
-   if (root.dataset.bound) return;
    root.dataset.bound = '1';
    const scroller = root.querySelector('.editor-scroll');
    const page = root.closest('.content') || document.documentElement;

@@ -203,6 +203,14 @@ try {
     await sleep(300);
   }
   r.check('the pages touch each other, with no gap', await page.eval("(() => { const a = [...document.querySelectorAll('.original-preview .reader-tile')]; return a.length > 1 && a.slice(1).every((im, i) => Math.abs(im.getBoundingClientRect().top - a[i].getBoundingClientRect().bottom) < 1); })()"));
+  // Back to a reader: the page list is a new element and must be sized to the window again (no gap under it).
+  if (viewport === 'desktop') {
+    await pickReader('/Xteink X4 Pro/');
+    await sleep(1500);
+    r.check('after going back to a reader the page list fills the window', await page.eval("(() => { const e = document.querySelector('#page-editor'); return !!e && e.style.getPropertyValue('--canvas-height') !== '' && !e.classList.contains('original-editor'); })()"), await page.eval("(() => { const e = document.querySelector('#page-editor'); return e ? e.className + ' / ' + e.getAttribute('style') : 'none'; })()"));
+    await pickReader('/Phone or tablet/');
+    await sleep(800);
+  }
   await runExport('PDF');
   r.check('PDF export finished', await page.eval("!!document.querySelector('#export-done')"), await page.eval("document.querySelector('#export-error')?.innerText || ''"));
   await page.click('.export-download');

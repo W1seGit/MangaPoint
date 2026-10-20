@@ -164,7 +164,7 @@ pub fn ExportPage() -> Element {
         div { class: "export-screen",
             onmounted: move |_| { spawn(async move { let _ = document::eval(SPLIT_SCRIPT).await; }); },
             div { class: "export-body",
-                aside { class: "export-side left",
+                aside { class: if original { "export-side left alone" } else { "export-side left" },
                     // The e-ink controls have nothing to do for a phone or tablet:
                     // its pages go out as they are.
                     if !original {

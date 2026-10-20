@@ -1,7 +1,7 @@
 //! The Library: the books kept in this browser, and the places waiting for
 //! their file.
 
-use super::widgets::{Chip, Cover, EmptyState, Icon};
+use super::widgets::{Cover, EmptyState, Icon};
 use crate::app::{Ctx, Modal, ModalAction, Page};
 use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
@@ -190,10 +190,10 @@ pub fn LibraryPage() -> Element {
                                     onclick: move |_| open_book(ctx, &text_id),
                                     strong { class: "poster-title", title: "{b.title}", "{b.title}" }
                                     span { class: "muted small", "{sub}" }
-                                    div { class: "poster-tags",
-                                        Chip { text: kind_label(&b).to_string(), kind: Some("accent".to_string()) }
-                                        if finished { Chip { text: "Finished", kind: Some("ok".to_string()) } }
-                                        if needs_file { Chip { text: "Needs its file", kind: Some("warn".to_string()) } }
+                                    span { class: "muted small poster-status",
+                                        "{kind_label(&b)}"
+                                        if finished { " · Finished" }
+                                        if needs_file { " · Needs its file" }
                                     }
                                 }
                                 if let Some(reading) = reading {

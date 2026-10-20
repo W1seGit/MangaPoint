@@ -821,7 +821,7 @@ pub fn ExportPage() -> Element {
         div { class: "export-screen", id: "export-screen",
             onmounted: move |_| bridge::send("export_split", json!({})),
             div { class: "export-body",
-                aside { class: "export-side left",
+                aside { class: if original { "export-side left alone" } else { "export-side left" },
                     if !original {
                         PresetsPanel { book: book.clone(), open: true }
                         Split { target: "presets", dir: 1 }

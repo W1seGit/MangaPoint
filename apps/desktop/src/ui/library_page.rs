@@ -1,7 +1,7 @@
 //! The Library: the series you keep (downloaded or saved for later). Exported
 //! files are listed on the Downloads page.
 
-use super::widgets::{open_folder, Chip, Cover, EmptyState, Icon, NoCover};
+use super::widgets::{open_folder, Cover, EmptyState, Icon, NoCover};
 use super::work::{
     start_import, ensure_series_info, fill_chapter_totals, load_saved_cover, open_export, open_plan, open_series_from_library,
     saved_cover_key,
@@ -387,17 +387,9 @@ pub fn LibraryPage() -> Element {
                                     if !about.is_empty() {
                                         span { class: "muted small poster-about", title: "{about}", "{about}" }
                                     }
-                                    div { class: "poster-tags",
-                                        if s.is_imported() {
-                                            Chip { text: "Imported", kind: Some("accent".to_string()) }
-                                        } else if chapters > 0 {
-                                            Chip { text: "Downloaded", kind: Some("ok".to_string()) }
-                                        } else {
-                                            Chip { text: "Saved for later" }
-                                        }
-                                        if is_exported {
-                                            Chip { text: "Exported", kind: Some("accent".to_string()) }
-                                        }
+                                    span { class: "muted small poster-status",
+                                        {if s.is_imported() { "Imported" } else if chapters > 0 { "Downloaded" } else { "Saved for later" }}
+                                        if is_exported { " · Exported" }
                                     }
                                 }
                                 if let Some(reading) = reading {
