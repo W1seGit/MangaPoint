@@ -71,7 +71,30 @@ try {
   }
   await page.shot(`${viewport}-30-export`);
   const devices = await page.eval("[...document.querySelectorAll('#export-device option')].map(o => o.textContent)");
-  r.check('reader list comes from the engine, with the phone entry last', devices.length > 5 && /Phone or tablet/.test(devices[devices.length - 1]), `${devices.length} readers; first ${devices[0]}`);
+  r.check('the picker holds the readers kept in Settings (three Xteink) and the phone entry last', devices.length === 4 && /Xteink/.test(devices[0]) && /Phone or tablet/.test(devices[devices.length - 1]) && !devices.some((d) => /Kobo/.test(d)), devices.join(' | '));
+
+  // Readers are added in Settings, not on the Export screen.
+  await page.click('#export-readers');
+  await page.waitFor("!!document.querySelector('#readers-list')", 10, 'the readers in Settings');
+  r.check('Settings lists the readers, one in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 3 && (await page.eval("document.querySelectorAll('#readers-list .chip.ok').length")) === 1);
+  await page.click('#readers-search');
+  await page.type('libra colour');
+  await page.waitFor("!!document.querySelector('#readers-found [data-add]')", 10, 'a reader found');
+  await page.click('#readers-found [data-add]');
+  await sleep(300);
+  r.check('the reader was added and is in use', (await page.eval("document.querySelectorAll('#readers-list [data-reader]').length")) === 4 && /Libra/.test(await page.eval("document.querySelector('#readers-list .px-preset.on')?.innerText || ''")));
+  await page.shot(`${viewport}-29-readers`);
+  await nav(page, 'Export');
+  await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-device')", 10, 'export screen again');
+  if (narrow) {
+    await page.tap('#export-settings-tab');
+    await sleep(400);
+    await page.eval("document.querySelectorAll('.px-panel.collapsed .px-panel-head').forEach((h) => h.click())");
+    await sleep(300);
+  }
+  // The reader just added is the one in use; the first export below is on an Xteink reader.
+  await page.eval("(() => { const s = document.querySelector('#export-device'); const o = [...s.options].find(o => /Xteink X4 Pro/.test(o.textContent)); s.value = o.value; s.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await sleep(400);
   r.check('the three built-in presets are offered', (await page.eval("document.querySelectorAll('#export-preset .px-preset').length")) === 3);
   r.check('the edit groups of the app are there (Layout, Spreads and zoom, Crop, Look)', (await page.eval("[...document.querySelectorAll('.mp-group-title')].map((e) => e.textContent).join()")) === 'Layout,Spreads and zoom,Crop,Look');
   r.check('no way to send to a reader, only downloads', !(await page.eval("/USB|Wi-?Fi|Send to/i.test(document.querySelector('#panel-send').innerText)")));

@@ -334,7 +334,12 @@ pub fn ChaptersPanel(book: Book, open: bool) -> Element {
 pub fn SendPanel(device: Option<DeviceInfo>, book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
-    let all_devices = devices::devices();
+    // The readers the user added in Settings, and the phone entry; the one in use is always there.
+    let mine = crate::app::readers(&ctx.settings.read());
+    let all_devices: Vec<DeviceInfo> = devices::devices()
+        .into_iter()
+        .filter(|d| d.original || d.id == e.opts.device || mine.contains(&d.id))
+        .collect();
     let profile = super::device_of(&e.opts);
     let ftype = e.opts.file_type();
     let original = device.as_ref().is_some_and(|d| d.original);
@@ -356,6 +361,14 @@ pub fn SendPanel(device: Option<DeviceInfo>, book: Book, open: bool) -> Element 
                 }
                 if let Some(d) = &device {
                     DeviceNote { d: d.clone() }
+                }
+                button { class: "btn small", id: "export-readers", style: "margin-top: 8px", title: "Readers are added and removed in Settings",
+                    onclick: move |_| {
+                        let mut section = ctx.settings_section;
+                        section.set(crate::ui::settings::Section::Readers);
+                        ctx.go(crate::app::Page::Settings);
+                    },
+                    Icon { name: "settings", size: 14 } "Your readers"
                 }
             }
             div { class: "panel-section", style: "margin-top: 14px",

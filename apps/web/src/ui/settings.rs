@@ -106,7 +106,7 @@ pub fn SettingsPage() -> Element {
     let can_install = *ctx.can_install.read();
     let engine = web_engine::engine_version();
 
-    let mut section = use_signal(|| Section::Library);
+    let mut section = ctx.settings_section;
     let storage_note = {
         let mut note = format!("{}, {} imported.", plural(books, "book"), human_bytes(total));
         if i.quota > 0.0 {
@@ -176,6 +176,11 @@ pub fn SettingsPage() -> Element {
                                 }
                             }
                         }
+                    },
+                    Section::Readers => rsx! {
+                        h2 { class: "sx-group", "Your readers" }
+                        p { class: "sx-note", "The readers you make files for. Pick one on the Export screen; the pages are made to fit its screen." }
+                        Readers {}
                     },
                     Section::State => rsx! {
                         h2 { class: "sx-group", "Reading state" }
@@ -247,16 +252,122 @@ pub fn SettingsPage() -> Element {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Section {
+pub enum Section {
     Library,
+    Readers,
     State,
     App,
     About,
 }
 
-const SECTIONS: [(Section, &str, &str, &str); 4] = [
+const SECTIONS: [(Section, &str, &str, &str); 5] = [
     (Section::Library, "hard-drive", "Your library", "library"),
+    (Section::Readers, "book-open", "Your readers", "readers"),
     (Section::State, "save", "Reading state", "state"),
     (Section::App, "download", "App", "app"),
     (Section::About, "info", "About", "about"),
 ];
+
+/// The readers the user has: which one files are made for, removing one, and adding a known one.
+#[component]
+fn Readers() -> Element {
+    let ctx = use_context::<Ctx>();
+    let s = ctx.settings.read().clone();
+    let ids = crate::app::readers(&s);
+    let mine: Vec<device_profiles::DeviceProfile> = ids.iter().filter_map(|id| device_profiles::known(id)).collect();
+    let chosen = if ids.contains(&s.device) { s.device.clone() } else { ids.first().cloned().unwrap_or_default() };
+    let mut text = use_signal(String::new);
+    let query = text().trim().to_string();
+    let mut found: Vec<(usize, device_profiles::DeviceProfile)> = device_profiles::builtin()
+        .into_iter()
+        .filter(|k| !mine.iter().any(|d| d.id == k.id))
+        .filter_map(|k| {
+            // The maker counts too: "kindle", "amazon" and "boox" all find theirs.
+            let named = format!("{} {}", k.maker, k.name);
+            device_profiles::match_rank(&query, &named).map(|r| (r, k))
+        })
+        .collect();
+    found.sort_by_key(|(rank, _)| *rank);
+    let only_one = mine.len() <= 1;
+    rsx! {
+        div { class: "px-list", id: "readers-list",
+            for d in mine.iter().cloned() {
+                {
+                    let id = d.id.clone();
+                    let on = d.id == chosen;
+                    let remove_id = d.id.clone();
+                    rsx! {
+                        div { key: "{d.id}", class: if on { "px-preset on" } else { "px-preset" }, "data-reader": "{d.id}",
+                            div { class: "px-preset-head",
+                                span { class: "grow px-item-name", "{d.name}" }
+                                span { class: "px-size", "{d.inches_label()}" }
+                                if on {
+                                    span { class: "chip ok", "In use" }
+                                } else {
+                                    button { class: "btn small", onclick: move |_| {
+                                        let mut settings = ctx.settings;
+                                        settings.write().device = id.clone();
+                                        ctx.save_settings();
+                                    }, "Use" }
+                                }
+                                if !only_one {
+                                    button { class: "btn small", title: "Remove this reader", "aria-label": "Remove {d.name}", onclick: move |_| {
+                                        let mut settings = ctx.settings;
+                                        {
+                                            let mut st = settings.write();
+                                            let mut list = crate::app::readers(&st);
+                                            list.retain(|x| *x != remove_id);
+                                            if st.device == remove_id {
+                                                st.device = list.first().cloned().unwrap_or_default();
+                                            }
+                                            crate::app::set_readers(&mut st, &list);
+                                        }
+                                        ctx.save_settings();
+                                    }, Icon { name: "trash", size: 14 } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        div { class: "adder", style: "margin-top: 14px",
+            div { class: "adder-box",
+                Icon { name: "search", size: 15 }
+                input { id: "readers-search", r#type: "text", value: "{text}", maxlength: "40", spellcheck: "false",
+                    placeholder: "Add a reader: search by name or maker", "aria-label": "Add a reader",
+                    oninput: move |e| text.set(e.value()) }
+            }
+            if !query.is_empty() {
+                div { class: "adder-list", id: "readers-found", style: "position: static; margin-top: 6px",
+                    for (_, k) in found.into_iter() {
+                        {
+                            let reader = k.clone();
+                            rsx! {
+                                button { key: "{k.id}", class: "adder-opt", r#type: "button", "data-add": "{k.id}",
+                                    onclick: move |_| {
+                                        let mut settings = ctx.settings;
+                                        {
+                                            let mut st = settings.write();
+                                            let mut list = crate::app::readers(&st);
+                                            if !list.contains(&reader.id) {
+                                                list.push(reader.id.clone());
+                                            }
+                                            crate::app::set_readers(&mut st, &list);
+                                            st.device = reader.id.clone();
+                                        }
+                                        ctx.save_settings();
+                                        text.set(String::new());
+                                    },
+                                    Icon { name: "hard-drive", size: 15 }
+                                    span { class: "grow", "{k.name}" }
+                                    span { class: "px-size", "{k.inches_label()}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

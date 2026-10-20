@@ -548,7 +548,10 @@ pub fn ExportPage() -> Element {
             let _ = bridge::call_ok("preview_free", json!({})).await;
         });
         let mut export = ctx.export;
-        export.write().sheet = false;
+        // The pictures are released with the screen; a fresh visit asks for them again.
+        let mut e = export.write();
+        e.sheet = false;
+        e.look = Look::Idle;
     });
 
     let lib = ctx.library.read();

@@ -120,6 +120,8 @@ pub struct Ctx {
     pub last_exports: Signal<std::collections::BTreeMap<String, ui::export::LastExport>>,
     /// The window is as narrow as a phone's.
     pub narrow: Signal<bool>,
+    /// Which part of Settings is open.
+    pub settings_section: Signal<ui::settings::Section>,
     pub next_id: Signal<u64>,
     pub state_file: Signal<Option<String>>,
 }
@@ -232,6 +234,7 @@ pub fn App() -> Element {
         presets: use_signal(library::PresetsDb::default),
         last_exports: use_signal(Default::default),
         narrow: use_signal(|| false),
+        settings_section: use_signal(|| ui::settings::Section::Library),
         next_id: use_signal(|| 0),
         state_file: use_signal(|| None),
     };
@@ -581,3 +584,17 @@ pub fn state_count(lib: &Library) -> usize {
 }
 
 pub fn _unused(_: &BookState, _: &Value) {}
+
+/// The ids of the readers the user keeps (Settings > Your readers), in the order they added them.
+/// Kept as a plain text in the settings, so it travels in the reading-state file. A first visit
+/// has the three Xteink readers.
+pub fn readers(s: &Settings) -> Vec<String> {
+    match s.extra.get("readers").and_then(|v| v.as_str()) {
+        Some(list) => list.split(',').filter(|id| !id.is_empty()).map(str::to_string).collect(),
+        None => [device_profiles::X4_PRO_ID, device_profiles::X4_ID, device_profiles::X3_ID].map(str::to_string).to_vec(),
+    }
+}
+
+pub fn set_readers(s: &mut Settings, ids: &[String]) {
+    s.extra.insert("readers".into(), Value::String(ids.join(",")));
+}
