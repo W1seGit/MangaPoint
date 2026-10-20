@@ -21,6 +21,46 @@ function setShape(tile, w, h) {
   tile.style.setProperty('--w', `${w}px`);
 }
 
+// Pictures are opened a few at a time, the ones nearest the screen first (those just below it
+// before those above it), so a far-off page never holds up the one about to be seen.
+const WORKERS = 4;
+let running = 0;
+const waiting = new Map(); // tile -> resolve
+
+function distance(tile) {
+  const r = tile.getBoundingClientRect();
+  if (r.bottom < 0) return -r.bottom * 2.5;
+  if (r.top > innerHeight) return r.top - innerHeight;
+  return 0;
+}
+
+function pump() {
+  while (running < WORKERS && waiting.size) {
+    let best = null;
+    let bestD = Infinity;
+    for (const t of waiting.keys()) {
+      const d = distance(t);
+      if (d < bestD) { best = t; bestD = d; }
+    }
+    const go = waiting.get(best);
+    waiting.delete(best);
+    running++;
+    go();
+  }
+}
+
+function turn(tile) {
+  return new Promise((go) => {
+    waiting.set(tile, go);
+    pump();
+  });
+}
+
+function done() {
+  running--;
+  pump();
+}
+
 async function fillTile(tile) {
   const book = tile.dataset.book;
   const index = Number(tile.dataset.page);
@@ -33,7 +73,14 @@ async function fillTile(tile) {
     if (ratio) {
       setShape(tile, ratio.w, ratio.h);
     }
-    const url = await acquire(book, index);
+    await turn(tile);
+    let url;
+    try {
+      if (rec.gone || live.get(tile) !== rec) return;
+      url = await acquire(book, index);
+    } finally {
+      done();
+    }
     if (rec.gone || live.get(tile) !== rec) {
       release(book, index);
       return;
@@ -96,6 +143,7 @@ function unfillTile(tile) {
   if (!rec) return;
   rec.gone = true;
   live.delete(tile);
+  waiting.delete(tile);
   if (rec.img) {
     rec.img.onload = rec.img.onerror = null;
     rec.img.removeAttribute('src');
