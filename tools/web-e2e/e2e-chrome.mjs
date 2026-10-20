@@ -33,7 +33,7 @@ try {
   const left = await center('#reader-arrow-left');
   const right = await center('#reader-arrow-right');
   const pick = await center('#reader-chapter-picker');
-  r.check('left arrow is all the way left, right arrow all the way right', left.left < 24 && right.right > vw - 24, `${left.left}, ${vw - right.right}`);
+  r.check('the arrows sit right beside the chapter name', left.right <= pick.left + 4 && right.left >= pick.right - 4 && pick.left - left.right < 40 && right.left - pick.right < 40, `${left.right} ${pick.left} ${pick.right} ${right.left}`);
   r.check('arrows are in the top bar', left.top < 40 && right.top < 40, `${left.top}`);
   r.check('chapter name sits in the middle of the top bar', Math.abs(pick.x - vw / 2) < 40 && pick.top < 40, `${pick.x} of ${vw}`);
   const look = await page.eval("(() => { const s = getComputedStyle(document.querySelector('#reader-chapter-picker')); return { border: s.borderTopWidth, bg: s.backgroundColor }; })()");
@@ -46,7 +46,7 @@ try {
   const gear = await center('#reader-view-button');
   r.check('title is centred at the bottom', Math.abs(title.x - vw / 2) < 40 && title.bottom > vh - 120, `${title.x} of ${vw}, bottom ${title.bottom} of ${vh}`);
   r.check('percentage is below the title', pct.top >= title.bottom - 2 && pct.bottom <= vh, `${pct.top} vs ${title.bottom}`);
-  r.check('back button bottom left, settings bottom right', back.left < 40 && back.top > vh - 100 && gear.right > vw - 40 && gear.top > vh - 100, `${back.left},${back.top} ${vw - gear.right}`);
+  r.check('library button top left, settings top right', back.left < 40 && back.top < 40 && gear.right > vw - 40 && gear.top < 40, `${back.left},${back.top} ${vw - gear.right},${gear.top}`);
   r.check('percentage of the chapter (page 1 of 8 is 12%)', (await page.eval("document.querySelector('#reader-percent').textContent")) === '12%');
   await page.shot(`${viewport}-40-chrome`);
 

@@ -112,7 +112,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 }
 .reader-bottom {
   bottom: 0; height: var(--bottom-h); box-sizing: border-box;
-  display: grid; grid-template-columns: 48px minmax(0, 1fr) 48px; align-items: end; gap: 8px;
+  display: flex; justify-content: center; align-items: flex-end;
   padding: 0 max(14px, var(--sar)) calc(14px + var(--sab)) max(14px, var(--sal));
   background: linear-gradient(to top, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.72) 45%, rgba(0, 0, 0, 0) 100%);
 }
@@ -123,7 +123,9 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   border: 0; border-radius: 50%; background: transparent; color: var(--text); cursor: pointer;
 }
 .reader-arrow:hover { background: rgba(255, 255, 255, 0.1); }
-.reader-chapter-anchor { position: relative; flex: 1 1 0; min-width: 0; display: flex; justify-content: center; }
+.reader-chapter-nav { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; }
+.reader-chapter-anchor { position: relative; flex: 0 1 auto; min-width: 0; display: flex; justify-content: center; }
+.reader-end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .reader-chapter-link {
   display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 10px 12px; border: 0; background: none;
   color: var(--text); font: inherit; font-size: 1rem; font-weight: 600; cursor: pointer;

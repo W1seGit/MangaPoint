@@ -115,6 +115,26 @@ try {
   r.check('pages load as it scrolls and the ones left behind are let go', Math.max(...after) > Math.max(...before) && Math.min(...after) > Math.min(...before) && after.length < tiles / 3, `${before[0]}-${before.at(-1)} -> ${after[0]}-${after.at(-1)}`);
   await closeReader(page);
 
+  // ---- a chapter ends where it ends; the next one is opened with a button ----
+  await openBook(page, 'Hero Saga');
+  await sleep(800);
+  await page.eval("document.querySelector('#reader-stage').scrollTop = 1e9");
+  await sleep(1200);
+  await page.eval("document.querySelector('#reader-stage').scrollTop = 1e9");
+  await sleep(800);
+  r.check('scrolling to the end does not run into the next chapter', (await page.eval("document.querySelectorAll('.reader-chapter').length")) === 1);
+  r.check('the end has a next chapter button', !!(await page.eval("!!document.querySelector('#reader-next-chapter')")));
+  const was = await chapterLabel(page);
+  await page.eval("document.querySelector('#reader-next-chapter').click()");
+  await sleep(900);
+  r.check('the next chapter button opens the next chapter', (await chapterLabel(page)) !== was && Number(/\d+/.exec(await chapterLabel(page))) > Number(/\d+/.exec(was)), `${was} -> ${await chapterLabel(page)}`);
+  await page.eval("document.querySelector('#reader-stage').scrollTop = 1e9");
+  await sleep(1200);
+  await page.eval("document.querySelector('#reader-stage').scrollTop = 1e9");
+  await sleep(600);
+  r.check('and a previous chapter button goes back', !!(await page.eval("!!document.querySelector('#reader-prev-chapter')")));
+  await closeReader(page);
+
   // ---- the update dialog ----
   await page.eval("window.__mark = 1; window.__mp.emit({ t: 'sw_update' })");
   await page.waitFor("!!document.querySelector('#update-dialog')", 10, 'the update dialog');

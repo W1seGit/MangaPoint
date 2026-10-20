@@ -420,16 +420,8 @@ impl Ctx {
             view.set(v);
         }
         self.note(index, page, frac, pages);
-        // The next chapter joins the strip before the end is reached.
-        let last = self.view.peek().strip.last().copied().unwrap_or(index);
-        if near_end && last + 1 < chapters.len() {
-            let mut v = self.view.peek().clone();
-            if !v.strip.contains(&(last + 1)) {
-                v.strip.push(last + 1);
-                view.set(v);
-                self.ensure_loaded(last + 1);
-            }
-        }
+        // A chapter ends where it ends: the next one is opened with its button.
+        let _ = near_end;
     }
 }
 
@@ -648,6 +640,7 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
     let show_banner = !d.prefs.hide_small_banner;
     let banner_keys = banner.read().clone().filter(|_| show_banner);
     let next_label = (current + 1 < total).then(|| logic::chapter_label(&d.chapters[current + 1]));
+    let prev_label = (current > 0).then(|| logic::chapter_label(&d.chapters[current - 1]));
 
     rsx! {
         div {
@@ -688,12 +681,12 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
                             if count == 0 {
                                 EndCard {
                                     title: "{label} has no pages", note: "Its pages are missing from this computer. You can download it again.",
-                                    next: next_label.clone(), on_next: move |_| ctx.open_chapter(current + 1), on_back: move |_| state.close_reader(),
+                                    prev: prev_label.clone(), next: next_label.clone(), on_prev: move |_| ctx.open_chapter(current.saturating_sub(1)), on_next: move |_| ctx.open_chapter(current + 1), on_back: move |_| state.close_reader(),
                                 }
                             } else if page >= count {
                                 EndCard {
                                     title: "End of {label}", note: if next_label.is_some() { "This chapter is marked as read." } else { "That was the last downloaded chapter." },
-                                    next: next_label.clone(), on_next: move |_| ctx.open_chapter(current + 1), on_back: move |_| state.close_reader(),
+                                    prev: prev_label.clone(), next: next_label.clone(), on_prev: move |_| ctx.open_chapter(current.saturating_sub(1)), on_next: move |_| ctx.open_chapter(current + 1), on_back: move |_| state.close_reader(),
                                 }
                             } else {
                                 div { class: "reader-page-wrap", key: "{listed.key}-{page}",
@@ -707,7 +700,7 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
                     }
                     Some(Loaded::Ready(_)) => rsx! {
                         div { class: "reader-strip",
-                            for index in v.strip.iter().copied().filter(|i| *i < total) {
+                            for index in v.strip.iter().copied().take(1).filter(|i| *i < total) {
                                 {
                                     let listed = ctx.pages.read().get(&index).cloned();
                                     let c = d.chapters[index].clone();
@@ -738,13 +731,16 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
                                 }
                             }
                             {
-                                let last = v.strip.last().copied().unwrap_or(current).min(total - 1);
+                                let last = current.min(total - 1);
                                 let more = (last + 1 < total).then(|| logic::chapter_label(&d.chapters[last + 1]));
+                                let before = (last > 0).then(|| logic::chapter_label(&d.chapters[last - 1]));
                                 rsx! {
                                     EndCard {
                                         title: "End of {logic::chapter_label(&d.chapters[last])}",
                                         note: if more.is_some() { "" } else { "That was the last downloaded chapter." },
-                                        next: more, on_next: move |_| ctx.open_chapter(last + 1), on_back: move |_| state.close_reader(),
+                                        prev: before, next: more,
+                                        on_prev: move |_| ctx.open_chapter(last.saturating_sub(1)),
+                                        on_next: move |_| ctx.open_chapter(last + 1), on_back: move |_| state.close_reader(),
                                     }
                                 }
                             }
@@ -780,7 +776,9 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
 fn EndCard(
     title: String,
     note: String,
+    prev: Option<String>,
     next: Option<String>,
+    on_prev: EventHandler<()>,
     on_next: EventHandler<()>,
     on_back: EventHandler<()>,
 ) -> Element {
@@ -788,14 +786,22 @@ fn EndCard(
         div { class: "reader-end",
             h2 { "{title}" }
             if !note.is_empty() { p { class: "muted", "{note}" } }
-            if let Some(next) = next {
-                button { class: "btn primary", id: "reader-next-chapter", "aria-label": "Next chapter",
-                    onclick: move |_| on_next.call(()),
-                    "Next chapter · {next}" Icon { name: "arrow-right", size: 16 }
+            div { class: "reader-end-buttons",
+                if let Some(prev) = prev {
+                    button { class: "btn", id: "reader-prev-chapter", "aria-label": "Previous chapter",
+                        onclick: move |_| on_prev.call(()),
+                        Icon { name: "arrow-left", size: 16 } "Previous · {prev}"
+                    }
                 }
-            } else {
-                button { class: "btn", id: "reader-end-back", onclick: move |_| on_back.call(()),
-                    Icon { name: "arrow-left", size: 16 } "Back to your library"
+                if let Some(next) = next {
+                    button { class: "btn primary", id: "reader-next-chapter", "aria-label": "Next chapter",
+                        onclick: move |_| on_next.call(()),
+                        "Next · {next}" Icon { name: "arrow-right", size: 16 }
+                    }
+                } else {
+                    button { class: "btn", id: "reader-end-back", onclick: move |_| on_back.call(()),
+                        Icon { name: "arrow-left", size: 16 } "Back to your library"
+                    }
                 }
             }
         }
@@ -897,6 +903,10 @@ fn ReaderBar(
             div { class: "reader-title grow",
                 strong { id: "reader-title", title: "{title}", "{title}" }
             }
+            button { class: "btn ghost", id: "reader-arrow-left", "aria-label": "Previous chapter", title: "Previous chapter",
+                disabled: current == 0, onclick: move |_| on_chapter.call(current.saturating_sub(1)),
+                Icon { name: "chevron-left", size: 16 }
+            }
             div { class: "menu-anchor",
                 button { class: "btn", id: "reader-chapter-picker", "aria-label": "Chapter", title: "Choose a chapter ( [ and ] )",
                     onclick: move |_| menu.set(!menu()),
@@ -916,6 +926,10 @@ fn ReaderBar(
                         }
                     }
                 }
+            }
+            button { class: "btn ghost", id: "reader-arrow-right", "aria-label": "Next chapter", title: "Next chapter",
+                disabled: current + 1 >= items.len(), onclick: move |_| on_chapter.call(current + 1),
+                Icon { name: "chevron-right", size: 16 }
             }
             PageCounter { pos }
             div { class: "seg", role: "group", "aria-label": "View mode",
