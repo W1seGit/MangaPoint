@@ -8,7 +8,7 @@ use super::{edit, Look, PageSource, Zoom};
 use crate::app::Ctx;
 use crate::bridge;
 use crate::model::Book;
-use crate::ui::widgets::{EmptyState, Icon, ZoomDropdown, ZoomPick};
+use crate::ui::widgets::{EmptyState, Icon, Loading, ZoomDropdown, ZoomPick};
 use dioxus::prelude::*;
 use serde_json::json;
 
@@ -193,11 +193,42 @@ fn select_page(ctx: Ctx, index: usize) {
     bridge::send("editor_scroll", json!({ "index": index }));
 }
 
+/// The pages of a chapter for a phone or tablet: as they were imported, one after the other like
+/// a long page, with nothing between them. Nothing is converted, so there is nothing to compare.
+#[component]
+fn OriginalPages() -> Element {
+    let ctx = use_context::<Ctx>();
+    let e = ctx.export.read().clone();
+    rsx! {
+        div { class: "original-preview continuous", id: "export-preview",
+            div { class: "original-pages", id: "export-pages",
+                {match &e.look {
+                    Look::Idle | Look::Loading => rsx! { Loading { label: "Opening the pages\u{2026}" } },
+                    Look::Failed(message) => rsx! { EmptyState { title: "These pages could not be shown", message: "{message}", compact: true } },
+                    Look::Ready { originals, total, shown, .. } => rsx! {
+                        for (n, url) in originals.iter().enumerate() {
+                            if !url.is_empty() {
+                                img { key: "{n}", class: "original-img", src: "{url}", alt: "Page {n + 1}", decoding: "async" }
+                            }
+                        }
+                        if total > shown {
+                            p { class: "muted small px-more", id: "export-more", "Showing the first {shown} of {total} pages of this chapter." }
+                        }
+                    },
+                }}
+            }
+        }
+    }
+}
+
 #[component]
 pub fn Preview(book: Book) -> Element {
     let ctx = use_context::<Ctx>();
     use_effect(move || bridge::send("editor_start", json!({})));
     let e = ctx.export.read().clone();
+    if device_profiles::is_original(&e.opts.device) {
+        return rsx! { OriginalPages {} };
+    }
     let Some(device) = super::device_of(&e.opts) else {
         return rsx! { EmptyState { title: "Nothing to show", message: "Choose a reader first.", compact: true } };
     };

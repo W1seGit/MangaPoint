@@ -315,3 +315,8 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   .editor-columns.solo { padding-top: 12px; }
   .source-cell { padding-top: 0; }
 }
+
+/* A phone or tablet gets the pages as they are: one long page, nothing between them. */
+.original-preview.continuous { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #000; }
+.original-preview.continuous .original-pages { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; }
+.original-preview.continuous .original-img { display: block; width: 100%; max-width: 760px; height: auto; flex: none; }

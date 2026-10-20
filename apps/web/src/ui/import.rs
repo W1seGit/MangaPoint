@@ -52,6 +52,33 @@ fn edit(ctx: Ctx, index: usize, f: impl FnOnce(&mut Review)) {
     }
 }
 
+/// A book that was committed is now in the library: add it, tell the user when their place in it
+/// came back, and keep its state. True when the browser would not keep the file.
+pub fn kept(ctx: Ctx, book: Book) -> bool {
+    let stored_none = book.stored == "none";
+    let title = book.title.clone();
+    let id = book.id.clone();
+    let mut lib = ctx.library;
+    let waiting = lib.write().add_book(book);
+    if let Some(w) = waiting {
+        if w.last_read_at > 0 {
+            ctx.notify(format!("{title} is back. You were at {}, page {}.", w.position.chapter_name, w.position.page + 1));
+        }
+    }
+    // Chapters edited, so the state's chapter count must follow.
+    if let Some(b) = ctx.book(&id) {
+        let mut lib = ctx.library;
+        let mut guard = lib.write();
+        if let Some(s) = guard.states.get_mut(&b.id) {
+            s.chapters = b.chapters.len() as u32;
+            s.title = b.title.clone();
+        }
+        drop(guard);
+        ctx.save_state_of(&b.id);
+    }
+    stored_none
+}
+
 /// Keep every reviewed book on this device.
 fn keep_all(ctx: Ctx) {
     dioxus::core::spawn_forever(async move {
@@ -72,29 +99,9 @@ fn keep_all(ctx: Ctx) {
             });
             match bridge::call::<Book>("commit", args).await {
                 Ok(book) => {
-                    let stored_none = book.stored == "none";
                     let title = book.title.clone();
-                    let id = book.id.clone();
-                    let mut lib = ctx.library;
-                    let waiting = lib.write().add_book(book);
-                    if let Some(w) = waiting {
-                        if w.last_read_at > 0 {
-                            ctx.notify(format!("{title} is back. You were at {}, page {}.", w.position.chapter_name, w.position.page + 1));
-                        }
-                    }
-                    if stored_none {
+                    if kept(ctx, book) {
                         lost.push(title);
-                    }
-                    // Chapters edited, so the state's chapter count must follow.
-                    if let Some(b) = ctx.book(&id) {
-                        let mut lib = ctx.library;
-                        let mut guard = lib.write();
-                        if let Some(s) = guard.states.get_mut(&b.id) {
-                            s.chapters = b.chapters.len() as u32;
-                            s.title = b.title.clone();
-                        }
-                        drop(guard);
-                        ctx.save_state_of(&b.id);
                     }
                     added += 1;
                 }

@@ -32,6 +32,8 @@ pub const BIG_PAGES: usize = 600;
 pub const BIG_BYTES: u64 = 300_000_000;
 /// How many pages of a chapter the preview shows (it converts them in one go).
 pub const PREVIEW_PAGES: usize = 24;
+/// How many pages of a chapter are shown for a phone or tablet, which converts nothing.
+pub const ORIGINAL_PAGES: usize = 60;
 /// The made-up book the screen shows before anything is imported (like the app's sample pages).
 pub const SAMPLE: &str = "sample";
 /// The preset entry that stands for "how this book was last exported".
@@ -42,7 +44,28 @@ pub enum Run {
     Idle,
     Running { fraction: f32, label: String, status: String, elapsed: f64 },
     Done { files: Vec<ExportFile>, pages: usize },
+    /// The files are being kept in the library.
+    Adding,
+    /// The files were kept in the library, as these books.
+    Added(Vec<String>),
     Failed(String),
+}
+
+/// Where the files go.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Target {
+    /// Downloaded by the browser, into its folder for downloads.
+    #[default]
+    Folder,
+    /// Kept in MangaPoint's library, ready to read.
+    Library,
+}
+
+impl Target {
+    /// The library keeps what it can open: CBZ and EPUB.
+    pub fn takes(self, file_type: FileType) -> bool {
+        self == Target::Folder || matches!(file_type, FileType::Cbz | FileType::Epub)
+    }
 }
 
 /// What the middle of the screen shows.
@@ -114,6 +137,8 @@ pub struct ExportUi {
     pub preset: String,
     pub every: usize,
     pub run: Run,
+    /// Where the files go.
+    pub target: Target,
     pub started: bool,
     /// The chapter whose pages are on show.
     pub shown: usize,
@@ -150,6 +175,7 @@ impl Default for ExportUi {
             preset: "manga".into(),
             every: 5,
             run: Run::Idle,
+            target: Target::Folder,
             started: false,
             shown: 0,
             look: Look::Idle,
@@ -386,7 +412,13 @@ pub fn reader_changed(ctx: Ctx) {
     }
     opts.settings = settings;
     opts.grouping = old.grouping;
-    edit(ctx, |e| e.opts = opts);
+    edit(ctx, |e| {
+        e.opts = opts;
+        // The library keeps CBZ and EPUB only.
+        if !e.target.takes(e.opts.file_type()) {
+            e.target = Target::Folder;
+        }
+    });
     remember_choices(ctx);
 }
 
@@ -395,6 +427,10 @@ pub fn set_format(ctx: Ctx, format: FileType) {
         e.opts.format = Some(format);
         if let Some(out) = format.output() {
             e.opts.settings.set_output(out);
+        }
+        // The library keeps CBZ and EPUB only.
+        if !e.target.takes(e.opts.file_type()) {
+            e.target = Target::Folder;
         }
     });
 }
@@ -439,6 +475,10 @@ fn start_export(ctx: Ctx) {
         ctx.warn("Pick at least one chapter.");
         return;
     }
+    if !e.target.takes(e.opts.file_type()) {
+        ctx.warn("The library keeps CBZ and EPUB files. Choose one of them, or send the files to a folder.");
+        return;
+    }
     let mut opts = e.opts.clone();
     opts.title = book.title.clone();
     opts.created = bridge::now_ms() / 1000;
@@ -464,6 +504,7 @@ pub fn handle_export_event(ctx: Ctx, ev: Event) {
     let mut recorded = false;
     let mut failed: Option<String> = None;
     let mut finished: Option<usize> = None;
+    let mut to_library = false;
     edit(ctx, |e| match ev {
         Event::ExportStatus { message } => {
             if let Run::Running { status, .. } = &mut e.run {
@@ -479,9 +520,14 @@ pub fn handle_export_event(ctx: Ctx, ev: Event) {
             e.run = Run::Running { fraction: fraction as f32, label, status, elapsed };
         }
         Event::ExportDone { files, pages } => {
-            finished = Some(files.len());
-            e.run = Run::Done { files, pages };
             recorded = true;
+            if e.target == Target::Library {
+                to_library = true;
+                e.run = Run::Adding;
+            } else {
+                finished = Some(files.len());
+                e.run = Run::Done { files, pages };
+            }
         }
         Event::ExportError { message } => {
             failed = Some(message.clone());
@@ -491,6 +537,9 @@ pub fn handle_export_event(ctx: Ctx, ev: Event) {
         _ => {}
     });
     let title = ctx.export.peek().book.as_ref().and_then(|id| ctx.book(id)).map(|b| b.title).unwrap_or_default();
+    if to_library {
+        add_to_library(ctx);
+    }
     if let Some(n) = finished {
         ctx.notify(format!("{title}: exported {}", plural(n, "file")));
     }
@@ -505,6 +554,46 @@ pub fn handle_export_event(ctx: Ctx, ev: Event) {
             ctx.save_last_exports();
         }
     }
+}
+
+#[derive(Deserialize)]
+struct Failure {
+    name: String,
+    message: String,
+}
+
+#[derive(Deserialize)]
+struct Kept {
+    books: Vec<Book>,
+    failures: Vec<Failure>,
+}
+
+/// The files that were made go into the library, as if they had been imported.
+fn add_to_library(ctx: Ctx) {
+    dioxus::core::spawn_forever(async move {
+        match bridge::call::<Kept>("export_to_library", json!({})).await {
+            Ok(kept) => {
+                let titles: Vec<String> = kept.books.iter().map(|b| b.title.clone()).collect();
+                for book in kept.books {
+                    crate::ui::import::kept(ctx, book);
+                }
+                for f in &kept.failures {
+                    ctx.error(format!("{}: {}", f.name, f.message));
+                }
+                if titles.is_empty() {
+                    edit(ctx, |e| e.run = Run::Failed("Nothing could be added to the library.".into()));
+                } else {
+                    ctx.notify(format!("Added {} to your library.", plural(titles.len(), "book")));
+                    edit(ctx, |e| e.run = Run::Added(titles));
+                }
+            }
+            Err(message) => {
+                ctx.error(format!("Could not add the files to the library: {message}"));
+                edit(ctx, |e| e.run = Run::Failed(message));
+            }
+        }
+        let _ = bridge::call_ok("free_export", json!({})).await;
+    });
 }
 
 pub fn cancel_export(ctx: Ctx) {
@@ -547,7 +636,8 @@ fn request_preview(ctx: Ctx) {
         w.stamp += 1;
         w.stamp
     };
-    let shown = chapter.count.min(PREVIEW_PAGES);
+    let original = device_profiles::is_original(&e.opts.device);
+    let shown = chapter.count.min(if original { ORIGINAL_PAGES } else { PREVIEW_PAGES });
     let (first, total) = (chapter.first, chapter.count);
     let opts = e.opts.clone();
     let book_id = book.id.clone();
@@ -574,7 +664,12 @@ fn request_preview(ctx: Ctx) {
             release_held(ctx);
             return;
         }
-        let sizes = bridge::call::<Vec<(u32, u32)>>("image_sizes", json!({ "urls": originals })).await.unwrap_or_default();
+        // A phone or tablet gets the pages as they are: there is nothing to convert or to measure.
+        let sizes = if original {
+            Vec::new()
+        } else {
+            bridge::call::<Vec<(u32, u32)>>("image_sizes", json!({ "urls": originals })).await.unwrap_or_default()
+        };
         if !fresh(ctx) {
             edit(ctx, |e| e.held.extend(held));
             release_held(ctx);
@@ -584,6 +679,9 @@ fn request_preview(ctx: Ctx) {
             e.held = held;
             e.look = Look::Ready { originals: originals.clone(), converted: Vec::new(), total, shown, sources: Vec::new(), sizes: sizes.clone() };
         });
+        if original {
+            return;
+        }
         let made = bridge::call::<Previewed>("preview", json!({ "options": opts, "book": book_id, "first": first, "count": shown })).await;
         if !fresh(ctx) {
             return;

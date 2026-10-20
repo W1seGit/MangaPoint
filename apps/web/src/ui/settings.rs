@@ -1,7 +1,7 @@
 //! Settings and About: what is kept on this device, the reading-state file,
 //! the privacy promise, installing the app, and deleting everything.
 
-use super::widgets::{Icon, ProgressBar, SettingRow};
+use super::widgets::{Icon, ProgressBar, SettingRow, Toggle};
 use crate::app::{current_iso, Ctx, Modal, ModalAction};
 use crate::bridge::{self, StorageInfo};
 use crate::format::{human_bytes, plural};
@@ -107,6 +107,7 @@ pub fn SettingsPage() -> Element {
     let engine = web_engine::engine_version();
 
     let mut section = ctx.settings_section;
+    let books_label = plural(books, "book");
     let storage_note = {
         let mut note = format!("{}, {} imported.", plural(books, "book"), human_bytes(total));
         if i.quota > 0.0 {
@@ -138,18 +139,26 @@ pub fn SettingsPage() -> Element {
                                 label: "Storage on this device",
                                 help: "MangaPoint on the web runs entirely in your browser. The books you import, your reading place and the files you export are never uploaded: there is no account, no analytics and no server that stores anything of yours. Books are kept in this browser's private storage. Browsers may delete a site's data when the device runs low on space, unless you allow this; keeping your library safe asks the browser not to.",
                                 note: storage_note,
-                                if caps.persist {
-                                    if i.persisted {
-                                        span { class: "chip ok", id: "persisted", "Protected from clean-up" }
-                                    } else {
-                                        button { class: "btn", id: "persist",
-                                            onclick: move |_| { dioxus::core::spawn_forever(async move {
-                                                let granted = bridge::call::<bool>("persist", json!({})).await.unwrap_or(false);
-                                                if granted { ctx.notify("Your library is now protected from automatic clean-up."); } else { ctx.warn("The browser did not agree. Installing the app, or using the site more, often makes it say yes."); }
-                                                refresh.set(refresh() + 1);
-                                            }); },
-                                            Icon { name: "lock", size: 15 } "Keep my library safe"
-                                        }
+                                span { class: "muted", "{books_label}" }
+                            }
+                            if caps.persist {
+                                SettingRow {
+                                    label: "Keep my library safe",
+                                    help: "Asks the browser not to delete this site's data when the device runs low on space. A browser does not let a site take this back: to turn it off, use the site settings of your browser (or Delete everything below).",
+                                    note: if i.persisted { "The browser will not clear your library by itself.".to_string() } else { "The browser may clear your library when the device runs low on space.".to_string() },
+                                    Toggle {
+                                        on: i.persisted, label: "Keep my library safe".to_string(),
+                                        onchange: move |on: bool| {
+                                            if on {
+                                                dioxus::core::spawn_forever(async move {
+                                                    let granted = bridge::call::<bool>("persist", json!({})).await.unwrap_or(false);
+                                                    if granted { ctx.notify("Your library is now protected from automatic clean-up."); } else { ctx.warn("The browser did not agree. Installing the app, or using the site more, often makes it say yes."); }
+                                                    refresh.set(refresh() + 1);
+                                                });
+                                            } else {
+                                                ctx.warn("A browser does not let a site take this back. To turn it off, open this site's settings in your browser and clear its stored data.");
+                                            }
+                                        },
                                     }
                                 }
                             }

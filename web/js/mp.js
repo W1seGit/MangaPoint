@@ -321,6 +321,20 @@ const handlers = {
     return { books, states, meta, caps, persisted: await (navigator.storage?.persisted?.() ?? false) };
   },
 
+  /** Keep the files of the last export as books in the library, as if they had been imported. */
+  async export_to_library() {
+    const books = [];
+    const failures = [];
+    for (const f of exportResult) {
+      const blob = await (await fetch(f.url)).blob();
+      const file = new File([blob], f.name);
+      const r = await importer.analyze([{ file, path: f.name }]);
+      failures.push(...r.failures);
+      for (const d of r.drafts) books.push(await importer.commit(d.draft_id, {}));
+    }
+    return { books, failures };
+  },
+
   async commit({ draft_id, title, chapters }) {
     const rec = await importer.commit(draft_id, { title, chapters }, (done, total) => emit({ t: 'commit_progress', done, total }));
     return rec;

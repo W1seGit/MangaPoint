@@ -5,7 +5,7 @@
 use super::conversion::ConversionControls;
 use super::{
     cancel_export, chosen_size, edit, export_book_quiet, group_of, is_big, is_edited, keep_output, on, set_format,
-    start_export, use_preset, Group, LastExport, Panel, Run, LAST,
+    start_export, use_preset, Group, Target, LastExport, Panel, Run, LAST,
 };
 use crate::app::{Ctx, Modal, ModalAction};
 use crate::bridge::{self};
@@ -344,8 +344,9 @@ pub fn SendPanel(book: Book, open: bool) -> Element {
     let offers_color = profile.as_ref().is_some_and(|p| e.opts.settings.offers_color(p));
     let keeps_color = profile.as_ref().is_some_and(|p| e.opts.settings.keeps_color(p));
     let grouping = group_of(e.opts.grouping);
-    let running = matches!(e.run, Run::Running { .. });
+    let running = matches!(e.run, Run::Running { .. } | Run::Adding);
     let every_n_valid = e.every >= 1;
+    let library_ok = Target::Library.takes(ftype);
     let _ = &book;
     // What the book is made as: only the formats this reader lists (all of them if it lists none,
     // so there is always something to pick). Each has its explanation behind a question mark.
@@ -358,6 +359,21 @@ pub fn SendPanel(book: Book, open: bool) -> Element {
         Panel { title: "Send to", icon: "file-down", id: "send", height: 600, open,
             div { class: "px-label", "Reader" }
             ReaderPicker {}
+            div { class: "px-label", style: "margin-top: 16px", "Send to" }
+            div { class: "seg stack", role: "group", "aria-label": "Send to", id: "export-target",
+                button { id: "export-target-folder", disabled: running, class: on(e.target == Target::Folder),
+                    onclick: move |_| edit(ctx, |e| e.target = Target::Folder),
+                    Icon { name: "folder-open", size: 16 } "Folder"
+                }
+                button { id: "export-target-library", disabled: running || !library_ok, class: on(e.target == Target::Library),
+                    title: if library_ok { "Keep the files in your MangaPoint library, ready to read" } else { "The library keeps CBZ and EPUB files: choose one of them" },
+                    onclick: move |_| edit(ctx, |e| e.target = Target::Library),
+                    Icon { name: "book-open", size: 16 } "Library"
+                }
+            }
+            div { class: "muted small", style: "margin-top: 6px",
+                if e.target == Target::Library { "The files are kept in your library, ready to read." } else { "The files are downloaded by your browser, into its Downloads folder." }
+            }
             div { class: "px-label", style: "margin-top: 16px", "Format" }
             if phone {
                 div { class: "seg", id: "export-format", role: "group", "aria-label": "Format",
@@ -479,7 +495,7 @@ pub fn ExportFooter(book: Book, compact: bool) -> Element {
             }
             button {
                 class: "btn primary big", id: "export-start", style: if compact { "" } else { "margin-top: 10px" },
-                disabled: sample || chapters == 0 || running || !every_ok,
+                disabled: sample || chapters == 0 || running || matches!(e.run, Run::Adding) || !every_ok,
                 onclick: move |_| start_export(ctx),
                 if running || sample || chapters == 0 { "{label}" } else { Icon { name: "file-down", size: 18 } "{label}" }
             }
@@ -525,6 +541,32 @@ pub fn RunCard(book: Book) -> Element {
                         ProgressBar { fraction: Some(*fraction) }
                         div { class: "muted small", id: "export-status", "{status} \u{b7} {(*fraction * 100.0).round()}%" }
                         p { class: "muted small", style: "margin: 6px 0 0", "Keep this tab open. The page stays usable while the files are made." }
+                    }
+                },
+                Run::Adding => rsx! {
+                    div { class: "card export-progress", id: "export-adding",
+                        div { class: "row", strong { class: "grow", "Adding to your library\u{2026}" } }
+                        ProgressBar { fraction: None }
+                    }
+                },
+                Run::Added(titles) => rsx! {
+                    div { class: "card export-done", id: "export-added",
+                        div { class: "row",
+                            Icon { name: "circle-check", size: 18 }
+                            strong { class: "grow", "Added to your library: {plural(titles.len(), \"book\")}" }
+                        }
+                        div { class: "export-files",
+                            for t in titles.iter() {
+                                div { class: "list-row export-file", key: "{t}",
+                                    Icon { name: "book-open", size: 18 }
+                                    div { class: "grow", strong { class: "export-file-name", "{t}" } }
+                                }
+                            }
+                        }
+                        div { class: "row", style: "margin-top: 8px",
+                            button { class: "btn primary", id: "export-open-library", onclick: move |_| ctx.go(crate::app::Page::Library), Icon { name: "book-open", size: 15 } "Open the library" }
+                            button { class: "btn ghost", id: "export-again", onclick: move |_| edit(ctx, |e| e.run = Run::Idle), "Export something else" }
+                        }
                     }
                 },
                 Run::Done { files, pages } => rsx! {

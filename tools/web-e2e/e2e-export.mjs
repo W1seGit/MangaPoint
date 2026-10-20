@@ -185,12 +185,36 @@ try {
   const fm = await page.eval("[...document.querySelectorAll('#export-format button')].map(b => b.id.replace('export-format-', ''))");
   r.check('Phone or tablet offers CBZ and PDF', fm.join() === 'CBZ,PDF', fm.join());
   await page.shot(`${viewport}-32-export-phone`);
+  // A phone or tablet gets the pages as they are: one long page, nothing between them, no Compare.
+  await page.waitFor("document.querySelectorAll('.original-img').length > 1", 30, 'the original pages');
+  r.check('phone or tablet: no Compare, no switch, no page list', !(await page.eval("!!document.querySelector('#export-compare, .compare-tab, .editor-mobile-switch, .editor-thumbnails, .editor-row')")));
+  r.check('the pages touch each other, with no gap', await page.eval("(() => { const a = [...document.querySelectorAll('.original-img')]; return a.length > 1 && a.slice(1).every((im, i) => Math.abs(im.getBoundingClientRect().top - a[i].getBoundingClientRect().bottom) < 1); })()"));
   await runExport('PDF');
   r.check('PDF export finished', await page.eval("!!document.querySelector('#export-done')"), await page.eval("document.querySelector('#export-error')?.innerText || ''"));
   await page.click('.export-download');
   const pdf = await waitFile('.pdf');
   r.check('PDF downloaded and starts with %PDF', !!pdf && readFileSync(pdf).toString('latin1', 0, 4) === '%PDF');
   await page.click('#export-again');
+
+  // Send to the library instead of a folder: CBZ and EPUB only.
+  r.check('the library is not offered for a PDF', await page.eval("document.querySelector('#export-target-library').disabled"));
+  await page.click('#export-format-CBZ');
+  r.check('the library is offered for a CBZ', !(await page.eval("document.querySelector('#export-target-library').disabled")));
+  await page.click('#export-target-library');
+  await clearToasts(page);
+  await page.click('#export-start');
+  await page.waitFor("!!document.querySelector('#export-added, #export-error')", 60, 'the files to reach the library');
+  r.check('the files were added to the library', await page.eval("!!document.querySelector('#export-added')"), await page.eval("document.querySelector('#export-error')?.innerText || ''"));
+  r.check('no files were offered for download', !(await page.eval("!!document.querySelector('.export-download')")));
+  await page.click('#export-open-library');
+  await sleep(600);
+  r.check('Open the library goes to the library', !(await page.eval("!!document.querySelector('#export-screen')")));
+  r.check('the new book is in the library', (await page.eval("document.body.innerText.match(/Hero Saga/g) || []")).length >= 2);
+  await nav(page, 'Export');
+  await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-format')", 10, 'export screen again');
+  await clearToasts(page);
+  await openPanels();
+  await page.click('#export-target-folder');
 
   // Cancel mid-export
   await pickReader('/Libra Test/');
