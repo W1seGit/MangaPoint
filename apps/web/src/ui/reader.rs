@@ -6,7 +6,7 @@ use super::widgets::{EmptyState, Icon, SettingRow};
 use crate::app::{Ctx, Reading};
 use crate::bridge::{self, Event};
 use crate::model::Book;
-use crate::reader_logic::{self as logic, Action, ReaderLook, Zone, ZoomChoice};
+use crate::reader_logic::{self as logic, Action, ReaderLook, ZoomChoice};
 use dioxus::prelude::*;
 use library::{PageDirection, ReadFit, ReadMode};
 use serde_json::json;
@@ -109,7 +109,7 @@ fn set_prefs(ctx: Ctx, f: impl FnOnce(&mut Prefs)) {
     ctx.save_state_of(&book.id);
 }
 
-fn open_chapter(ctx: Ctx, index: usize) {
+pub fn open_chapter(ctx: Ctx, index: usize) {
     let Some(r) = ctx.reading.peek().clone() else { return };
     let Some(book) = ctx.book(&r.book_id) else { return };
     if index >= book.chapters.len() {
@@ -245,13 +245,15 @@ pub fn handle_reader_event(ctx: Ctx, ev: Event) {
                 apply_action(ctx, a);
             }
         }
-        Event::Tap { x, w } => {
-            let zone = logic::zone_at(x, w);
-            let action = match look.mode {
-                ReadMode::Paged => logic::zone_action(zone, look.direction),
-                ReadMode::Scroll => logic::strip_tap_action(zone),
-            };
-            apply_action(ctx, action);
+        // A tap anywhere, even beside the page, shows or hides the bars. Pages turn by the wheel,
+        // a swipe, the keys or the arrows, so a tap never turns one by mistake.
+        Event::Tap { .. } => apply_action(ctx, Action::ToggleBar),
+        Event::Turn { forward } => {
+            if look.mode == ReadMode::Paged {
+                apply_action(ctx, if forward { Action::Next } else { Action::Prev });
+                // Scrolling back brings the bars in; scrolling on takes them away.
+                set_reading(ctx, |r| r.bar = !forward);
+            }
         }
         Event::Swipe { dx } => {
             if look.mode == ReadMode::Paged {
@@ -578,11 +580,12 @@ fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
     let ctx = use_context::<Ctx>();
     rsx! {
         div { class: "reader-settings", id: "reader-settings", role: "dialog", "aria-label": "Reading settings",
+          div { class: "reader-settings-inner",
             header { class: "reader-settings-head",
-                h2 { "Reading settings" }
-                button { class: "reader-round", id: "reader-settings-close", "aria-label": "Close", title: "Close",
-                    onclick: move |_| on_close.call(()), Icon { name: "x", size: 20 }
+                button { class: "reader-round", id: "reader-settings-close", "aria-label": "Back to the book", title: "Back to the book",
+                    onclick: move |_| on_close.call(()), Icon { name: "arrow-left", size: 20 }
                 }
+                h2 { "Reading settings" }
             }
             div { class: "reader-settings-body",
                 SettingRow { label: "Reading mode", help: "Paged shows one page at a time. Scroll is one long strip, best for webtoons and manhwa.",
@@ -609,6 +612,7 @@ fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
                     ZoomMenu { look }
                 }
             }
+          }
         }
     }
 }
@@ -669,12 +673,4 @@ fn look_fit(ctx: Ctx) -> ReadFit {
     let Some(r) = ctx.reading.peek().clone() else { return ReadFit::Height };
     let Some(book) = ctx.book(&r.book_id) else { return ReadFit::Height };
     look_of(ctx, &book).fit
-}
-
-pub fn zone_label(z: Zone) -> &'static str {
-    match z {
-        Zone::Left => "left",
-        Zone::Middle => "middle",
-        Zone::Right => "right",
-    }
 }

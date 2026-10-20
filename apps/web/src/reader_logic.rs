@@ -111,28 +111,6 @@ pub fn chapter_step(total: usize, current: usize, forward: bool) -> Option<usize
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Zone {
-    Left,
-    Middle,
-    Right,
-}
-
-/// The third of a `width` wide area that `x` is in.
-pub fn zone_at(x: f64, width: f64) -> Zone {
-    if !x.is_finite() || !width.is_finite() || width <= 0.0 {
-        return Zone::Middle;
-    }
-    let f = x / width;
-    if f < 1.0 / 3.0 {
-        Zone::Left
-    } else if f > 2.0 / 3.0 {
-        Zone::Right
-    } else {
-        Zone::Middle
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     Next,
     Prev,
@@ -148,22 +126,6 @@ pub enum Action {
     ZoomReset,
     Fullscreen,
     Back,
-}
-
-/// What pressing a third of the page does: the sides turn the page (which way
-/// depends on the reading direction), the middle shows or hides the bar.
-pub fn zone_action(zone: Zone, direction: PageDirection) -> Action {
-    match (zone, direction) {
-        (Zone::Middle, _) => Action::ToggleBar,
-        (Zone::Left, PageDirection::LeftToRight) | (Zone::Right, PageDirection::RightToLeft) => Action::Prev,
-        (Zone::Right, PageDirection::LeftToRight) | (Zone::Left, PageDirection::RightToLeft) => Action::Next,
-    }
-}
-
-/// A tap in the strip: anywhere shows or hides the bars (the strip scrolls by
-/// itself, so the sides need no page-turn).
-pub fn strip_tap_action(_zone: Zone) -> Action {
-    Action::ToggleBar
 }
 
 /// What a swipe along the page does: dragging the page away turns to the next
@@ -401,21 +363,6 @@ mod tests {
         assert_eq!(chapter_step(3, 1, false), Some(0));
         assert_eq!(chapter_step(3, 2, true), None);
         assert_eq!(chapter_step(3, 7, false), None);
-    }
-
-    #[test]
-    fn thirds_and_what_they_do() {
-        assert_eq!(zone_at(10.0, 300.0), Zone::Left);
-        assert_eq!(zone_at(150.0, 300.0), Zone::Middle);
-        assert_eq!(zone_at(290.0, 300.0), Zone::Right);
-        assert_eq!(zone_at(f64::NAN, 300.0), Zone::Middle);
-        assert_eq!(zone_at(10.0, 0.0), Zone::Middle);
-        assert_eq!(zone_action(Zone::Right, Ltr), Action::Next);
-        assert_eq!(zone_action(Zone::Right, Rtl), Action::Prev);
-        assert_eq!(zone_action(Zone::Left, Rtl), Action::Next);
-        assert_eq!(zone_action(Zone::Middle, Rtl), Action::ToggleBar);
-        assert_eq!(strip_tap_action(Zone::Right), Action::ToggleBar);
-        assert_eq!(strip_tap_action(Zone::Left), Action::ToggleBar);
     }
 
     #[test]

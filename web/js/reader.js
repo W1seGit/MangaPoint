@@ -219,7 +219,10 @@ function onPointerDown(e) {
   if (e.target.closest('button, a, input, select, .reader-fail, .reader-end')) return;
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (pointers.size === 1) {
-    gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: false, pinch: false };
+    gesture = {
+      id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), moved: false, pinch: false,
+      atTop: stage.scrollTop <= 2, atBottom: stage.scrollTop + stage.clientHeight >= stage.scrollHeight - 2,
+    };
   } else if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const reader = document.getElementById('reader');
@@ -284,13 +287,45 @@ function onPointerUp(e) {
     // Only turns the page when the page is not zoomed past the window.
     const zoomed = stage.scrollWidth > stage.clientWidth + 4;
     if (!zoomed) emit({ t: 'swipe', dx, dy });
+  } else if (document.getElementById('reader')?.dataset.mode === 'paged' && Math.abs(dy) > 48 && Math.abs(dy) > Math.abs(dx) * 1.6 && dt < 900) {
+    // Dragging the page up turns to the next one, down to the one before; a page taller than the
+    // window is scrolled first, and turns once it has reached its end.
+    const forward = dy < 0;
+    if (forward ? g.atBottom : g.atTop) {
+      emit({ t: 'scroll', up: !forward });
+      emit({ t: 'turn', forward });
+    }
   }
 }
 
+// The wheel in paged mode: a page taller than the window scrolls first; at its end the wheel
+// turns the page. A trackpad sends many small events, so they are added up and the turns spaced.
+let wheelSum = 0;
+let wheelCool = 0;
+
 function onWheel(e) {
-  if (!e.ctrlKey) return;
+  if (e.ctrlKey) {
+    e.preventDefault();
+    emit({ t: 'wheel', dy: e.deltaY });
+    return;
+  }
+  const reader = document.getElementById('reader');
+  if (!reader || reader.dataset.mode !== 'paged') return; // the strip scrolls by itself
+  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return; // sideways: moving about a zoomed page
+  const stage = e.currentTarget;
+  const down = e.deltaY > 0;
+  const room = down ? stage.scrollTop + stage.clientHeight < stage.scrollHeight - 2 : stage.scrollTop > 2;
+  if (room) return; // the page itself scrolls
   e.preventDefault();
-  emit({ t: 'wheel', dy: e.deltaY });
+  const now = performance.now();
+  if (now < wheelCool) return;
+  wheelSum += e.deltaY;
+  if (Math.abs(wheelSum) < 30) return;
+  const forward = wheelSum > 0;
+  wheelSum = 0;
+  wheelCool = now + 420;
+  emit({ t: 'scroll', up: !forward });
+  emit({ t: 'turn', forward });
 }
 
 // ---- where the reader is (scroll mode) --------------------------------------------------------
@@ -351,29 +386,14 @@ function onScroll(e) {
 
 // ---- commands from the UI ---------------------------------------------------------------------------
 
-let pushed = false;
-let ignorePop = false;
-
 export const commands = {
-  /** The reader opened: the system Back button should close it, not leave the site. */
+  /** The reader opened (its address is /read/..., so the Back button leaves it). */
   opened() {
     lastTop = 0;
     lastUp = null;
     quiet(1000);
-    if (!pushed) {
-      history.pushState({ reader: 1 }, '');
-      pushed = true;
-    }
   },
-  closed() {
-    if (pushed) {
-      pushed = false;
-      if (history.state && history.state.reader) {
-        ignorePop = true;
-        history.back();
-      }
-    }
-  },
+  closed() {},
   scrollPages(n) {
     const s = document.querySelector('.reader-stage');
     s?.scrollBy({ top: n * s.clientHeight * 0.9, behavior: 'smooth' });
@@ -413,16 +433,6 @@ export function installReader(emitter) {
   window.addEventListener('keydown', onKey);
   // Anything the visitor does by hand may show or hide the bars: the next scroll decides afresh.
   window.addEventListener('pointerdown', () => { lastUp = null; }, true);
-  window.addEventListener('popstate', () => {
-    if (ignorePop) {
-      ignorePop = false;
-      return;
-    }
-    if (pushed) {
-      pushed = false;
-      emit({ t: 'key', key: 'Escape', shift: false, ctrl: false });
-    }
-  });
   const mo = new MutationObserver((records) => {
     for (const r of records) {
       for (const n of r.removedNodes) unscan(n);

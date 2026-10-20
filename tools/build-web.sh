@@ -54,6 +54,8 @@ fi
 
 echo "== site files =="
 cp "$root/web/index.html" "$root/web/manifest.webmanifest" "$dist/"
+# Hosts that show a page for unknown addresses (GitHub Pages) show the app at /export and the rest.
+cp "$root/web/index.html" "$dist/404.html"
 cp -r "$root/web/js" "$dist/js"
 rm -rf "$dist/js/test"
 cp -r "$root/web/icons" "$dist/icons"

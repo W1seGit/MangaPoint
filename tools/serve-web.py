@@ -23,6 +23,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                       ".wasm": "application/wasm", ".js": "text/javascript",
                       ".webmanifest": "application/manifest+json"}
 
+    def send_head(self):
+        # The app is one page: /export, /settings and /read/... are the page itself.
+        path = self.translate_path(self.path.split("?", 1)[0].split("#", 1)[0])
+        if not os.path.exists(path) and "." not in os.path.basename(path):
+            self.path = "/index.html"
+        return super().send_head()
+
     def end_headers(self):
         # Revalidate every time, so a rebuild shows up; the service worker has its own cache.
         self.send_header("Cache-Control", "no-cache")

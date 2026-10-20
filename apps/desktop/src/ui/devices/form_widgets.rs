@@ -4,7 +4,7 @@ use crate::ui::widgets::Icon;
 use dioxus::prelude::*;
 
 /// The file types a reader can be said to open.
-const FORMAT_OPTIONS: [&str; 3] = ["XTC", "XTCH", "EPUB"];
+const FORMAT_OPTIONS: [&str; 4] = ["XTC", "XTCH", "EPUB", "CBZ"];
 
 /// The formats as a row of pills inside a box: type one and press Enter, or
 /// pick from the list that opens under the box.

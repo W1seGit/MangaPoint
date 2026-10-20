@@ -8,7 +8,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const skipBig = process.argv.includes('--skip-big');
 const plan = [];
 for (const vp of ['desktop', 'tablet', 'phone']) {
-  for (const t of ['import', 'read', 'chrome', 'export', 'state']) plan.push([t, vp]);
+  for (const t of ['import', 'read', 'chrome', 'export', 'state', 'routes']) plan.push([t, vp]);
 }
 if (!skipBig) plan.push(['big', 'desktop']);
 let failed = 0;

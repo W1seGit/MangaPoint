@@ -146,9 +146,11 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg, #0a0a0a); color: var(--text);
   padding-top: var(--sat);
 }
-.reader-settings-head { display: flex; align-items: center; justify-content: space-between; padding: 14px max(18px, var(--sar)) 6px max(18px, var(--sal)); }
+.reader-settings { overflow-y: auto; }
+.reader-settings-inner { width: 100%; max-width: 680px; margin: 0 auto; box-sizing: border-box; padding: 0 max(20px, var(--sar)) calc(28px + var(--sab)) max(20px, var(--sal)); }
+.reader-settings-head { display: flex; align-items: center; gap: 14px; padding: 16px 0 10px; }
 .reader-settings-head h2 { margin: 0; font-size: 1.3rem; }
-.reader-settings-body { flex: 1; overflow-y: auto; width: 100%; max-width: 680px; margin: 0 auto; padding: 8px 20px calc(28px + var(--sab)); box-sizing: border-box; }
+.reader-settings-body { padding: 8px 0 0; }
 .reader-settings .seg button { flex: 1; }
 .reader-settings .zoom-menu { width: 100%; max-width: 300px; margin-left: auto; }
 

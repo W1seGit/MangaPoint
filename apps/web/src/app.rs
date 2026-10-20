@@ -124,6 +124,8 @@ pub struct Ctx {
     /// The user's readers (and the one in use), as the app keeps them in its settings: the
     /// list, each one's size, colour and file types. Kept in this browser.
     pub readers: Signal<library::Settings>,
+    /// The address bar has been read: from now on it follows the screen.
+    pub routed: Signal<bool>,
     /// Which part of Settings is open.
     pub settings_section: Signal<ui::settings::Section>,
     pub next_id: Signal<u64>,
@@ -246,6 +248,7 @@ pub fn App() -> Element {
         last_exports: use_signal(Default::default),
         narrow: use_signal(|| false),
         readers: use_signal(library::Settings::default),
+        routed: use_signal(|| false),
         settings_section: use_signal(|| ui::settings::Section::Library),
         next_id: use_signal(|| 0),
         state_file: use_signal(|| None),
@@ -303,6 +306,8 @@ pub fn App() -> Element {
                     ctx.error(e);
                 }
                 boot_state.set(Boot::Ready);
+                // Which screen the address bar names (a book that was being read, Export, ...).
+                bridge::send("route_ready", json!({}));
             }
             Err(e) => {
                 let mut boot_state = ctx.boot;
@@ -366,7 +371,8 @@ fn handle_event(ctx: Ctx, ev: Event) {
             }
         }
         Event::StateFile { name, text } => ui::settings::state_file_loaded(ctx, name, text),
-        Event::Key { .. } | Event::Tap { .. } | Event::Swipe { .. } | Event::Zoom { .. } | Event::Wheel { .. } | Event::Pos { .. } | Event::Scrolled { .. } | Event::EdgeBack => {
+        Event::Route { path, hash } => apply_route(ctx, &path, &hash),
+        Event::Key { .. } | Event::Turn { .. } | Event::Tap { .. } | Event::Swipe { .. } | Event::Zoom { .. } | Event::Wheel { .. } | Event::Pos { .. } | Event::Scrolled { .. } | Event::EdgeBack => {
             ui::reader::handle_reader_event(ctx, ev)
         }
         Event::ExportStatus { .. }
@@ -430,6 +436,14 @@ fn Shell() -> Element {
     let online = *ctx.online.read();
     let update = *ctx.update_ready.read();
     let mut later = use_signal(|| false);
+    // The address bar follows the screen: /, /export, /settings#reader, /read/<book>/<chapter>.
+    use_effect(move || {
+        if !*ctx.routed.read() {
+            return;
+        }
+        let (path, hash) = route_of(ctx);
+        bridge::send("route", json!({ "path": path, "hash": hash }));
+    });
     rsx! {
         div { class: "app", "data-motion": "clean", "data-reading": "{reading}",
             nav { class: "nav",
@@ -645,3 +659,64 @@ pub fn state_count(lib: &Library) -> usize {
 }
 
 pub fn _unused(_: &BookState, _: &Value) {}
+
+/// The address of the screen being shown, without the leading slash: `` (the library), `export`,
+/// `settings` (with the part of Settings after `#`) or `read?book=<id>&chapter=<n>`.
+fn route_of(ctx: Ctx) -> (String, String) {
+    if let Some(r) = ctx.reading.read().as_ref() {
+        return (format!("read?book={}&chapter={}", r.book_id, r.chapter + 1), String::new());
+    }
+    match *ctx.page.read() {
+        Page::Library => (String::new(), String::new()),
+        Page::Export => ("export".into(), String::new()),
+        Page::Settings => ("settings".into(), ctx.settings_section.read().slug().into()),
+    }
+}
+
+/// Show the screen an address names (the page was opened at it, or Back or Forward went to it).
+fn apply_route(ctx: Ctx, path: &str, hash: &str) {
+    let mut routed = ctx.routed;
+    routed.set(true);
+    let (head, query) = path.split_once('?').unwrap_or((path, ""));
+    let param = |name: &str| query.split('&').find_map(|kv| kv.strip_prefix(name)?.strip_prefix('=')).unwrap_or("");
+    match head {
+        "export" => {
+            ui::reader::close_reader(ctx);
+            ctx.go(Page::Export);
+        }
+        "settings" => {
+            ui::reader::close_reader(ctx);
+            let mut section = ctx.settings_section;
+            section.set(ui::settings::Section::from_slug(hash).unwrap_or(ui::settings::Section::Library));
+            ctx.go(Page::Settings);
+        }
+        "read" => {
+            let id = param("book");
+            let chapter = param("chapter").parse::<usize>().ok().map(|n| n.saturating_sub(1));
+            let usable = ctx.book(id).is_some_and(|b| !b.needs_file && !b.chapters.is_empty());
+            if !usable {
+                ui::reader::close_reader(ctx);
+                ctx.go(Page::Library);
+                // This book is not here (removed, or the address is from another browser).
+                bridge::send("route_fix", json!({ "path": "", "hash": "" }));
+                return;
+            }
+            let open_now = ctx.reading.peek().as_ref().map(|r| (r.book_id.clone(), r.chapter));
+            match open_now {
+                Some((book, c)) if book == id => {
+                    if let Some(want) = chapter.filter(|w| *w != c) {
+                        ui::reader::open_chapter(ctx, want);
+                    }
+                }
+                _ => {
+                    ctx.go(Page::Library);
+                    ui::reader::open_reader(ctx, id, chapter);
+                }
+            }
+        }
+        _ => {
+            ui::reader::close_reader(ctx);
+            ctx.go(Page::Library);
+        }
+    }
+}

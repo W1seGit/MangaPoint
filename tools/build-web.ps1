@@ -60,6 +60,8 @@ if (Get-Command wasm-opt -ErrorAction SilentlyContinue) {
 
 Write-Host '== site files =='
 Copy-Item (Join-Path $root 'web\index.html'), (Join-Path $root 'web\manifest.webmanifest') $dist
+# Hosts that show a page for unknown addresses (GitHub Pages) show the app at /export and the rest.
+Copy-Item (Join-Path $root 'web\index.html') (Join-Path $dist '404.html')
 Copy-Item -Recurse (Join-Path $root 'web\js') (Join-Path $dist 'js')
 Remove-Item -Recurse -Force (Join-Path $dist 'js\test') -ErrorAction SilentlyContinue
 Copy-Item -Recurse (Join-Path $root 'web\icons') (Join-Path $dist 'icons')

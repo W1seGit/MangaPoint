@@ -27,6 +27,8 @@ const UNSUPPORTED = {
 };
 const ARCHIVES = ['cbz', 'zip', 'epub'];
 const HEAD_TAIL = 256 * 1024;
+// The biggest ComicInfo.xml read: a book of 40,000 pages with a bookmark for every chapter is 3 MB.
+const COMICINFO_LIMIT = 16 * 1024 * 1024;
 
 function failure(name, message) {
   return { name, message };
@@ -276,7 +278,7 @@ async function analyzeArchive({ file }, ext) {
     entries = names.map((n) => ({ path: n, size: byName.get(n).usize }));
     // ComicInfo.xml sits beside the pictures; let the engine see it.
     for (const e of zip.entries) {
-      if (!e.isDir && /(^|\/)comicinfo\.xml$/i.test(e.name) && !e.encrypted && e.usize < 1 << 20 && safePath(e.name)) {
+      if (!e.isDir && /(^|\/)comicinfo\.xml$/i.test(e.name) && !e.encrypted && e.usize < COMICINFO_LIMIT && safePath(e.name)) {
         names.push(e.name);
         entries.push({ path: e.name, size: e.usize });
         break;
@@ -287,7 +289,7 @@ async function analyzeArchive({ file }, ext) {
   try {
     g = await guessWith(title, 'archive', entries, async (i) => {
       const e = byName.get(names[i]);
-      return e ? new TextDecoder().decode(await (await zip.read(e, '', 1 << 20)).arrayBuffer()) : null;
+      return e ? new TextDecoder().decode(await (await zip.read(e, '', COMICINFO_LIMIT)).arrayBuffer()) : null;
     });
   } catch (e) {
     return { failure: failure(file.name, String(e && e.message ? e.message : e)) };

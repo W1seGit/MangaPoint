@@ -12,6 +12,7 @@ import * as importer from './importer.js';
 import * as pages from './pages.js';
 import { startEditor } from './preview-editor.js';
 import { startSplit } from './export-split.js';
+import * as router from './router.js';
 import * as fsa from './fsa.js';
 import { installReader, commands, setCoverLoader } from './reader.js';
 
@@ -564,7 +565,15 @@ const immediate = {
 };
 
 // Run at once (`send`): the page asks the browser to size or scroll something it just drew.
-for (const name of ['export_split', 'editor_start', 'editor_scroll', 'editor_thumb', 'editor_top', 'adder_scroll']) immediate[name] = handlers[name];
+immediate.route = ({ path, hash }) => router.go(path, hash);
+immediate.route_fix = ({ path, hash }) => router.fix(path, hash);
+// The page is ready for an address: say which one it was opened at, and follow the history after that.
+immediate.route_ready = () => {
+  router.watch((r) => emit({ t: 'route', path: r.path, hash: r.hash }));
+  const r = router.current();
+  emit({ t: 'route', path: r.path, hash: r.hash });
+};
+for (const name of ['apply_update', 'export_split', 'editor_start', 'editor_scroll', 'editor_thumb', 'editor_top', 'adder_scroll']) immediate[name] = handlers[name];
 
 const mp = {
   async call(name, json) {

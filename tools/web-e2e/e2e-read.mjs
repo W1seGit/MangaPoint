@@ -24,6 +24,18 @@ const tapZone = async (zone) => {
   else await page.clickAt(px, py);
   await sleep(250);
 };
+// The next page, the way the book reads: a key, or a swipe along the page.
+const turnNext = async () => {
+  const rtl = (await page.eval("document.querySelector('#reader').dataset.dir")) === 'rtl';
+  if (touch) {
+    const s = await stage();
+    const [a, b] = rtl ? [0.2, 0.8] : [0.8, 0.2];
+    await page.swipe(s.x + s.w * a, s.y + s.h * 0.5, s.x + s.w * b, s.y + s.h * 0.5);
+  } else {
+    await page.key(rtl ? 'ArrowLeft' : 'ArrowRight', { code: rtl ? 'ArrowLeft' : 'ArrowRight', vk: rtl ? 37 : 39 });
+  }
+  await sleep(250);
+};
 const barShown = () => page.eval("document.querySelector('#reader').classList.contains('show-bar')");
 const showBar = async () => { if (!(await barShown())) await tapZone('middle'); };
 const hideBar = async () => { if (await barShown()) await tapZone('middle'); };
@@ -55,15 +67,27 @@ try {
     await page.key('Home', { code: 'Home', vk: 36 });
     r.check('Home goes to the first page', (await counter(page)) === '1 / 8', await counter(page));
   }
-  // Taps: right third = next, left third = previous, middle = bar.
-  await tapZone('right');
-  r.check('tap on the right third turns the page', (await counter(page)) === '2 / 8', await counter(page));
-  await tapZone('right');
-  await tapZone('left');
-  r.check('tap on the left third goes back', (await counter(page)) === '2 / 8', await counter(page));
-  const before = await barShown();
-  await tapZone('middle');
-  r.check('tap in the middle toggles the bar', (await barShown()) !== before, `${before} -> ${await barShown()}`);
+  // A tap anywhere, even beside the page, shows or hides the bars; it never turns a page.
+  for (const zone of ['right', 'left', 'middle']) {
+    const was = await barShown();
+    await tapZone(zone);
+    r.check(`a tap in the ${zone} third toggles the bar`, (await barShown()) !== was, `${was} -> ${await barShown()}`);
+  }
+  r.check('taps did not turn a page', (await counter(page)) === '1 / 8', await counter(page));
+  // Scrolling the page itself (wheel, or dragging it up) turns it; scrolling back brings the bars.
+  const sg = await stage();
+  const scrollOn = async (down) => {
+    if (touch) await page.swipe(sg.x + sg.w / 2, sg.y + sg.h * (down ? 0.75 : 0.25), sg.x + sg.w / 2, sg.y + sg.h * (down ? 0.25 : 0.75));
+    else await page.wheel(sg.x + sg.w / 2, sg.y + sg.h / 2, down ? 300 : -300);
+    await sleep(700);
+  };
+  await scrollOn(true);
+  r.check('scrolling down the page turns to page 2', (await counter(page)) === '2 / 8', await counter(page));
+  r.check('scrolling down hides the bars', !(await barShown()));
+  await scrollOn(false);
+  r.check('scrolling up turns back', (await counter(page)) === '1 / 8', await counter(page));
+  r.check('scrolling up shows the bars again', await barShown());
+  await turnNext();
   await showBar();
   await page.shot(`${viewport}-12-reader-page2`);
 
@@ -91,8 +115,8 @@ try {
   await sleep(250);
   r.check('right to left is on', (await page.eval("document.querySelector('#reader').dataset.dir")) === 'rtl');
   await hideBar();
-  await tapZone('left');
-  r.check('RTL: tap on the left third goes FORWARD', (await counter(page)) === '3 / 8', await counter(page));
+  await turnNext();
+  r.check('RTL: the next page is the other way round', (await counter(page)) === '3 / 8', await counter(page));
   if (!touch) {
     await page.key('ArrowLeft', { code: 'ArrowLeft', vk: 37 });
     r.check('RTL: ArrowLeft goes forward', (await counter(page)) === '4 / 8', await counter(page));
@@ -107,7 +131,7 @@ try {
   await sleep(500);
   r.check('chapter picker jumps to Ch. 4', /Ch\. 4/.test(await chapterLabel(page)) && (await counter(page)) === '1 / 8', `${await chapterLabel(page)} ${await counter(page)}`);
   await hideBar();
-  for (let i = 0; i < 9; i++) await tapZone('left'); // RTL: left = forward
+  for (let i = 0; i < 9; i++) await turnNext();
   const endCard = await page.waitFor("!!document.querySelector('#reader-end-back, #reader-next-chapter, .reader-end')", 10, 'the end card');
   r.check('the end of the last chapter shows an end card', endCard);
   await page.shot(`${viewport}-15-end-card`);

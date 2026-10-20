@@ -108,6 +108,13 @@ pub fn SettingsPage() -> Element {
 
     let mut section = ctx.settings_section;
     let books_label = plural(books, "book");
+    let safe_note = if !caps.persist {
+        String::new()
+    } else if i.persisted {
+        "Your library is protected from automatic clean-up. This can be undone, but only in your browser's settings for this site, not here.".to_string()
+    } else {
+        "The browser may clear your library when the device runs low on space; Keep my library safe asks it not to.".to_string()
+    };
     let storage_note = {
         let mut note = format!("{}, {} imported.", plural(books, "book"), human_bytes(total));
         if i.quota > 0.0 {
@@ -138,28 +145,27 @@ pub fn SettingsPage() -> Element {
                             SettingRow {
                                 label: "Storage on this device",
                                 help: "MangaPoint on the web runs entirely in your browser. The books you import, your reading place and the files you export are never uploaded: there is no account, no analytics and no server that stores anything of yours. Books are kept in this browser's private storage. Browsers may delete a site's data when the device runs low on space, unless you allow this; keeping your library safe asks the browser not to.",
-                                note: storage_note,
-                                span { class: "muted", "{books_label}" }
-                            }
-                            if caps.persist {
-                                SettingRow {
-                                    label: "Keep my library safe",
-                                    help: "Asks the browser not to delete this site's data when the device runs low on space. A browser does not let a site take this back: to turn it off, use the site settings of your browser (or Delete everything below).",
-                                    note: if i.persisted { "The browser will not clear your library by itself.".to_string() } else { "The browser may clear your library when the device runs low on space.".to_string() },
-                                    Toggle {
-                                        on: i.persisted, label: "Keep my library safe".to_string(),
-                                        onchange: move |on: bool| {
-                                            if on {
-                                                dioxus::core::spawn_forever(async move {
-                                                    let granted = bridge::call::<bool>("persist", json!({})).await.unwrap_or(false);
-                                                    if granted { ctx.notify("Your library is now protected from automatic clean-up."); } else { ctx.warn("The browser did not agree. Installing the app, or using the site more, often makes it say yes."); }
-                                                    refresh.set(refresh() + 1);
-                                                });
-                                            } else {
-                                                ctx.warn("A browser does not let a site take this back. To turn it off, open this site's settings in your browser and clear its stored data.");
-                                            }
-                                        },
+                                note: format!("{storage_note} {safe_note}"),
+                                if caps.persist {
+                                    div { class: "row", style: "gap: 10px",
+                                        span { class: "muted small", "Keep my library safe" }
+                                        Toggle {
+                                            on: i.persisted, label: "Keep my library safe".to_string(),
+                                            onchange: move |on: bool| {
+                                                if on {
+                                                    dioxus::core::spawn_forever(async move {
+                                                        let granted = bridge::call::<bool>("persist", json!({})).await.unwrap_or(false);
+                                                        if granted { ctx.notify("Your library is now protected from automatic clean-up."); } else { ctx.warn("The browser did not agree. Installing the app, or using the site more, often makes it say yes."); }
+                                                        refresh.set(refresh() + 1);
+                                                    });
+                                                } else {
+                                                    ctx.warn("This can be undone, but not through MangaPoint: do it in your browser's settings for this site.");
+                                                }
+                                            },
+                                        }
                                     }
+                                } else {
+                                    span { class: "muted", "{books_label}" }
                                 }
                             }
                             if fraction.is_some() { div { class: "sx-bar", ProgressBar { fraction } } }
@@ -267,9 +273,20 @@ pub enum Section {
     About,
 }
 
+impl Section {
+    /// The part of the address after `#` (`/settings#reader`).
+    pub fn slug(self) -> &'static str {
+        SECTIONS.iter().find(|s| s.0 == self).map_or("library", |s| s.3)
+    }
+
+    pub fn from_slug(slug: &str) -> Option<Section> {
+        SECTIONS.iter().find(|s| s.3 == slug).map(|s| s.0)
+    }
+}
+
 const SECTIONS: [(Section, &str, &str, &str); 5] = [
     (Section::Library, "hard-drive", "Your library", "library"),
-    (Section::Readers, "hard-drive", "Your reader", "readers"),
+    (Section::Readers, "hard-drive", "Your reader", "reader"),
     (Section::State, "save", "Reading state", "state"),
     (Section::App, "download", "App", "app"),
     (Section::About, "info", "About", "about"),
