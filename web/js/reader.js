@@ -2,6 +2,7 @@
 // watches the keyboard, taps, swipes and pinches, and tells the UI where the
 // reader is. The UI decides what any of that means.
 import { acquire, release, rememberSize, source, knownRatio, pin } from './pages.js';
+import { imageSize } from './imagesize.js';
 
 let emit = () => {};
 
@@ -61,6 +62,42 @@ function done() {
   pump();
 }
 
+// Every page of a chapter gets its true shape from the start of its file, nearest the screen
+// first, so the strip has its real height before anything is opened and nothing jumps.
+const measuring = new Set();
+let measureRunning = 0;
+
+function measurePump() {
+  while (measureRunning < 6 && measuring.size) {
+    let best = null;
+    let bestD = Infinity;
+    for (const t of measuring) {
+      if (!t.isConnected || t.dataset.loaded || t.dataset.sized) { measuring.delete(t); continue; }
+      const d = distance(t);
+      if (d < bestD) { best = t; bestD = d; }
+    }
+    if (!best) return;
+    measuring.delete(best);
+    measureRunning++;
+    measureTile(best).finally(() => { measureRunning--; measurePump(); });
+  }
+}
+
+async function measureTile(tile) {
+  try {
+    const book = tile.dataset.book;
+    const index = Number(tile.dataset.page);
+    const src = await source(book);
+    const p = src.table.pages[index];
+    if (p && p.w > 0 && p.h > 0) return;
+    const dims = imageSize(await src.start(index));
+    if (!dims || !(dims[0] > 0 && dims[1] > 0)) return;
+    tile.dataset.sized = '1';
+    if (!tile.dataset.loaded) setShape(tile, dims[0], dims[1]);
+    rememberSize(book, index, dims[0], dims[1]);
+  } catch (_) { /* it is measured when it is opened */ }
+}
+
 async function fillTile(tile) {
   const book = tile.dataset.book;
   const index = Number(tile.dataset.page);
@@ -102,6 +139,9 @@ async function fillTile(tile) {
     };
     rec.img = img;
     img.src = url;
+    // Shown once it is ready to paint, so a page never appears half drawn.
+    try { await img.decode(); } catch (_) { return; /* onerror shows it */ }
+    if (rec.gone) return;
     tile.appendChild(img);
   } catch (err) {
     live.delete(tile);
@@ -165,7 +205,7 @@ function ensureObserver() {
       }
     },
     // Well ahead of the screen (and some behind), so the next pages are there before they are scrolled to.
-    { rootMargin: '300% 0px 800% 0px' },
+    { rootMargin: '600% 0px 800% 0px' },
   );
 }
 
@@ -196,7 +236,9 @@ function scan(node) {
   for (const t of tiles) {
     ensureObserver();
     io.observe(t);
+    measuring.add(t);
   }
+  measurePump();
 }
 
 function unscan(node) {

@@ -70,6 +70,18 @@ export class BookSource {
     return f.slice(0, f.size, type);
   }
 
+  /** The start of the picture's file (enough to read its size from), unpacked. */
+  async start(i, n = 131072) {
+    const p = this.table.pages[i];
+    if (!p) throw new Error('No such page.');
+    if (this.table.mode === 'archive') {
+      const zip = await this.#archive();
+      return zip.head({ name: p.n, method: p.m, csize: p.c, usize: p.u, offset: p.o, encrypted: false }, n);
+    }
+    const b = await this.blob(i);
+    return new Uint8Array(await b.slice(0, n).arrayBuffer());
+  }
+
   async bytes(i) {
     return new Uint8Array(await (await this.blob(i)).arrayBuffer());
   }
