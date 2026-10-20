@@ -86,6 +86,6 @@
 
 /* ---- the Export screen's preview for a phone or tablet ---- */
 .original-preview { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.original-pages { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px; }
-.original-page { margin: 0; width: min(100%, 760px); aspect-ratio: var(--ar, 2 / 3); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.original-page img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.original-pages { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; gap: 0; padding: 0; background: #000; }
+.original-page { margin: 0; flex: none; width: min(100%, 900px); aspect-ratio: var(--ar, 2 / 3); background: transparent; display: flex; align-items: center; justify-content: center; }
+.original-page img { width: 100%; height: 100%; display: block; }
