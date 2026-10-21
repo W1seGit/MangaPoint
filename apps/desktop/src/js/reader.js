@@ -8,7 +8,7 @@
   const root = () => document.getElementById('reader');
   const stage = () => document.querySelector('#reader .reader-stage');
   const KEYS = new Set([
-    'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' ', 'Home', 'End',
+    'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' ', 'Home', 'End',
     '[', ']', '+', '=', '-', '_', '0', 'Escape', 'F11',
   ]);
   const typing = (el) =>
@@ -76,12 +76,7 @@
     const s = stage();
     if (!r || !s || !s.contains(e.target)) return;
     if (e.target.closest('button, a, input, select, .reader-end, .reader-tile .retry')) return;
-    if (r.dataset.mode === 'scroll') {
-      toggleBar();
-      return;
-    }
-    const box = s.getBoundingClientRect();
-    dioxus.send({ t: 'zone', x: e.clientX - box.left, w: box.width });
+    toggleBar();
   };
   document.addEventListener('keydown', onKey, true);
   document.addEventListener('wheel', onWheel, { passive: false, capture: true });
@@ -97,7 +92,7 @@
     reportTimer = null;
     const r = root();
     const s = stage();
-    if (!r || !s || r.dataset.mode !== 'scroll') return;
+    if (!r || !s) return;
     const box = s.getBoundingClientRect();
     const mid = box.top + box.height * 0.35;
     const sections = [...s.querySelectorAll('.reader-chapter')];
@@ -152,7 +147,6 @@
     // Where it landed is told even if the strip did not move (a short chapter).
     setTimeout(report, 120);
   };
-  const preloaded = new Map();
   const commands = {
     bar: () => toggleBar(),
     showBar: () => showBar(),
@@ -170,17 +164,6 @@
     scrollTo: (m) => {
       const s = stage();
       if (s) s.scrollTo({ top: m.where === 'bottom' ? s.scrollHeight : 0, behavior: 'smooth' });
-    },
-    preload: (m) => {
-      for (const url of m.urls) {
-        if (preloaded.has(url)) continue;
-        const img = new Image();
-        img.decoding = 'async';
-        img.src = url;
-        preloaded.set(url, img);
-        // Enough to be useful, not a pile: the oldest let go.
-        if (preloaded.size > 24) preloaded.delete(preloaded.keys().next().value);
-      }
     },
   };
 

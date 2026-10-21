@@ -3,7 +3,7 @@
 // the installed app working offline.
 //   node tools/web-e2e/e2e-state.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { clearToasts, fx, openApp, nav, importBooks, openBook, counter, chapterLabel, closeReader, readerSetting } from './helpers.mjs';
+import { clearToasts, fx, openApp, nav, importBooks, openBook, counter, chapterLabel, closeReader } from './helpers.mjs';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,14 +23,12 @@ try {
   await importBooks(page, [fx('Hero Saga Vol 2.zip')]);
   await importBooks(page, [fx('Color Test.cbz')]);
   await openBook(page, 'Hero Saga');
-  // This test reads one page at a time.
-  await readerSetting(page, '#reader-mode-paged', viewport !== 'desktop');
   await sleep(600);
-  // Read to chapter 3, page 4.
+  // Read to chapter 3, page 4 (the strip is scrolled until page 4 is at the top).
   await page.eval("window.__mp.emit({ t: 'key', key: ']', shift: false, ctrl: false })");
-  await sleep(300);
-  for (let i = 0; i < 3; i++) await page.eval("window.__mp.emit({ t: 'key', key: 'ArrowRight', shift: false, ctrl: false })");
-  await sleep(300);
+  await sleep(800);
+  await page.eval("document.querySelectorAll('.reader-tile')[3].scrollIntoView({ block: 'start' })");
+  await sleep(1200);
   const where = `${await chapterLabel(page)} ${await counter(page)}`;
   r.check('read to Ch. 3 page 4', where === 'Ch. 3 4 / 8', where);
   await closeReader(page);

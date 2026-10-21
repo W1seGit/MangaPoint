@@ -2,7 +2,7 @@
 // scrolled end to end while the JS heap and the number of live pictures are
 // sampled. node tools/web-e2e/e2e-big.mjs [viewport]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { fx, openApp, importBooks, openBook, titles, readerSetting } from './helpers.mjs';
+import { fx, openApp, importBooks, openBook, titles } from './helpers.mjs';
 
 const viewport = process.argv[2] || 'desktop';
 const r = new Report();
@@ -27,7 +27,6 @@ try {
   r.check('it is kept in OPFS with 160 pages', /^opfs 160$/.test(stored), stored);
 
   await openBook(page, 'Big Book');
-  await readerSetting(page, '#reader-mode-scroll', viewport !== 'desktop');
   await sleep(1500);
   const samples = [];
   let maxImgs = 0;
@@ -51,7 +50,8 @@ try {
   r.check('reached the end of the strip', guard < 400, `${guard} steps`);
   r.check('never more than a handful of pictures in the page at once', maxImgs <= 8, `max ${maxImgs}`);
   const maxUrls = Math.max(...samples.map((s) => s.urls));
-  r.check('blob URLs stay few (revoked after pages leave)', maxUrls <= 12, `max ${maxUrls}`);
+  // Pages are drawn at a comfortable width, so more of them fit in one screen than when they filled it.
+  r.check('blob URLs stay few (revoked after pages leave)', maxUrls <= 20, `max ${maxUrls}`);
   r.check('JS heap stays flat while scrolling 160 pages (< 80 MB above the start)', peak - first < 80, `start ${first.toFixed(0)} MB, peak ${peak.toFixed(0)} MB`);
   await page.shot(`${viewport}-50-big-end`);
   r.check('console free of errors', page.errors.length === 0, page.errors.slice(0, 3).join(' || '));

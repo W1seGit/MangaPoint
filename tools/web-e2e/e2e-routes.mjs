@@ -102,7 +102,7 @@ try {
   await importBooks(page, [fx('Big Book.cbz')]);
   await openBook(page, 'Big Book');
   await sleep(1200);
-  r.check('a book opens as one long page to scroll', (await page.eval("document.querySelector('#reader').dataset.mode")) === 'scroll');
+  r.check('a book opens as one long page to scroll', !!(await page.eval("document.querySelector('#reader-strip')")));
   const tiles = await page.eval("document.querySelectorAll('.reader-tile').length");
   const loaded = () => page.eval("[...document.querySelectorAll('.reader-tile img')].map((i) => Number(i.closest('.reader-tile').dataset.page))");
   const before = await loaded();

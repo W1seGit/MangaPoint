@@ -1,6 +1,6 @@
-//! The reader: one page at a time or a long strip, left to right or right to
-//! left, with keys, taps, swipes and pinch. The page pictures are filled in by
-//! the browser's glue (`web/js/reader.js`) only while they are near the screen.
+//! The reader: a long strip, with keys, taps and pinch. The page pictures are
+//! filled in by the browser's glue (`web/js/reader.js`) only while they are near
+//! the screen.
 
 use super::widgets::{EmptyState, Icon, SettingRow};
 use crate::app::{Ctx, Reading};
@@ -8,7 +8,6 @@ use crate::bridge::{self, Event};
 use crate::model::Book;
 use crate::reader_logic::{self as logic, Action, ReaderLook, ZoomChoice};
 use dioxus::prelude::*;
-use library::{PageDirection, ReadFit, ReadMode};
 use serde_json::json;
 use web_engine::state::Prefs;
 
@@ -24,7 +23,6 @@ pub fn open_reader(ctx: Ctx, book_id: &str, wanted: Option<usize>) {
         ctx.warn("This book has no pages.");
         return;
     };
-    let look = look_of(ctx, &book);
     let first = book.chapters.get(start.chapter).map_or(0, |c| c.first);
     let count = book.chapters.get(start.chapter).map_or(0, |c| c.count);
     // In the strip `scroll` says how far down the chapter the reader was.
@@ -45,7 +43,7 @@ pub fn open_reader(ctx: Ctx, book_id: &str, wanted: Option<usize>) {
         strip: vec![start.chapter],
         bar: true,
         opened: id,
-        scroll_to: (look.mode == ReadMode::Scroll).then_some((first + sp, off)),
+        scroll_to: Some((first + sp, off)),
     }));
     bridge::send("reader", json!({ "cmd": "opened", "args": [] }));
     after_move(ctx);
@@ -59,7 +57,6 @@ pub fn close_reader(ctx: Ctx) {
     flush_position(ctx);
     reading.set(None);
     bridge::send("reader", json!({ "cmd": "closed", "args": [] }));
-    bridge::send("pin", json!({ "book": "", "indexes": [] }));
     dioxus::core::spawn_forever(async move {
         let _ = bridge::call_ok("flush", json!({})).await;
     });
@@ -68,7 +65,7 @@ pub fn close_reader(ctx: Ctx) {
 fn look_of(ctx: Ctx, book: &Book) -> ReaderLook {
     let lib = ctx.library.peek();
     let prefs = lib.state_of(&book.id).map(|s| s.prefs).unwrap_or_default();
-    logic::resolve_look(&prefs, book)
+    logic::resolve_look(&prefs)
 }
 
 /// Remember where the reader is, in the library and on disk.
@@ -82,15 +79,9 @@ fn flush_position(ctx: Ctx) {
     ctx.save_state_of(&book.id);
 }
 
-/// After the place changed: remember it and keep the next pages ready.
+/// After the place changed: remember it.
 fn after_move(ctx: Ctx) {
     flush_position(ctx);
-    let Some(r) = ctx.reading.peek().clone() else { return };
-    let Some(book) = ctx.book(&r.book_id) else { return };
-    if look_of(ctx, &book).mode == ReadMode::Paged {
-        let pages = logic::preload_pages(&book, r.chapter, r.page);
-        bridge::send("pin", json!({ "book": book.id, "indexes": pages }));
-    }
 }
 
 fn set_reading(ctx: Ctx, f: impl FnOnce(&mut Reading)) {
@@ -115,42 +106,15 @@ pub fn open_chapter(ctx: Ctx, index: usize) {
     if index >= book.chapters.len() {
         return;
     }
-    let look = look_of(ctx, &book);
     let first = book.chapters[index].first;
     set_reading(ctx, |r| {
         r.chapter = index;
         r.page = 0;
         r.scroll = 0.0;
         r.strip = vec![index];
-        r.scroll_to = (look.mode == ReadMode::Scroll).then_some((first, 0.0));
+        r.scroll_to = Some((first, 0.0));
     });
-    if look.mode == ReadMode::Scroll {
-        bridge::send("reader", json!({ "cmd": "scrollTop", "args": [] }));
-    }
-    after_move(ctx);
-}
-
-fn set_mode(ctx: Ctx, mode: ReadMode) {
-    let Some(r) = ctx.reading.peek().clone() else { return };
-    let Some(book) = ctx.book(&r.book_id) else { return };
-    let before = look_of(ctx, &book);
-    if before.mode == mode {
-        return;
-    }
-    let first = book.chapters.get(r.chapter).map_or(0, |c| c.first);
-    // Each mode has its own natural fit; the visitor's explicit fit is dropped
-    // when it would be odd in the new mode.
-    set_prefs(ctx, |p| {
-        p.mode = Some(mode);
-        p.fit = None;
-    });
-    let count = book.chapters.get(r.chapter).map_or(0, |c| c.count);
-    set_reading(ctx, |r| {
-        // The end card is not a page of the strip.
-        r.page = r.page.min(count.saturating_sub(1));
-        r.strip = vec![r.chapter];
-        r.scroll_to = (mode == ReadMode::Scroll).then_some((first + r.page, 0.0));
-    });
+    bridge::send("reader", json!({ "cmd": "scrollTop", "args": [] }));
     after_move(ctx);
 }
 
@@ -162,40 +126,6 @@ pub fn apply_action(ctx: Ctx, action: Action) {
     let look = look_of(ctx, &book);
     let counts = book.counts();
     match action {
-        Action::Next | Action::Prev => {
-            if look.mode != ReadMode::Paged {
-                let n = if action == Action::Next { 1 } else { -1 };
-                bridge::send("reader", json!({ "cmd": "scrollPages", "args": [n] }));
-                return;
-            }
-            let step = if action == Action::Next {
-                logic::paged_next(&counts, r.chapter, r.page)
-            } else {
-                logic::paged_prev(&counts, r.chapter, r.page)
-            };
-            match step {
-                Some((c, p)) => {
-                    set_reading(ctx, |r| {
-                        r.chapter = c;
-                        r.page = p;
-                        r.bar = false;
-                    });
-                    // The end of a chapter counts as having read it.
-                    if p >= counts[c] {
-                        let mut lib = ctx.library;
-                        lib.write().mark_read(&book, c, bridge::now_ms());
-                    }
-                    after_move(ctx);
-                }
-                None => {
-                    // The end of the last chapter: show the end card.
-                    let last = counts.len().saturating_sub(1);
-                    if action == Action::Next && r.chapter == last && r.page < counts[last] {
-                        set_reading(ctx, |r| r.page = counts[last]);
-                    }
-                }
-            }
-        }
         Action::NextChapter | Action::PrevChapter => {
             if let Some(c) = logic::chapter_step(counts.len(), r.chapter, action == Action::NextChapter) {
                 if action == Action::NextChapter {
@@ -205,23 +135,11 @@ pub fn apply_action(ctx: Ctx, action: Action) {
                 open_chapter(ctx, c);
             }
         }
-        Action::First => {
-            if look.mode == ReadMode::Paged {
-                set_reading(ctx, |r| r.page = 0);
-                after_move(ctx);
-            } else {
-                open_chapter(ctx, r.chapter);
-            }
-        }
+        Action::First => open_chapter(ctx, r.chapter),
         Action::Last => {
             let last = counts.get(r.chapter).copied().unwrap_or(1).saturating_sub(1);
-            if look.mode == ReadMode::Paged {
-                set_reading(ctx, |r| r.page = last);
-                after_move(ctx);
-            } else {
-                let first = book.chapters.get(r.chapter).map_or(0, |c| c.first);
-                bridge::send("reader", json!({ "cmd": "scrollToPage", "args": [first + last, 0.0] }));
-            }
+            let first = book.chapters.get(r.chapter).map_or(0, |c| c.first);
+            bridge::send("reader", json!({ "cmd": "scrollToPage", "args": [first + last, 0.0] }));
         }
         Action::ScrollPages(n) => bridge::send("reader", json!({ "cmd": "scrollPages", "args": [n] })),
         Action::ScrollLines(n) => bridge::send("reader", json!({ "cmd": "scrollLines", "args": [n] })),
@@ -241,19 +159,13 @@ pub fn handle_reader_event(ctx: Ctx, ev: Event) {
     let look = look_of(ctx, &book);
     match ev {
         Event::Key { key, shift, ctrl } => {
-            if let Some(a) = logic::key_action(&key, shift, ctrl, look.mode, look.direction) {
+            if let Some(a) = logic::key_action(&key, shift, ctrl) {
                 apply_action(ctx, a);
             }
         }
         // A tap anywhere, even beside the page, shows or hides the bars; it never turns a page.
         Event::Tap { .. } => apply_action(ctx, Action::ToggleBar),
-        Event::Swipe { dx } => {
-            if look.mode == ReadMode::Paged {
-                if let Some(a) = logic::swipe_action(dx, look.direction) {
-                    apply_action(ctx, a);
-                }
-            }
-        }
+        Event::Swipe { .. } => {}
         Event::Zoom { pct } => {
             let z = logic::zoom_from_pinch(pct);
             set_prefs(ctx, |p| p.zoom = Some(z));
@@ -270,9 +182,6 @@ pub fn handle_reader_event(ctx: Ctx, ev: Event) {
             set_prefs(ctx, |p| p.zoom = Some(z));
         }
         Event::Pos { chapter, page, off, near_end } => {
-            if look.mode != ReadMode::Scroll {
-                return;
-            }
             let Ok(c) = chapter.parse::<usize>() else { return };
             let Some(ch) = book.chapters.get(c) else { return };
             let in_chapter = page.saturating_sub(ch.first).min(ch.count.saturating_sub(1));
@@ -356,13 +265,6 @@ fn ReaderScreen(opened: u64) -> Element {
     let total = book.chapters.len();
     let current = r.chapter.min(total - 1);
     let chapter = book.chapters[current].clone();
-    let mode_name = if look.mode == ReadMode::Scroll { "scroll" } else { "paged" };
-    let fit_name = match look.fit {
-        ReadFit::Width => "width",
-        ReadFit::Height => "height",
-        ReadFit::Original => "original",
-    };
-    let dir_name = if look.direction == PageDirection::RightToLeft { "rtl" } else { "ltr" };
     let zoom = f32::from(look.zoom) / 100.0;
     let items: Vec<(usize, String, bool)> = {
         let lib = ctx.library.read();
@@ -376,7 +278,6 @@ fn ReaderScreen(opened: u64) -> Element {
     let next_label = (current + 1 < total).then(|| book.chapters[current + 1].label(current + 1));
     let prev_label = (current > 0).then(|| book.chapters[current - 1].label(current - 1));
     let counts = book.counts();
-    let page = r.page.min(chapter.count);
     let always = bars_always(ctx);
     let bar_class = match (always, r.bar) {
         (true, _) => "reader show-bar pinned",
@@ -388,42 +289,16 @@ fn ReaderScreen(opened: u64) -> Element {
     rsx! {
         div {
             class: "{bar_class}", id: "reader",
-            "data-mode": "{mode_name}", "data-fit": "{fit_name}", "data-dir": "{dir_name}", "data-book": "{book_id}",
-            "data-hpan": if look.zoom > 100 || look.fit == ReadFit::Original { "yes" } else { "no" },
+            "data-book": "{book_id}",
+            "data-hpan": if look.zoom > 100 { "yes" } else { "no" },
             style: "--zoom: {zoom};",
             ReaderBar {
                 title: book.title.clone(), chapter_label: label.clone(), items, current, look,
-                percent: logic::percent_finished(look.mode == ReadMode::Paged, page, chapter.count, r.scroll),
-                page: if look.mode == ReadMode::Paged { Some((page.min(chapter.count.saturating_sub(1)) + 1, chapter.count)) } else { None },
-                strip_page: if look.mode == ReadMode::Scroll { Some((r.page + 1, chapter.count)) } else { None },
+                percent: logic::percent_finished(r.scroll),
+                strip_page: Some((r.page + 1, chapter.count)),
             }
             main { class: "reader-stage", id: "reader-stage",
-                {if look.mode == ReadMode::Paged {
-                    if chapter.count == 0 {
-                        rsx! {
-                            EndCard { title: "{label} has no pages", note: "", prev: prev_label.clone(), next: next_label.clone(), on_prev: move |_| open_chapter(ctx, current.saturating_sub(1)), on_next: move |_| open_chapter(ctx, current + 1), on_back: move |_| close_reader(ctx) }
-                        }
-                    } else if page >= chapter.count {
-                        rsx! {
-                            EndCard {
-                                title: "End of {label}",
-                                note: if next_label.is_some() { "This chapter is marked as read." } else { "That was the last chapter. It is marked as read." },
-                                prev: prev_label.clone(),
-                                next: next_label.clone(),
-                                on_prev: move |_| open_chapter(ctx, current.saturating_sub(1)),
-                                on_next: { let id = book_id.clone(); move |_| { let mut lib = ctx.library; if let Some(b) = ctx.book(&id) { lib.write().mark_read(&b, current, bridge::now_ms()); } open_chapter(ctx, current + 1) } },
-                                on_back: move |_| close_reader(ctx),
-                            }
-                        }
-                    } else {
-                        let global = chapter.first + page;
-                        rsx! {
-                            div { class: "reader-page-wrap", key: "{book_id}-{current}-{page}",
-                                div { class: "reader-tile", "data-book": "{book_id}", "data-page": "{global}" }
-                            }
-                        }
-                    }
-                } else {
+                {
                     rsx! {
                         div { class: "reader-strip", id: "reader-strip",
                             for index in r.strip.iter().copied().take(1).filter(|i| *i < total) {
@@ -459,7 +334,7 @@ fn ReaderScreen(opened: u64) -> Element {
                             }
                         }
                     }
-                }}
+                }
             }
             // Counts only for the compiler: the book's chapter counts drive the logic above.
             span { class: "reader-meta", hidden: true, "data-chapters": "{counts.len()}" }
@@ -515,13 +390,12 @@ fn ReaderBar(
     current: usize,
     look: ReaderLook,
     percent: u32,
-    page: Option<(usize, usize)>,
     strip_page: Option<(usize, usize)>,
 ) -> Element {
     let ctx = use_context::<Ctx>();
     let mut menu = use_signal(|| false);
     let mut settings = use_signal(|| false);
-    let counter = page.or(strip_page);
+    let counter = strip_page;
     // The arrows are back and forward between chapters, whichever way the book reads.
     let (left_action, left_label, right_action, right_label) =
         (Action::PrevChapter, "Previous chapter", Action::NextChapter, "Next chapter");
@@ -596,27 +470,7 @@ fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
                 h2 { "Reading settings" }
             }
             div { class: "reader-settings-body",
-                SettingRow { label: "Reading mode", help: "Paged shows one page at a time. Scroll is one long strip, best for webtoons and manhwa.",
-                    div { class: "seg", role: "group", "aria-label": "View mode",
-                        button { id: "reader-mode-paged", class: on(look.mode == ReadMode::Paged), "aria-pressed": "{look.mode == ReadMode::Paged}",
-                            onclick: move |_| set_mode(ctx, ReadMode::Paged), "Paged" }
-                        button { id: "reader-mode-scroll", class: on(look.mode == ReadMode::Scroll), "aria-pressed": "{look.mode == ReadMode::Scroll}",
-                            onclick: move |_| set_mode(ctx, ReadMode::Scroll), "Scroll" }
-                    }
-                }
-                if look.mode == ReadMode::Paged {
-                    SettingRow { label: "Reading direction", help: "Manga is read right to left: the next page is on the left.",
-                        div { class: "seg", role: "group", "aria-label": "Reading direction",
-                            button { id: "reader-dir-ltr", class: on(look.direction == PageDirection::LeftToRight),
-                                "aria-pressed": "{look.direction == PageDirection::LeftToRight}",
-                                onclick: move |_| set_prefs(ctx, |p| p.direction = Some(PageDirection::LeftToRight)), "Left to right" }
-                            button { id: "reader-dir-rtl", class: on(look.direction == PageDirection::RightToLeft),
-                                "aria-pressed": "{look.direction == PageDirection::RightToLeft}",
-                                onclick: move |_| set_prefs(ctx, |p| p.direction = Some(PageDirection::RightToLeft)), "Right to left" }
-                        }
-                    }
-                }
-                SettingRow { label: "Zoom", help: "Fit the whole page, fit its width, show it at its original size, or pick a percentage. Pinching, or Ctrl and the mouse wheel, also zoom.",
+                SettingRow { label: "Zoom", help: "Fit page suits the window: the full width of a phone, a comfortable column on a big screen. Pick a percentage to make it smaller or larger. Pinching, or Ctrl and the mouse wheel, also zoom.",
                     ZoomMenu { look }
                 }
                 SettingRow { label: "Controls", help: "The bars with the chapter, the settings and your place can hide while you read, or stay on the screen.",
@@ -639,13 +493,10 @@ fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
 fn ZoomMenu(look: ReaderLook) -> Element {
     let ctx = use_context::<Ctx>();
     let mut open = use_signal(|| false);
-    let selected = logic::zoom_choice(look.fit, look.zoom);
+    let selected = logic::zoom_choice(look.zoom);
     let mut choose = move |choice: ZoomChoice| {
-        let (fit, zoom) = logic::apply_zoom_choice(choice, look_fit(ctx));
-        set_prefs(ctx, |p| {
-            p.fit = Some(fit);
-            p.zoom = Some(zoom);
-        });
+        let zoom = logic::apply_zoom_choice(choice);
+        set_prefs(ctx, |p| p.zoom = Some(zoom));
         open.set(false);
     };
     let item = |c: ZoomChoice| if selected == c { "menu-item on" } else { "menu-item" };
@@ -668,10 +519,8 @@ fn ZoomMenu(look: ReaderLook) -> Element {
                 div { class: "menu-scrim", onclick: move |_| open.set(false) }
                 div { class: "menu down zoom-list", id: "reader-zoom-list",
                     button { class: item(ZoomChoice::Fit), id: "reader-fit-height", onclick: move |_| choose(ZoomChoice::Fit), "Fit page" }
-                    button { class: item(ZoomChoice::Width), id: "reader-fit-width", onclick: move |_| choose(ZoomChoice::Width), "Fit width" }
-                    button { class: item(ZoomChoice::Original), id: "reader-fit-original", onclick: move |_| choose(ZoomChoice::Original), "Original size" }
                     div { class: "menu-sep" }
-                    for percent in [50u16, 75, 90, 100, 125, 150, 200, 300] {
+                    for percent in [25u16, 50, 75, 90, 125, 150, 200, 300, 400, 500] {
                         button {
                             key: "{percent}", class: item(ZoomChoice::Percent(percent)),
                             onclick: move |_| choose(ZoomChoice::Percent(percent)),
@@ -693,11 +542,4 @@ fn set_bars_always(ctx: Ctx, yes: bool) {
 /// Whether the bars stay on the screen while reading (a setting of the visitor, not of the book).
 fn bars_always(ctx: Ctx) -> bool {
     ctx.settings.read().extra.get("reader_bars_always").and_then(|v| v.as_bool()).unwrap_or(false)
-}
-
-/// The fit in use for the book being read.
-fn look_fit(ctx: Ctx) -> ReadFit {
-    let Some(r) = ctx.reading.peek().clone() else { return ReadFit::Height };
-    let Some(book) = ctx.book(&r.book_id) else { return ReadFit::Height };
-    look_of(ctx, &book).fit
 }

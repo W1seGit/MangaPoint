@@ -72,16 +72,12 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 
 /* The reader's look is the app's own (reader.css, copied at build time); this is only what a
    browser adds: the dynamic viewport and touch. */
-.reader[data-mode="paged"] .reader-page-wrap { min-height: 100vh; min-height: 100dvh; }
-.reader[data-fit="height"] .reader-tile {
-  width: min(calc(100% * var(--zoom)), calc(100dvh * var(--zoom) * var(--arn, 0.66)));
-}
 .reader-stage {
   touch-action: pan-x pan-y; overscroll-behavior: none; -webkit-user-select: none; user-select: none;
   -webkit-touch-callout: none; padding-bottom: 0;
 }
 .reader-tile img { pointer-events: none; }
-/* Not zoomed: sideways drags are the reader's (turn the page), only vertical ones pan. */
+/* Not zoomed: only vertical drags pan. */
 .reader[data-hpan="no"] .reader-stage { touch-action: pan-y; }
 .reader-end .btn { min-height: 44px; }
 .reader-menu { max-height: 60vh; max-height: 60dvh; }

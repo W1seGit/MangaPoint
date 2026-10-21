@@ -3,7 +3,7 @@
 // and the swipe from the left edge.
 //   node tools/web-e2e/e2e-chrome.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { fx, openApp, nav, importBooks, openBook, counter, chapterLabel, clearToasts, readerSetting } from './helpers.mjs';
+import { fx, openApp, nav, importBooks, openBook, counter, chapterLabel, clearToasts } from './helpers.mjs';
 
 const viewport = process.argv[2] || 'desktop';
 const touch = viewport !== 'desktop';
@@ -26,10 +26,6 @@ try {
   // ---- the bars ----
   await openBook(page, 'Hero Saga');
   await page.waitFor("(() => { const i = document.querySelector('.reader-tile img'); return i && i.complete && i.naturalWidth > 0; })()", 15, 'a page');
-  // One page at a time is a choice (a book opens as one long page to scroll).
-  await readerSetting(page, '#reader-mode-paged', touch);
-  await sleep(600);
-  await page.waitFor("(() => { const i = document.querySelector('.reader-tile img'); return i && i.complete && i.naturalWidth > 0; })()", 15, 'a page');
   const left = await center('#reader-arrow-left');
   const right = await center('#reader-arrow-right');
   const pick = await center('#reader-chapter-picker');
@@ -47,7 +43,7 @@ try {
   r.check('title is centred at the bottom', Math.abs(title.x - vw / 2) < 40 && title.bottom > vh - 120, `${title.x} of ${vw}, bottom ${title.bottom} of ${vh}`);
   r.check('percentage is below the title', pct.top >= title.bottom - 2 && pct.bottom <= vh, `${pct.top} vs ${title.bottom}`);
   r.check('library button top left, settings top right', back.left < 40 && back.top < 40 && gear.right > vw - 40 && gear.top < 40, `${back.left},${back.top} ${vw - gear.right},${gear.top}`);
-  r.check('percentage of the chapter (page 1 of 8 is 12%)', (await page.eval("document.querySelector('#reader-percent').textContent")) === '12%');
+  r.check('percentage of the chapter starts at 0%', (await page.eval("document.querySelector('#reader-percent').textContent")) === '0%');
   await page.shot(`${viewport}-40-chrome`);
 
   // ---- arrows ----
@@ -58,14 +54,6 @@ try {
   await press('#reader-arrow-left');
   await sleep(400);
   r.check('the left arrow goes back a chapter', /Ch\. 2/.test(await chapterLabel(page)), await chapterLabel(page));
-  await readerSetting(page, '#reader-dir-rtl', touch);
-  if (!(await barShown())) { const s = await center('#reader-stage'); touch ? await page.tapAt(s.x, s.y) : await page.clickAt(s.x, s.y); await sleep(300); }
-  await press('#reader-arrow-right');
-  await sleep(400);
-  r.check('right to left: the right arrow still goes to the next chapter', /Ch\. 3/.test(await chapterLabel(page)), await chapterLabel(page));
-  await press('#reader-arrow-left');
-  await sleep(400);
-  await readerSetting(page, '#reader-dir-ltr', touch);
 
   // ---- reading settings ----
   if (!(await barShown())) { const s = await center('#reader-stage'); touch ? await page.tapAt(s.x, s.y) : await page.clickAt(s.x, s.y); await sleep(300); }
@@ -74,7 +62,7 @@ try {
   await sleep(300);
   const sp = await center('#reader-settings');
   r.check('the reading settings fill the whole screen', sp.left <= 0 && sp.top <= 0 && sp.w >= vw - 1 && sp.h >= vh - 1, `${sp.w}x${sp.h} of ${vw}x${vh}`);
-  r.check('rows have question-mark help', (await page.eval("document.querySelectorAll('#reader-settings .help').length")) >= 3);
+  r.check('rows have question-mark help', (await page.eval("document.querySelectorAll('#reader-settings .help').length")) >= 2);
   r.check('no separate width/height and zoom controls (one zoom menu)', !(await page.rect('#reader-zoom-in')) && !(await page.rect('#reader-zoom-out')) && !!(await page.rect('#reader-zoom-box')));
   await page.shot(`${viewport}-41-reading-settings`);
   const boxText = () => page.eval("document.querySelector('#reader-zoom-box').value");
@@ -82,9 +70,11 @@ try {
   await press('#reader-zoom-toggle');
   await sleep(300);
   await page.shot(`${viewport}-42-zoom-menu`);
-  await press('#reader-fit-width');
-  r.check('Fit width: data-fit width', (await reader("return r.dataset.fit")) === 'width');
-  r.check('the box says Fit width', (await boxText()) === 'Fit width', await boxText());
+  const items = await page.eval("[...document.querySelectorAll('#reader-zoom-list .menu-item')].map(b => b.textContent.trim())");
+  r.check('the zoom list is Fit page and percentages from 25% to 500%, with no Fit width', items[0] === 'Fit page' && !items.includes('Fit width') && items.includes('25%') && items.includes('500%'), items.join());
+  await page.click('#reader-zoom-list .menu-item', '^50%$');
+  await sleep(300);
+  r.check('picking 50% shrinks the page to half', parseFloat(await reader("return r.style.getPropertyValue('--zoom')")) === 0.5);
   await page.eval("document.querySelector('#reader-zoom-box').focus(); document.querySelector('#reader-zoom-box').select()");
   await page.type('150');
   await page.key('Enter', { code: 'Enter', vk: 13, text: '\r' });
@@ -93,7 +83,7 @@ try {
   r.check('and the page really is zoomed', parseFloat(await reader("return r.style.getPropertyValue('--zoom')")) === 1.5);
   await press('#reader-zoom-toggle');
   await press('#reader-fit-height');
-  r.check('Fit page again', (await boxText()) === 'Fit page' && (await reader("return r.dataset.fit")) === 'height');
+  r.check('Fit page again', (await boxText()) === 'Fit page' && parseFloat(await reader("return r.style.getPropertyValue('--zoom')")) === 1);
   await press('#reader-bars-always');
   await sleep(200);
   r.check('Controls: Always show pins the bars', await page.eval("document.querySelector('#reader').classList.contains('pinned')"));
@@ -115,8 +105,6 @@ try {
   await openBook(page, 'Color Webtoon');
   await page.waitFor("(() => { const i = document.querySelector('.reader-tile img'); return i && i.complete && i.naturalWidth > 0; })()", 15, 'a picture');
   await sleep(1500);
-  const mode = await reader('return r.dataset.mode');
-  if (mode !== 'scroll') await readerSetting(page, '#reader-mode-scroll', touch);
   await sleep(1500);
   const st = await center('#reader-stage');
   const scrollBy = async (dy) => { await page.eval(`document.querySelector('#reader-stage').scrollBy(0, ${dy})`); await sleep(500); };

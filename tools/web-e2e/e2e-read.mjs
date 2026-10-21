@@ -1,8 +1,8 @@
-// Reading: keys, taps (mouse or touch), swipes, scroll mode, progress that
+// Reading: keys, taps (mouse or touch), the strip, progress that
 // survives a reload, Continue, and removing a book.
 //   node tools/web-e2e/e2e-read.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { fx, openApp, nav, importBooks, titles, openBook, counter, chapterLabel, pageNo, hScroll, closeReader, readerSetting } from './helpers.mjs';
+import { fx, openApp, nav, importBooks, titles, openBook, counter, chapterLabel, pageNo, hScroll, closeReader } from './helpers.mjs';
 
 const viewport = process.argv[2] || 'desktop';
 const touch = viewport !== 'desktop';
@@ -24,18 +24,6 @@ const tapZone = async (zone) => {
   else await page.clickAt(px, py);
   await sleep(250);
 };
-// The next page, the way the book reads: a key, or a swipe along the page.
-const turnNext = async () => {
-  const rtl = (await page.eval("document.querySelector('#reader').dataset.dir")) === 'rtl';
-  if (touch) {
-    const s = await stage();
-    const [a, b] = rtl ? [0.2, 0.8] : [0.8, 0.2];
-    await page.swipe(s.x + s.w * a, s.y + s.h * 0.5, s.x + s.w * b, s.y + s.h * 0.5);
-  } else {
-    await page.key(rtl ? 'ArrowLeft' : 'ArrowRight', { code: rtl ? 'ArrowLeft' : 'ArrowRight', vk: rtl ? 37 : 39 });
-  }
-  await sleep(250);
-};
 const barShown = () => page.eval("document.querySelector('#reader').classList.contains('show-bar')");
 const showBar = async () => { if (!(await barShown())) await tapZone('middle'); };
 const hideBar = async () => { if (await barShown()) await tapZone('middle'); };
@@ -48,49 +36,42 @@ try {
   r.check('two books in the library', (await titles(page)).length === 2, JSON.stringify(await titles(page)));
   await page.shot(`${viewport}-10-library`);
 
-  // ---- open and page through ----
+  // ---- open and scroll through ----
   const id = await openBook(page, 'Hero Saga');
   await imgLoaded();
-  r.check('a book opens as one long page to scroll', (await page.eval("document.querySelector('#reader').dataset.mode")) === 'scroll');
-  // The rest of this test is about reading one page at a time.
+  r.check('a book opens as one long page to scroll', !!(await page.eval("document.querySelector('#reader-strip')")));
+  r.check('there is no page-by-page mode to switch to', !(await page.eval("!!document.querySelector('#reader-mode-paged, #reader-mode-scroll, #reader-dir-rtl')")));
   await showBar();
-  await readerSetting(page, '#reader-mode-paged', touch);
-  await sleep(700);
-  await imgLoaded();
   r.check('reader opened on page 1', (await counter(page)) === '1 / 8', await counter(page));
   r.check('first chapter is Ch. 2', /Ch\. 2/.test(await chapterLabel(page)), await chapterLabel(page));
   await page.shot(`${viewport}-11-reader-bar`);
   const hs = await hScroll(page);
   r.check('no sideways scrolling in the reader', hs.doc === 0 && hs.body === 0, JSON.stringify(hs));
+  const scrollTop = () => page.eval("document.querySelector('#reader-stage').scrollTop");
 
   if (!touch) {
-    await page.key('ArrowRight', { code: 'ArrowRight', vk: 39 });
-    r.check('ArrowRight turns to page 2 (left to right)', (await counter(page)) === '2 / 8', await counter(page));
-    await page.key('ArrowLeft', { code: 'ArrowLeft', vk: 37 });
-    r.check('ArrowLeft turns back', (await counter(page)) === '1 / 8', await counter(page));
+    await sleep(1500); // the strip is still being put at the top
+    await page.key('ArrowDown', { code: 'ArrowDown', vk: 40 });
+    await sleep(500);
+    r.check('ArrowDown scrolls the strip', (await scrollTop()) > 20, `scrollTop ${await scrollTop()}`);
     await page.key('End', { code: 'End', vk: 35 });
-    r.check('End goes to the last page', (await counter(page)) === '8 / 8', await counter(page));
+    await sleep(1500);
+    r.check('End goes to the last page of the chapter', (await counter(page)) === '8 / 8', await counter(page));
     await page.key('Home', { code: 'Home', vk: 36 });
-    r.check('Home goes to the first page', (await counter(page)) === '1 / 8', await counter(page));
+    await sleep(1500);
+    r.check('Home goes back to the top', (await scrollTop()) < 5, `scrollTop ${await scrollTop()}`);
   }
-  // A tap anywhere, even beside the page, shows or hides the bars; it never turns a page.
+  // A tap anywhere, even beside the page, shows or hides the bars.
   for (const zone of ['right', 'left', 'middle']) {
     const was = await barShown();
     await tapZone(zone);
     r.check(`a tap in the ${zone} third toggles the bar`, (await barShown()) !== was, `${was} -> ${await barShown()}`);
   }
-  r.check('taps did not turn a page', (await counter(page)) === '1 / 8', await counter(page));
-  await turnNext();
   await showBar();
-  await page.shot(`${viewport}-12-reader-page2`);
 
-  // ---- swipes (touch) ----
+  // ---- pinch (touch) ----
   if (touch) {
     const s = await stage();
-    await page.swipe(s.x + s.w * 0.8, s.y + s.h * 0.5, s.x + s.w * 0.2, s.y + s.h * 0.5);
-    r.check('swipe left turns to the next page', (await counter(page)) === '3 / 8', await counter(page));
-    await page.swipe(s.x + s.w * 0.2, s.y + s.h * 0.5, s.x + s.w * 0.8, s.y + s.h * 0.5);
-    r.check('swipe right goes back', (await counter(page)) === '2 / 8', await counter(page));
     // Pinch to zoom in.
     const z0 = await page.eval("document.querySelector('#reader').style.getPropertyValue('--zoom')");
     await page.pinch(s.x + s.w / 2, s.y + s.h / 2, 80, 220);
@@ -102,49 +83,31 @@ try {
     await sleep(300);
   }
 
-  // ---- direction: right to left ----
-  await showBar();
-  await readerSetting(page, '#reader-dir-rtl', touch);
-  await sleep(250);
-  r.check('right to left is on', (await page.eval("document.querySelector('#reader').dataset.dir")) === 'rtl');
-  await hideBar();
-  await turnNext();
-  r.check('RTL: the next page is the other way round', (await counter(page)) === '3 / 8', await counter(page));
-  if (!touch) {
-    await page.key('ArrowLeft', { code: 'ArrowLeft', vk: 37 });
-    r.check('RTL: ArrowLeft goes forward', (await counter(page)) === '4 / 8', await counter(page));
-  }
-
   // ---- chapter picker and the end of a chapter ----
   await showBar();
   await page.click('#reader-chapter-picker');
   await sleep(300);
   await page.shot(`${viewport}-14-chapter-menu`);
   await page.click('.reader-chapter-item', 'Ch\\. 4');
-  await sleep(500);
+  await sleep(700);
   r.check('chapter picker jumps to Ch. 4', /Ch\. 4/.test(await chapterLabel(page)) && (await counter(page)) === '1 / 8', `${await chapterLabel(page)} ${await counter(page)}`);
-  await hideBar();
-  for (let i = 0; i < 9; i++) await turnNext();
-  const endCard = await page.waitFor("!!document.querySelector('#reader-end-back, #reader-next-chapter, .reader-end')", 10, 'the end card');
-  r.check('the end of the last chapter shows an end card', endCard);
-  await page.shot(`${viewport}-15-end-card`);
-  await showBar();
-
-  // ---- scroll mode ----
-  await readerSetting(page, '#reader-mode-scroll', touch);
-  await sleep(1200);
-  r.check('scroll mode shows a strip', !!(await page.rect('#reader-strip')) || (await page.eval("!!document.querySelector('#reader-strip')")));
+  const s0 = await stage();
   const live0 = await page.eval("document.querySelectorAll('.reader-tile img').length");
-  const s2 = await stage();
-  if (touch) await page.swipe(s2.x + s2.w / 2, s2.y + s2.h * 0.8, s2.x + s2.w / 2, s2.y + s2.h * 0.2);
-  else await page.wheel(s2.x + s2.w / 2, s2.y + s2.h / 2, 900);
-  await sleep(600);
-  const top = await page.eval("document.querySelector('#reader-stage').scrollTop");
-  r.check('the strip scrolls', top > 100, `scrollTop ${top}`);
+  if (touch) await page.swipe(s0.x + s0.w / 2, s0.y + s0.h * 0.8, s0.x + s0.w / 2, s0.y + s0.h * 0.2);
+  else await page.wheel(s0.x + s0.w / 2, s0.y + s0.h / 2, 900);
+  await sleep(700);
+  r.check('the strip scrolls', (await scrollTop()) > 100, `scrollTop ${await scrollTop()}`);
   r.check('pages are loaded only near the screen', live0 >= 1 && live0 <= 12, `${live0} images`);
   await page.shot(`${viewport}-16-scroll`);
-  const c1 = await counter(page);
-  r.check('scroll mode keeps a page counter', /\d+ \/ 8/.test(c1), c1);
+  r.check('the page counter follows the scroll', /\d+ \/ 8/.test(await counter(page)), await counter(page));
+  // To the end of the last chapter: an end card.
+  await page.eval("document.querySelector('#reader-stage').scrollTo(0, document.querySelector('#reader-stage').scrollHeight)");
+  const endCard = await page.waitFor("!!document.querySelector('#reader-end-back, #reader-next-chapter, .reader-end')", 10, 'the end card');
+  r.check('the end of a chapter shows an end card', endCard);
+  await page.shot(`${viewport}-15-end-card`);
+  // Leave the strip part way down, for Continue.
+  await page.eval("document.querySelector('#reader-stage').scrollTo(0, 400)");
+  await sleep(800);
 
   // ---- back to the library: Continue, and persistence across a reload ----
   await closeReader(page);

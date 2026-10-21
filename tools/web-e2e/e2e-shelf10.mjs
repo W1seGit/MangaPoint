@@ -1,7 +1,7 @@
 // A big library: several multi-GB books imported into the browser, read, exported from, reloaded.
 //   TEMP=D:\x MP_FIXTURES=D:\fx MP_SHOTS=D:\shots node tools/web-e2e/e2e-shelf10.mjs [viewport]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { fx, openApp, nav, importBooks, openBook, titles, counter, closeReader, clearToasts } from './helpers.mjs';
+import { fx, openApp, nav, importBooks, openBook, titles, counter, chapterLabel, closeReader, clearToasts } from './helpers.mjs';
 import { readdirSync } from 'node:fs';
 
 const viewport = process.argv[2] || 'desktop';
@@ -38,8 +38,8 @@ try {
 
   // Reading the first book
   await openBook(page, 'Tower');
-  await page.shot(`${viewport}-04-reader-paged`);
-  for (let i = 0; i < 6; i++) { await page.eval("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))"); await sleep(250); }
+  await page.shot(`${viewport}-04-reader`);
+  for (let i = 0; i < 6; i++) { await page.eval("document.dispatchEvent(new KeyboardEvent('keydown',{key:'PageDown',bubbles:true}))"); await sleep(250); }
   await page.shot(`${viewport}-05-reader-page7`);
   const c1 = await counter(page);
   console.log('counter', c1);
@@ -57,12 +57,9 @@ try {
   await page.click('.reader-chapter-item', 'Ch. 40');
   await sleep(1500);
   const c2 = await counter(page);
-  r.check('jumped to a middle chapter instantly', c2 !== c1, `${c1} -> ${c2}`);
+  r.check('jumped to a middle chapter instantly', /Ch\. 40/.test(await chapterLabel(page)), `${c1} -> ${c2}`);
   await page.shot(`${viewport}-07-reader-chapter40`);
-  // scroll mode for a stretch
-  await page.eval("document.querySelector('#reader-view-button')?.click()"); await sleep(300);
-  await page.eval("document.querySelector('#reader-mode-scroll')?.click()"); await sleep(300);
-  await page.eval("document.querySelector('.menu-scrim')?.click()"); await sleep(1500);
+  // scroll for a stretch
   for (let i = 0; i < 30; i++) { await page.eval("document.querySelector('#reader-stage').scrollBy(0, 1500)"); await sleep(150); }
   await sleep(800);
   await page.shot(`${viewport}-08-reader-scroll`);

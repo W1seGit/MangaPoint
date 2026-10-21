@@ -286,7 +286,7 @@ function scanCovers(node) {
 
 // ---- keyboard ------------------------------------------------------------------------------
 
-const HANDLED = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar', '[', ']', '+', '=', '-', '_', '0', 'Escape', 'F11']);
+const HANDLED = new Set(['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' ', 'Spacebar', '[', ']', '+', '=', '-', '_', '0', 'Escape', 'F11']);
 
 function onKey(e) {
   const reader = document.getElementById('reader');
@@ -378,10 +378,6 @@ function onPointerUp(e) {
   } else if (g.x - rect.left <= 28 && dx > 70 && dx > Math.abs(dy) * 1.5 && dt < 900) {
     // A swipe in from the left edge leaves the book, like the back gesture of a phone.
     emit({ t: 'edge_back' });
-  } else if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.6 && dt < 900) {
-    // Only turns the page when the page is not zoomed past the window.
-    const zoomed = stage.scrollWidth > stage.clientWidth + 4;
-    if (!zoomed) emit({ t: 'swipe', dx, dy });
   }
 }
 
@@ -405,7 +401,7 @@ const quiet = (ms = 700) => {
 function reportPosition(stage) {
   posTimer = 0;
   const reader = document.getElementById('reader');
-  if (!reader || reader.dataset.mode !== 'scroll' || !stage || !stage.isConnected) return;
+  if (!reader || !stage || !stage.isConnected) return;
   const top = stage.getBoundingClientRect().top;
   let hit = null;
   for (const tile of stage.querySelectorAll('.reader-tile')) {

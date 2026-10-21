@@ -85,8 +85,7 @@ pub struct Modal {
 pub struct Reading {
     pub book_id: String,
     pub chapter: usize,
-    /// In paged mode the page of the chapter (the chapter's length is the end card).
-    /// In scroll mode the page at the top of the strip.
+    /// The page at the top of the strip.
     pub page: usize,
     pub scroll: f32,
     /// Chapters drawn in the strip (scroll mode), in order.
