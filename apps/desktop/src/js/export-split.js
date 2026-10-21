@@ -22,7 +22,8 @@ if (root && !root.dataset.dragBound) {
   if (kind === 'panel') {
    const el = root.querySelector('[data-panel="' + bar.dataset.target + '"]');
    if (!el) return;
-   drag = { kind, bar, el, id: bar.dataset.target, from: e.clientY, start: el.getBoundingClientRect().height, dir: Number(bar.dataset.dir) };
+   drag = { kind, bar, el, id: bar.dataset.target, from: e.clientY, start: el.getBoundingClientRect().height, dir: Number(bar.dataset.dir),
+    other: (() => { let n = Number(bar.dataset.dir) < 0 ? bar.previousElementSibling : bar.nextElementSibling; while (n && !n.matches('.px-panel')) n = Number(bar.dataset.dir) < 0 ? n.previousElementSibling : n.nextElementSibling; return n && !n.classList.contains('collapsed') ? n.getBoundingClientRect().height : 0; })() };
   } else {
    const side = root.querySelector('.export-side.' + kind);
    drag = { kind, bar, from: e.clientX, start: side.getBoundingClientRect().width };
@@ -33,14 +34,11 @@ if (root && !root.dataset.dragBound) {
  root.addEventListener('pointermove', e => {
   if (!drag) return;
   if (drag.kind === 'panel') {
-   // No panel grows over the others: each of them keeps room for its title bar and a few rows.
-   const side = drag.el.parentElement;
-   let others = 0;
-   for (const p of side.querySelectorAll(':scope > .px-panel')) {
-    if (p !== drag.el) others += p.classList.contains('collapsed') ? 40 : p.classList.contains('fixed') ? 100 : 160;
-   }
-   const most = Math.max(60, side.clientHeight - others);
-   const h = Math.min(most, Math.max(60, Math.round(drag.start + drag.dir * (e.clientY - drag.from))));
+   // A bar moves only the line between the two panels beside it: neither is made smaller than
+   // MIN (the same for every panel), so a panel never pushes another one out of the way.
+   const MIN = 160;
+   const most = drag.other ? drag.start + drag.other - MIN : drag.start;
+   const h = Math.min(Math.max(MIN, most), Math.max(MIN, Math.round(drag.start + drag.dir * (e.clientY - drag.from))));
    drag.el.style.setProperty('--h', h + 'px');
    saved.panels = Object.assign({}, saved.panels, { [drag.id]: h });
   } else {
