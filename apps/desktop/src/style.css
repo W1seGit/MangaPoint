@@ -677,6 +677,8 @@ table.chapters th.size, table.chapters td.size { width: 90px; text-align: right;
 .px-panel.open { flex: 1 1 0; }
 /* A starting height, not a minimum: in a short window the panel gives up room (its body scrolls), so the footer below it stays on screen. */
 .px-panel.open.fixed { flex: 0 1 var(--h, 180px); }
+/* The list of series never shrinks to nothing: the panels above it give up room first. */
+.px-panel[data-panel="series"].open { min-height: 130px; }
 .px-panel.collapsed { flex: 0 0 0; }
 .px-panel.collapsed .px-panel-body { visibility: hidden; transition: visibility 0s 0.28s; }
 .px-panel-head { display: flex; align-items: center; gap: 8px; height: 40px; box-sizing: border-box; padding: 0 12px; cursor: pointer; user-select: none; background: var(--panel-3); border-top: 1px solid var(--line-strong); color: #bdbdbd; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; flex: none; }
