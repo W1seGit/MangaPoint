@@ -298,7 +298,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
     padding-top: var(--sat);
   }
   .xm-sheet-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
-  .xm-sheet .px-panel, .xm-sheet .px-panel.open, .xm-sheet .px-panel.open.fixed { flex: none; overflow: visible; }
+  .xm-sheet .px-panel, .xm-sheet .px-panel.open, .xm-sheet .px-panel.open.fixed { flex: none; overflow: visible; min-height: 0; }
   .xm-sheet .px-panel.collapsed .px-panel-body { display: none; }
   .xm-sheet .px-panel-body { overflow: visible; flex: none; padding-bottom: 16px; }
   .xm-sheet .px-chapters { max-height: 46vh; overflow-y: auto; }

@@ -675,6 +675,8 @@ table.chapters th.size, table.chapters td.size { width: 90px; text-align: right;
 .export-side.right { border-left: 1px solid var(--line); }
 .px-panel { display: flex; flex-direction: column; min-height: 40px; overflow: hidden; border-bottom: 1px solid var(--line); transition: flex-grow 0.28s ease, flex-basis 0.28s ease; }
 .px-panel.open { flex: 1 1 0; }
+/* A panel that takes what is left (Edit, Chapters) keeps room to be used, however big its neighbours are dragged. */
+.px-panel.open:not(.fixed) { min-height: 160px; }
 /* A starting height, not a minimum: in a short window the panel gives up room (its body scrolls), so the footer below it stays on screen. */
 .px-panel.open.fixed { flex: 0 1 var(--h, 180px); }
 /* The list of series never shrinks to nothing: the panels above it give up room first. */

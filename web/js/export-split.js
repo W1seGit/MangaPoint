@@ -37,7 +37,14 @@ export function startSplit() {
    root.addEventListener('pointermove', e => {
     if (!drag) return;
     if (drag.kind === 'panel') {
-     const h = Math.max(60, Math.round(drag.start + drag.dir * (e.clientY - drag.from)));
+     // No panel grows over the others: each of them keeps room for its title bar and a few rows.
+     const side = drag.el.parentElement;
+     let others = 0;
+     for (const p of side.querySelectorAll(':scope > .px-panel')) {
+      if (p !== drag.el) others += p.classList.contains('collapsed') ? 40 : p.classList.contains('fixed') ? 100 : 160;
+     }
+     const most = Math.max(60, side.clientHeight - others);
+     const h = Math.min(most, Math.max(60, Math.round(drag.start + drag.dir * (e.clientY - drag.from))));
      drag.el.style.setProperty('--h', h + 'px');
      saved.panels = Object.assign({}, saved.panels, { [drag.id]: h });
     } else {
