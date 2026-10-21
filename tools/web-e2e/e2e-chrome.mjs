@@ -94,9 +94,19 @@ try {
   await press('#reader-zoom-toggle');
   await press('#reader-fit-height');
   r.check('Fit page again', (await boxText()) === 'Fit page' && (await reader("return r.dataset.fit")) === 'height');
+  await press('#reader-bars-always');
+  await sleep(200);
+  r.check('Controls: Always show pins the bars', await page.eval("document.querySelector('#reader').classList.contains('pinned')"));
   await press('#reader-settings-close');
   await sleep(300);
   r.check('closing returns to the page', !(await page.rect('#reader-settings')));
+  r.check('pinned bars have no dark fade over the page', await page.eval("getComputedStyle(document.querySelector('.reader-top')).backgroundImage === 'none'"));
+  await press('#reader-view-button');
+  await sleep(300);
+  await press('#reader-bars-auto');
+  await press('#reader-settings-close');
+  await sleep(300);
+  r.check('Controls: Hide while reading lets them hide again', await page.eval("!document.querySelector('#reader').classList.contains('pinned')"));
 
   // ---- hide on scroll, show on tap or scroll up (scroll mode) ----
   await press('#reader-back');

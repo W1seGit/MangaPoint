@@ -21,8 +21,9 @@
   const hideBar = () => {
     const r = root();
     if (!r) return;
-    // Stays while the pointer is on it or a menu of it is open.
-    if (r.querySelector('.reader-bar:hover') || document.querySelector('.menu-scrim')) {
+    // Stays while the pointer is on it or a menu of it is open, and when the reader asked for it always.
+    if (r.classList.contains('pinned')) return;
+    if (r.querySelector('.reader-bar > *:hover') || document.querySelector('.menu-scrim, .reader-settings')) {
       barTimer = setTimeout(hideBar, 1500);
       return;
     }
@@ -53,6 +54,11 @@
     if (e.ctrlKey && !['+', '=', '-', '0'].includes(e.key)) return;
     // Esc closes a menu or a dialog first (keys.js does that); only then leaves.
     if (e.key === 'Escape' && document.querySelector('.menu-scrim, .overlay, .backdrop')) return;
+    // The reading settings are a page of their own: Esc goes back to the book.
+    if (document.getElementById('reader-settings')) {
+      if (e.key === 'Escape') { e.preventDefault(); document.getElementById('reader-settings-close')?.click(); }
+      return;
+    }
     // A button that has the focus keeps Space and Enter for itself.
     if (e.key === ' ' && e.target && e.target.tagName === 'BUTTON') return;
     e.preventDefault();

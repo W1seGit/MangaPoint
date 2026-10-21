@@ -377,7 +377,12 @@ fn ReaderScreen(opened: u64) -> Element {
     let prev_label = (current > 0).then(|| book.chapters[current - 1].label(current - 1));
     let counts = book.counts();
     let page = r.page.min(chapter.count);
-    let bar_class = if r.bar { "reader show-bar" } else { "reader" };
+    let always = bars_always(ctx);
+    let bar_class = match (always, r.bar) {
+        (true, _) => "reader show-bar pinned",
+        (false, true) => "reader show-bar",
+        (false, false) => "reader",
+    };
     let book_id = book.id.clone();
 
     rsx! {
@@ -580,6 +585,7 @@ fn ReaderBar(
 #[component]
 fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
     let ctx = use_context::<Ctx>();
+    let always = bars_always(ctx);
     rsx! {
         div { class: "reader-settings", id: "reader-settings", role: "dialog", "aria-label": "Reading settings",
           div { class: "reader-settings-inner",
@@ -612,6 +618,14 @@ fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
                 }
                 SettingRow { label: "Zoom", help: "Fit the whole page, fit its width, show it at its original size, or pick a percentage. Pinching, or Ctrl and the mouse wheel, also zoom.",
                     ZoomMenu { look }
+                }
+                SettingRow { label: "Controls", help: "The bars with the chapter, the settings and your place can hide while you read, or stay on the screen.",
+                    div { class: "seg", role: "group", "aria-label": "Controls",
+                        button { id: "reader-bars-auto", class: on(!always), "aria-pressed": "{!always}",
+                            onclick: move |_| set_bars_always(ctx, false), "Hide while reading" }
+                        button { id: "reader-bars-always", class: on(always), "aria-pressed": "{always}",
+                            onclick: move |_| set_bars_always(ctx, true), "Always show" }
+                    }
                 }
             }
           }
@@ -668,6 +682,17 @@ fn ZoomMenu(look: ReaderLook) -> Element {
             }
         }
     }
+}
+
+fn set_bars_always(ctx: Ctx, yes: bool) {
+    let mut settings = ctx.settings;
+    settings.write().extra.insert("reader_bars_always".to_string(), serde_json::Value::Bool(yes));
+    ctx.save_settings();
+}
+
+/// Whether the bars stay on the screen while reading (a setting of the visitor, not of the book).
+fn bars_always(ctx: Ctx) -> bool {
+    ctx.settings.read().extra.get("reader_bars_always").and_then(|v| v.as_bool()).unwrap_or(false)
 }
 
 /// The fit in use for the book being read.

@@ -70,16 +70,10 @@ img.cover { background: var(--panel); }
 .panel-section select { max-width: 100%; }
 input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 8px; }
 
-/* The reader: safe areas, dynamic viewport, touch. The page fills the screen;
-   two bars fade into it and slide away while reading. */
-.reader { --bar-h: 0px; --top-h: calc(64px + var(--sat)); --bottom-h: calc(104px + var(--sab)); }
-.reader[data-mode="paged"] .reader-stage { padding-top: 0; }
+/* The reader's look is the app's own (reader.css, copied at build time); this is only what a
+   browser adds: the dynamic viewport and touch. */
 .reader[data-mode="paged"] .reader-page-wrap { min-height: 100vh; min-height: 100dvh; }
-/* "Fit page" shows the whole page: as tall as the window, but never wider than it
-   (a phone held upright), whichever is tighter. Zoom multiplies that. */
 .reader[data-fit="height"] .reader-tile {
-  height: auto; max-width: none;
-  width: min(calc(100% * var(--zoom)), calc(100vh * var(--zoom) * var(--arn, 0.66)));
   width: min(calc(100% * var(--zoom)), calc(100dvh * var(--zoom) * var(--arn, 0.66)));
 }
 .reader-stage {
@@ -89,79 +83,9 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .reader-tile img { pointer-events: none; }
 /* Not zoomed: sideways drags are the reader's (turn the page), only vertical ones pan. */
 .reader[data-hpan="no"] .reader-stage { touch-action: pan-y; }
-.reader-end { padding-bottom: calc(112px + var(--sab)); }
 .reader-end .btn { min-height: 44px; }
 .reader-menu { max-height: 60vh; max-height: 60dvh; }
-
-.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-
-/* The two bars: no panel, no border, a black fade into the page. Only their buttons take taps,
-   so a tap on the fade still reaches the page underneath. */
-.reader .reader-bar, .reader.show-bar .reader-bar {
-  position: absolute; left: 0; right: 0; z-index: 3; height: auto; border: 0; white-space: normal;
-  pointer-events: none; transition: transform 0.22s ease, opacity 0.22s ease;
-}
-.reader.show-bar .reader-bar > * { pointer-events: auto; }
-.reader-top {
-  top: 0; height: var(--top-h); box-sizing: border-box;
-  display: flex; align-items: center; justify-content: space-between; gap: 4px;
-  padding: var(--sat) max(6px, var(--sar)) 0 max(6px, var(--sal));
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.72) 45%, rgba(0, 0, 0, 0) 100%);
-}
-.reader-bottom {
-  bottom: 0; height: var(--bottom-h); box-sizing: border-box;
-  display: flex; justify-content: center; align-items: flex-end;
-  padding: 0 max(14px, var(--sar)) calc(14px + var(--sab)) max(14px, var(--sal));
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.94) 0%, rgba(0, 0, 0, 0.72) 45%, rgba(0, 0, 0, 0) 100%);
-}
-.reader:not(.show-bar) .reader-top { transform: translateY(-100%); opacity: 0; }
-.reader:not(.show-bar) .reader-bottom { transform: translateY(100%); opacity: 0; }
-.reader-arrow {
-  flex: none; width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: 50%; background: transparent; color: var(--text); cursor: pointer;
-}
-.reader-arrow:hover { background: rgba(255, 255, 255, 0.1); }
-.reader-chapter-nav { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; }
-.reader-chapter-anchor { position: relative; flex: 0 1 auto; min-width: 0; display: flex; justify-content: center; }
 .reader-end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-.reader-chapter-link {
-  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 10px 12px; border: 0; background: none;
-  color: var(--text); font: inherit; font-size: 1rem; font-weight: 600; cursor: pointer;
-}
-.reader-chapter-link:hover { color: var(--accent, var(--text)); }
-.reader-chapter-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reader-top .reader-menu { left: 50%; right: auto; transform: translateX(-50%); min-width: 220px; }
-.reader-round {
-  width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; flex: none;
-  border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.14); color: var(--text); cursor: pointer;
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-}
-.reader-round:hover { background: rgba(255, 255, 255, 0.24); }
-.reader-caption { display: flex; flex-direction: column; align-items: center; min-width: 0; pointer-events: none; text-align: center; }
-.reader-caption strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; }
-.reader-percent { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; margin-top: 2px; }
-
-/* The reading settings: a whole page of their own, like the app's settings */
-.reader-settings {
-  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; background: var(--bg, #0a0a0a); color: var(--text);
-  padding-top: var(--sat);
-}
-.reader-settings { overflow-y: auto; }
-.reader-settings-inner { width: 100%; max-width: 680px; margin: 0 auto; box-sizing: border-box; padding: 0 max(20px, var(--sar)) calc(28px + var(--sab)) max(20px, var(--sal)); }
-.reader-settings-head { display: flex; align-items: center; gap: 14px; padding: 16px 0 10px; }
-.reader-settings-head h2 { margin: 0; font-size: 1.3rem; }
-.reader-settings-body { padding: 8px 0 0; }
-.reader-settings .seg button { flex: 1; }
-.reader-settings .zoom-menu { width: 100%; max-width: 300px; margin-left: auto; }
-
-/* The zoom box: the same menu as the page preview in the app */
-.zoom-menu { position: relative; }
-.zoom-field { display: flex; align-items: stretch; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel-2); overflow: hidden; transition: border-color 0.18s ease; }
-.zoom-menu.is-open .zoom-field, .zoom-field:focus-within { border-color: var(--accent); }
-.zoom-field input, .zoom-field input:focus { flex: 1; min-width: 0; width: auto; padding: 8px 8px 8px 8px; border: 0; outline: 0; box-shadow: none; background: transparent; font-size: 0.92rem; }
-.zoom-chevron { display: inline-flex; align-items: center; justify-content: center; width: 38px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
-.zoom-chevron:hover { color: var(--text); }
-.zoom-list { right: 0; left: 0; min-width: 0; max-height: 50vh; overflow-y: auto; }
 
 /* Settings rows stack on narrow screens */
 @media (max-width: 700px) {

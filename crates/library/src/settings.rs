@@ -577,6 +577,8 @@ pub struct Settings {
     pub update_skipped: String,
     /// Clean (fades, one part after another) or snappy (pages just appear).
     pub animations: Animations,
+    /// The reader's bars (chapter, settings, title) stay on screen instead of hiding while reading.
+    pub reader_bars_always: bool,
     /// How each reader receives files, by device id.
     pub reader_setups: BTreeMap<String, ReaderSetup>,
     /// How many chapters and pages to download at once.
@@ -639,6 +641,7 @@ impl Default for Settings {
             update_last_check: 0,
             update_skipped: String::new(),
             animations: Animations::Clean,
+            reader_bars_always: false,
             reader_setups: BTreeMap::new(),
             download: DownloadSettings::default(),
             library_dir: None,

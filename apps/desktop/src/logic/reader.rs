@@ -105,6 +105,83 @@ pub fn zoom_wheel(zoom: u16, delta_y: f64) -> u16 {
     }
 }
 
+/// The one zoom setting the visitor sees: how the page is fitted, or a
+/// percentage of that fit. It is stored as the fit plus the zoom factor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZoomChoice {
+    Fit,
+    Width,
+    Original,
+    Percent(u16),
+}
+
+impl ZoomChoice {
+    /// What the zoom box shows.
+    pub fn label(self) -> String {
+        match self {
+            ZoomChoice::Fit => "Fit page".to_string(),
+            ZoomChoice::Width => "Fit width".to_string(),
+            ZoomChoice::Original => "Original size".to_string(),
+            ZoomChoice::Percent(p) => format!("{p}%"),
+        }
+    }
+
+    /// What was typed in the box: "125", "125%", "fit", "fit width", "original".
+    pub fn parse(text: &str) -> Option<ZoomChoice> {
+        let text = text.trim().to_lowercase();
+        if text.contains("width") {
+            return Some(ZoomChoice::Width);
+        }
+        if text.starts_with("orig") {
+            return Some(ZoomChoice::Original);
+        }
+        if text.starts_with("fit") || text.starts_with("page") || text.starts_with("height") {
+            return Some(ZoomChoice::Fit);
+        }
+        let number: u32 = text.trim_end_matches('%').trim().parse().ok()?;
+        Some(ZoomChoice::Percent(number.clamp(u32::from(ZOOM_MIN), u32::from(ZOOM_MAX)) as u16))
+    }
+}
+
+/// The choice that describes this fit and zoom.
+pub fn zoom_choice(fit: ReadFit, zoom: u16) -> ZoomChoice {
+    if zoom == 100 {
+        match fit {
+            ReadFit::Height => ZoomChoice::Fit,
+            ReadFit::Width => ZoomChoice::Width,
+            ReadFit::Original => ZoomChoice::Original,
+        }
+    } else {
+        ZoomChoice::Percent(zoom)
+    }
+}
+
+/// The fit and zoom a choice stands for. A percentage keeps the current fit.
+pub fn apply_zoom_choice(choice: ZoomChoice, current_fit: ReadFit) -> (ReadFit, u16) {
+    match choice {
+        ZoomChoice::Fit => (ReadFit::Height, 100),
+        ZoomChoice::Width => (ReadFit::Width, 100),
+        ZoomChoice::Original => (ReadFit::Original, 100),
+        ZoomChoice::Percent(p) => (current_fit, p.clamp(ZOOM_MIN, ZOOM_MAX)),
+    }
+}
+
+/// How much of the chapter is behind the reader, in whole percent. `page` is
+/// the zero-based page (`count` or more is the end card); `along` is how far
+/// down the strip the reader is, 0 to 1.
+pub fn percent_finished(paged: bool, page: usize, count: usize, along: f32) -> u32 {
+    if count == 0 {
+        return 0;
+    }
+    if paged {
+        ((page.min(count) + 1).min(count) * 100 / count) as u32
+    } else {
+        (along.clamp(0.0, 1.0) * 100.0).round() as u32
+    }
+}
+
+/// A swipe that starts at the left edge of the screen and goes right leaves
+/// the book (the back gesture of phones).
 /// Do the files made of a series for a phone or tablet say it is read right to
 /// left? As the user reads it, or by the series' genres if they never said.
 pub fn export_rtl(prefs: Option<&ReaderPrefs>, info: Option<&SeriesInfo>) -> bool {
@@ -406,6 +483,27 @@ pub const SMALL_PAGES_BANNER: &str = "These pages were saved small for e-readers
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn the_zoom_box_reads_what_was_typed_and_a_choice_sets_the_fit() {
+        assert_eq!(ZoomChoice::parse("125"), Some(ZoomChoice::Percent(125)));
+        assert_eq!(ZoomChoice::parse("fit width"), Some(ZoomChoice::Width));
+        assert_eq!(ZoomChoice::parse("Original size"), Some(ZoomChoice::Original));
+        assert_eq!(ZoomChoice::parse("9999"), Some(ZoomChoice::Percent(ZOOM_MAX)));
+        assert_eq!(ZoomChoice::parse("nonsense"), None);
+        assert_eq!(apply_zoom_choice(ZoomChoice::Fit, ReadFit::Width), (ReadFit::Height, 100));
+        assert_eq!(apply_zoom_choice(ZoomChoice::Percent(150), ReadFit::Width), (ReadFit::Width, 150));
+        assert_eq!(zoom_choice(ReadFit::Width, 100), ZoomChoice::Width);
+        assert_eq!(zoom_choice(ReadFit::Height, 150), ZoomChoice::Percent(150));
+    }
+
+    #[test]
+    fn the_percent_finished_follows_the_page_or_the_scroll() {
+        assert_eq!(percent_finished(true, 0, 10, 0.0), 10);
+        assert_eq!(percent_finished(true, 9, 10, 0.0), 100);
+        assert_eq!(percent_finished(false, 0, 10, 0.456), 46);
+        assert_eq!(percent_finished(true, 0, 0, 0.0), 0);
+    }
     use super::*;
     use PageDirection::{LeftToRight as Ltr, RightToLeft as Rtl};
 
