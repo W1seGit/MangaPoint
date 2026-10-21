@@ -326,3 +326,10 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .original-preview.continuous .reader-tile { display: block; margin: 0 auto; background: transparent; max-width: none; }
 .original-preview.continuous .reader-tile img { pointer-events: none; }
 .original-preview.continuous .original-img { display: block; margin: 0 auto; height: auto; }
+/* Zoom, as in the other previews: Fit shows a whole page, Width fills the column, a percentage is
+   that much of the page's own size. */
+.original-preview[data-zoom="fit"] .reader-tile { width: auto; height: min(var(--reader-page-height), calc(var(--reader-page-width) / var(--arn, 0.667))); }
+.original-preview[data-zoom="fit"] .original-img { width: auto; max-width: var(--reader-page-width); max-height: var(--reader-page-height); }
+.original-preview[data-zoom="width"] .reader-tile, .original-preview[data-zoom="width"] .original-img { width: 100%; height: auto; }
+.original-preview[data-zoom="custom"] .reader-tile { width: calc(var(--w, 400px) * var(--zoom)); height: auto; }
+.original-preview[data-zoom="custom"] .original-img { width: calc(var(--zoom) * 100%); height: auto; }

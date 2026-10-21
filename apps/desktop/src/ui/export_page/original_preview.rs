@@ -29,6 +29,23 @@ fn show_page(index: usize) {
     show_thumb(index);
 }
 
+/// A page's size at this zoom, as in the other previews: Fit shows the whole page (as tall as the
+/// list, never wider than a usual page), Width fills the column, a percentage is that much of the
+/// page's own size. `ratio` is the page's `width / height` in pixels.
+fn page_style(zoom: Zoom, ratio: &str) -> String {
+    let (w, h) = ratio
+        .split_once('/')
+        .and_then(|(w, h)| Some((w.trim().parse::<u32>().ok()?, h.trim().parse::<u32>().ok()?)))
+        .filter(|(w, h)| *w > 0 && *h > 0)
+        .unwrap_or((400, 600));
+    let size = match zoom {
+        Zoom::Fit => format!("height:min(var(--reader-page-height),calc(var(--reader-page-width) * {h} / {w}));width:auto;"),
+        Zoom::Width => "width:100%;height:auto;".to_string(),
+        Zoom::Custom(percent) => format!("width:{}px;height:auto;", w * percent as u32 / 100),
+    };
+    format!("--ar: {w} / {h}; {size}")
+}
+
 #[component]
 pub(super) fn OriginalPreview() -> Element {
     let state = use_context::<AppState>();
@@ -74,11 +91,7 @@ pub(super) fn OriginalPreview() -> Element {
             .await
             .ok()
     }));
-    // Fit and Width both fill the column; a percentage is that much of it.
-    let width = match state.preview.read().view.zoom {
-        Zoom::Custom(percent) => format!("width: {percent}%;"),
-        _ => "width: 100%;".to_string(),
-    };
+    let zoom = state.preview.read().view.zoom;
     let pages = listing.read().clone();
     let total = pages.as_ref().and_then(|p| p.as_ref()).map_or(0, |p| p.len());
     let at = current().min(total.saturating_sub(1));
@@ -130,7 +143,7 @@ pub(super) fn OriginalPreview() -> Element {
                                 Some(None) => rsx! { EmptyState { title: "These pages could not be read", message: "Their files are missing from this computer.", compact: true } },
                                 Some(Some(pages)) => rsx! {
                                     for (n, (url, ratio)) in pages.iter().cloned().enumerate() {
-                                        figure { key: "{n}", class: "original-page", "data-row": "{n}", style: "--ar: {ratio}; {width}",
+                                        figure { key: "{n}", class: "original-page", "data-row": "{n}", style: page_style(zoom, &ratio),
                                             if failed.read().contains(&n) {
                                                 figcaption { class: "muted small", "Page {n + 1} could not be shown." }
                                             } else {

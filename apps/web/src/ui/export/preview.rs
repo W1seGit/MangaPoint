@@ -209,10 +209,12 @@ fn OriginalPages(book: Book) -> Element {
     };
     let selected = e.selected.min(total.saturating_sub(1));
     let number = if total == 0 { 0 } else { selected + 1 };
-    // Fit and Width both fill the column; a percentage is that much of it.
-    let width = match e.zoom {
-        Zoom::Custom(percent) => format!("width:{percent}%;"),
-        _ => "width:100%;".to_string(),
+    // Fit shows a whole page (as tall as the window, never wider than the usual page), Width fills
+    // the column, and a percentage is that much of the page's own size. The style sheet does the rest.
+    let (mode, width) = match e.zoom {
+        Zoom::Fit => ("fit", String::new()),
+        Zoom::Width => ("width", String::new()),
+        Zoom::Custom(percent) => ("custom", format!("--zoom:{};", percent as f32 / 100.0)),
     };
     rsx! {
         div { id: "page-editor", class: "page-editor original-editor", tabindex: "0",
@@ -270,13 +272,13 @@ fn OriginalPages(book: Book) -> Element {
                 }
                 main { class: "editor-main",
                     div { class: "editor-scroll", id: "export-pages",
-                        div { class: "original-preview continuous", id: "export-preview",
+                        div { class: "original-preview continuous", id: "export-preview", "data-zoom": "{mode}", style: "{width}",
                             // A book of the library: every page of the chapter is a tile that the page glue fills as
                             // it comes near the screen (the reader's own tiles), so a long chapter is not loaded at once.
                             if let (Some(chapter), true) = (&chapter, from_library) {
                                 for n in 0..chapter.count {
                                     div {
-                                        class: "reader-tile original-tile", key: "{book.id}-{chapter.first + n}", style: "{width}",
+                                        class: "reader-tile original-tile", key: "{book.id}-{chapter.first + n}",
                                         "data-row": "{n}", "data-book": "{book.id}", "data-page": "{chapter.first + n}",
                                     }
                                 }
@@ -287,7 +289,7 @@ fn OriginalPages(book: Book) -> Element {
                                     Look::Ready { originals, total, shown, .. } => rsx! {
                                         for (n, url) in originals.iter().enumerate() {
                                             if !url.is_empty() {
-                                                img { key: "{n}", class: "original-img original-tile", "data-row": "{n}", style: "{width}", src: "{url}", alt: "Page {n + 1}", decoding: "async" }
+                                                img { key: "{n}", class: "original-img original-tile", "data-row": "{n}", src: "{url}", alt: "Page {n + 1}", decoding: "async" }
                                             }
                                         }
                                         if total > shown {

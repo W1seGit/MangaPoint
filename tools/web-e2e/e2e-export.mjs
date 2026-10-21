@@ -196,7 +196,8 @@ try {
     await sleep(300);
     await page.click('.zoom-list .menu-item', '50%');
     await sleep(400);
-    r.check('zoom changes the size of the pages', (await tileW()) < w100 - 5, `${w100} -> ${await tileW()}`);
+    r.check('Fit page is one page wide, not the whole column', w100 <= 401 && w100 < await page.eval("document.querySelector('#export-pages').clientWidth"), String(w100));
+    r.check('zoom changes the size of the pages', Math.abs((await tileW()) - w100) > 5, `${w100} -> ${await tileW()}`);
     await page.click('.editor-toolbar .zoom-chevron');
     await sleep(300);
     await page.click('.zoom-list .menu-item', 'Fit page');
