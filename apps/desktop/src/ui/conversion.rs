@@ -529,8 +529,11 @@ fn ConversionGroup(
                     span { class: "mp-group-summary", title: "{summary}", "{summary}" }
                 }
             }
-            if shown {
-                div { class: "mp-group-body", {children} }
+            // Always drawn, so its height can ease open and shut.
+            div { class: "mp-group-fold",
+                div { class: "mp-group-fold-inner", "aria-hidden": "{!shown}",
+                    div { class: "mp-group-body", {children} }
+                }
             }
         }
     }

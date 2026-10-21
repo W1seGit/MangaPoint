@@ -762,6 +762,12 @@ pub fn ExportPage() -> Element {
         let _ = look_key();
         request_preview(ctx);
     });
+    // The bars between the panels can be dragged once the screen is on the page (it is drawn
+    // again when a book arrives or the window changes shape, so this follows both).
+    use_effect(move || {
+        let _ = (ctx.export.read().book.is_some(), *ctx.narrow.read());
+        bridge::send("export_split", json!({}));
+    });
     use_drop(move || {
         release_held(ctx);
         dioxus::core::spawn_forever(async move {
@@ -819,7 +825,6 @@ pub fn ExportPage() -> Element {
 
     rsx! {
         div { class: "export-screen", id: "export-screen",
-            onmounted: move |_| bridge::send("export_split", json!({})),
             div { class: "export-body",
                 aside { class: if original { "export-side left alone" } else { "export-side left" },
                     if !original {

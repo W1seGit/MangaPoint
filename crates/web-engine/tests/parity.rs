@@ -478,6 +478,28 @@ fn a_phone_cbz_keeps_every_picture_byte_for_byte_and_matches_the_desktop() {
 }
 
 #[test]
+fn a_long_strip_is_made_one_width_the_same_way_as_the_desktop() {
+    let chapters = vec![vec![
+        colour_jpeg(900, 700, 1),
+        colour_jpeg(400, 1200, 2),
+        png_of(&colour_image(400, 1100, 3)),
+        colour_jpeg(300, 1000, 4),
+        colour_jpeg(400, 1300, 5),
+    ]];
+    for (tag, format) in [("strip-cbz", FileType::Cbz), ("strip-pdf", FileType::Pdf)] {
+        let case = Case::new(tag, chapters.clone(), "phone-original", format);
+        let files = assert_same_as_desktop(&case);
+        if format == FileType::Cbz {
+            let entries = zip_entries(&files[0].1).unwrap();
+            for (name, bytes) in entries.iter().filter(|(n, _)| n != "ComicInfo.xml") {
+                let img = image::load_from_memory(bytes).unwrap();
+                assert_eq!(img.width(), 400, "{name}");
+            }
+        }
+    }
+}
+
+#[test]
 fn a_phone_pdf_matches_the_desktop() {
     let chapters = vec![
         vec![colour_jpeg(300, 450, 1), png_of(&colour_image(120, 180, 2)), webp_of(60, 90, 3)],

@@ -2,7 +2,7 @@
 // The sizes are remembered between visits. The desktop app's own script
 // (`apps/desktop/src/js/export-split.js`).
 export function startSplit() {
-  const root = document.querySelector('.export-screen');
+  const root = [...document.querySelectorAll('.export-screen')].find((r) => !r.dataset.dragBound);
   // (Not `data-split`: that names the bars, and the screen itself must not match them.)
   if (root && !root.dataset.dragBound) {
    root.dataset.dragBound = '1';
@@ -16,6 +16,24 @@ export function startSplit() {
     const el = root.querySelector('[data-panel="' + id + '"]');
     if (el) el.style.setProperty('--h', h + 'px');
    }
+   // A saved layout that is too tall for this window (smaller, or its panels dragged bigger before) is
+   // squeezed back so every open panel keeps its minimum, instead of pushing the others about.
+   const fit = () => {
+    const MIN = 160;
+    for (const side of root.querySelectorAll('.export-side')) {
+     const panels = [...side.querySelectorAll(':scope > .px-panel')];
+     const fixed = panels.filter((p) => p.classList.contains('open') && p.classList.contains('fixed'));
+     const flexible = panels.filter((p) => p.classList.contains('open') && !p.classList.contains('fixed')).length;
+     const shut = panels.filter((p) => p.classList.contains('collapsed')).length;
+     const wanted = fixed.map((p) => parseFloat(p.style.getPropertyValue('--h')) || MIN);
+     const budget = side.clientHeight - MIN * flexible - 40 * shut - 8;
+     const total = wanted.reduce((a, b) => a + b, 0);
+     if (!fixed.length || total <= budget) continue;
+     fixed.forEach((p, i) => p.style.setProperty('--h', Math.max(MIN, Math.floor(wanted[i] * budget / total)) + 'px'));
+    }
+   };
+   fit();
+   window.addEventListener('resize', fit);
    let drag = null;
    root.addEventListener('pointerdown', e => {
     const bar = e.target.closest('.px-split, .px-split-v');

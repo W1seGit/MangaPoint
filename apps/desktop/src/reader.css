@@ -99,6 +99,11 @@
   width: min(calc(100% * var(--zoom)), calc(100vh * var(--zoom) * var(--arn, 0.66)));
 }
 .reader[data-fit="original"] .reader-tile { width: calc(var(--w, 800px) * var(--zoom)); max-width: none; }
+/* A long strip has one width for every page, whatever the fit: there is no "whole page" to fit, and
+   a page's own size would make a ragged column. 100% is the width of the window (Fit width and Fit
+   page) or 800px (Original size), times the zoom. */
+.reader[data-mode="scroll"][data-fit="height"] .reader-tile { height: auto; width: calc(100% * var(--zoom)); }
+.reader[data-mode="scroll"][data-fit="original"] .reader-tile { height: auto; width: calc(min(100%, 800px) * var(--zoom)); }
 .reader-strip { display: flex; flex-direction: column; align-items: flex-start; min-height: 100%; }
 .reader-strip .reader-chapter { width: 100%; display: flex; flex-direction: column; }
 .reader-divider {

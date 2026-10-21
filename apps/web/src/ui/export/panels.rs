@@ -201,7 +201,7 @@ pub fn BookPanel(books: Vec<Book>, book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let running = matches!(ctx.export.read().run, Run::Running { .. });
     rsx! {
-        Panel { title: "Book", icon: "book-open", id: "series", open,
+        Panel { title: "Series", icon: "book-open", id: "series", height: 150, open,
             div { class: "px-layer on",
                 div { class: "px-layer-cover", Cover { id: book.id.clone(), has_cover: book.has_cover } }
                 div { class: "px-layer-text",

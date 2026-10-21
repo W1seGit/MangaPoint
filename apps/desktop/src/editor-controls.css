@@ -74,6 +74,12 @@
 .mp-group.open .mp-group-head .icon { transform: none; }
 .mp-group-title { flex: none; font-size: .95rem; font-weight: 600; }
 .mp-group-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .78rem; text-align: right; }
+/* A group eases its height between 0 and its own, and its contents leave the tab order once shut. */
+.mp-group-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.28s ease; }
+.mp-group.open .mp-group-fold { grid-template-rows: 1fr; }
+.mp-group-fold-inner { overflow: hidden; min-height: 0; visibility: hidden; transition: visibility 0s 0.28s; }
+.mp-group.open .mp-group-fold-inner { visibility: visible; transition-delay: 0s; }
+.app[data-motion="snappy"] .mp-group-fold { transition-duration: 0.08s; }
 .mp-group-body { padding: 0 2px 14px; }
 .mp-group-body > .mp-control-heading:first-child { margin-top: 2px; }
 .mp-manual-crop { margin: 0 0 12px; }

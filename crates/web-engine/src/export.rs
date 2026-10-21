@@ -369,8 +369,17 @@ impl Exporter {
                 }
             }
             None => {
+                // A long strip is made one width (see `original::strip_width`).
+                let sizes: Vec<(u32, u32)> =
+                    pages.iter().filter_map(|p| converter::decode::image_dimensions(p.as_ref()).ok()).collect();
+                let width = original::strip_width(&sizes);
                 for (i, page) in pages.iter().enumerate() {
-                    let bytes = page.as_ref();
+                    let original_bytes = page.as_ref();
+                    let fitted = match width {
+                        Some(target) => original::fit_width(original_bytes, target).map_err(|e| format!("{name}, page {}: {e}", i + 1))?,
+                        None => None,
+                    };
+                    let bytes = fitted.as_deref().unwrap_or(original_bytes);
                     let added = match &mut open.book {
                         Book::Cbz(b) => original::add_to_cbz(b, bytes),
                         Book::Pdf(b) => original::add_to_pdf(b, bytes),

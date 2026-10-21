@@ -1,8 +1,9 @@
 //! Exporting the pages as they were saved, for a phone or a tablet.
 //!
-//! No e-ink processing at all: no resizing, no gray, no dithering, no splitting
-//! and no zoom tiles. Each page of the book is the saved page itself, in
-//! color. A CBZ keeps every JPEG, PNG and WebP byte for byte; a PDF embeds a
+//! No e-ink processing at all: no gray, no dithering, no splitting and no zoom
+//! tiles. Each page of the book is the saved page itself, in color. The one
+//! change: the pages of a long strip (a webtoon) are made one width, so a
+//! reader shows them as one column (see [`strip_width`]). A CBZ keeps every JPEG, PNG and WebP byte for byte; a PDF embeds a
 //! JPEG as it is and writes other pictures without loss. The books are built the
 //! same way as the others (see [`crate::compose`]): in a scratch file as the
 //! pages arrive, grouped as asked, then sent to a folder, a drive or the
@@ -145,6 +146,54 @@ fn flatten_to_rgb(img: &image::DynamicImage) -> image::RgbImage {
     rgb
 }
 
+// ---- one width for a long strip ----------------------------------------------------------------
+
+/// A chapter whose pages are this much taller than wide (the middle of them) is a long strip.
+const STRIP_ASPECT: f64 = 2.2;
+
+/// The width every page of a long strip is made, when the pages do not already share one: the
+/// width most of them have (the larger when two tie). `None` when the chapter is not a long strip,
+/// or its pages are one width already, so nothing is touched. A cover or a credits page of another
+/// width is then scaled to match the rest, instead of showing at a size of its own in the reader.
+/// `sizes` is each page's `(width, height)`; a page whose size is not known is left out.
+pub(crate) fn strip_width(sizes: &[(u32, u32)]) -> Option<u32> {
+    let known: Vec<(u32, u32)> = sizes.iter().copied().filter(|(w, h)| *w > 0 && *h > 0).collect();
+    if known.len() < 2 {
+        return None;
+    }
+    let mut ratios: Vec<f64> = known.iter().map(|(w, h)| f64::from(*h) / f64::from(*w)).collect();
+    ratios.sort_by(f64::total_cmp);
+    if ratios[ratios.len() / 2] < STRIP_ASPECT {
+        return None;
+    }
+    let mut counts: std::collections::BTreeMap<u32, usize> = std::collections::BTreeMap::new();
+    for (w, _) in &known {
+        *counts.entry(*w).or_default() += 1;
+    }
+    if counts.len() < 2 {
+        return None;
+    }
+    // The most common width; on a tie the larger one (the map is in ascending order).
+    counts.into_iter().max_by_key(|(w, n)| (*n, *w)).map(|(w, _)| w)
+}
+
+/// The page scaled to `target` wide (its height follows), or `None` when it is that wide already
+/// or its size cannot be read. A PNG stays a PNG; anything else becomes a high-quality JPEG.
+fn fit_width(bytes: &[u8], target: u32) -> Result<Option<Vec<u8>>> {
+    let Ok((w, h)) = converter::decode::image_dimensions(bytes) else { return Ok(None) };
+    if w == target || w == 0 || h == 0 {
+        return Ok(None);
+    }
+    let height = ((f64::from(h) * f64::from(target) / f64::from(w)).round() as u32).max(1);
+    let img = decode(bytes)?;
+    let scaled = img.resize_exact(target, height, image::imageops::FilterType::Lanczos3);
+    if is_png(bytes) {
+        encode_png(&scaled).map(Some)
+    } else {
+        encode_jpeg(&flatten_to_rgb(&scaled)).map(Some)
+    }
+}
+
 /// Put one saved page into a CBZ: a JPEG, PNG or WebP as it is; anything else
 /// (a GIF) as a PNG, which loses nothing.
 fn add_to_cbz(book: &mut CbzBuilder, bytes: &[u8]) -> Result<()> {
@@ -214,7 +263,13 @@ fn add_to_pdf(book: &mut PdfBuilder, bytes: &[u8]) -> Result<()> {
     })
 }
 
-fn add_page(book: &mut Book, bytes: &[u8]) -> Result<()> {
+/// Put one saved page into the book, scaled to `width` first when the chapter is a long strip.
+fn add_page(book: &mut Book, bytes: &[u8], width: Option<u32>) -> Result<()> {
+    let fitted = match width {
+        Some(target) => fit_width(bytes, target)?,
+        None => None,
+    };
+    let bytes = fitted.as_deref().unwrap_or(bytes);
     match book {
         Book::Cbz(b) => add_to_cbz(b, bytes),
         Book::Pdf(b) => add_to_pdf(b, bytes),
@@ -370,6 +425,12 @@ pub async fn export_original(
             let (pages, name, number) = (source.pages.clone(), source.chapter.name.clone(), source.chapter.number);
             let (flag, tx) = (cancel.clone(), events.clone());
             let page_total = pages.len();
+            // A long strip is made one width (see `strip_width`).
+            let sizes: Vec<(u32, u32)> = pages
+                .iter()
+                .filter_map(|p| image::ImageReader::open(p).ok()?.with_guessed_format().ok()?.into_dimensions().ok())
+                .collect();
+            let width = strip_width(&sizes);
             // The pages go into the book on a thread of their own, one at a time,
             // looking at the cancel flag before each.
             let (book, added) = tokio::task::spawn_blocking(move || {
@@ -381,7 +442,7 @@ pub async fn export_original(
                     let one = fs::read(path)
                         .map_err(|e| PipelineError::Io(path.clone(), e))
                         .and_then(|data| {
-                            add_page(&mut book, &data)
+                            add_page(&mut book, &data, width)
                                 .map_err(|e| match e {
                                     PipelineError::Decode(m) => bad_page(format!("{name}, page {}: {m}", i + 1)),
                                     other => other,

@@ -90,6 +90,34 @@ try {
     await sleep(500);
   };
   await page.shot(`${viewport}-30-export`);
+  if (!narrow) {
+    // The bar above Series moves only the line between Edit and Series: Edit keeps 160px, and nothing above moves.
+    const panel = (id) => page.eval(`(() => { const b = document.querySelector('[data-panel="${id}"]').getBoundingClientRect(); return [Math.round(b.top), Math.round(b.height)]; })()`);
+    const before = [await panel('presets'), await panel('edit'), await panel('series')];
+    const bar = await page.eval("(() => { const b = document.querySelector('.export-side.left .px-split[data-target=series]').getBoundingClientRect(); return [b.left + b.width / 2, b.top + b.height / 2]; })()");
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: bar[0], y: bar[1] });
+    await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: bar[0], y: bar[1], button: 'left', clickCount: 1 });
+    for (const dy of [-60, -200, -400, -700]) {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: bar[0], y: bar[1] + dy, buttons: 1 });
+      await sleep(150);
+    }
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bar[0], y: bar[1] - 700, button: 'left', clickCount: 1 });
+    await sleep(300);
+    const after = [await panel('presets'), await panel('edit'), await panel('series')];
+    r.check('dragging Series up makes it taller', after[2][1] > before[2][1] + 100, `${before[2][1]} -> ${after[2][1]}`);
+    r.check('Edit keeps room (at least 160px) and Presets does not move', after[1][1] >= 159 && after[0][0] === before[0][0] && after[0][1] === before[0][1], JSON.stringify([before, after]));
+    // Back to where it was, so the rest of the run sees the usual layout.
+    await page.eval("localStorage.removeItem('mp-export-layout'); document.querySelector('[data-panel=series]').style.setProperty('--h', '150px')");
+    await sleep(300);
+    // A group of the Edit panel eases open: part way through it is between shut and open.
+    await page.eval("window.__g = []; const g = document.querySelectorAll('.mp-group')[2]; const t0 = performance.now(); const iv = setInterval(() => { window.__g.push(Math.round(g.getBoundingClientRect().height)); if (performance.now() - t0 > 600) clearInterval(iv); }, 20)");
+    await page.click('.mp-group-head', 'Crop');
+    await sleep(800);
+    const grow = await page.eval('window.__g');
+    r.check('a group of Edit eases open instead of jumping', grow.some((h) => h > grow[0] + 10 && h < grow[grow.length - 1] - 10), JSON.stringify(grow.filter((_, i) => i % 3 === 0)));
+    await page.click('.mp-group-head', 'Crop');
+    await sleep(500);
+  }
   const devices = await page.eval("[...document.querySelectorAll('#panel-send .px-preset .px-item-name')].map(o => o.textContent)");
   r.check('the reader list holds the readers kept in Settings (three Xteink) and the phone entry first', devices.length === 4 && /Phone or tablet/.test(devices[0]) && devices.slice(1).every((d) => /Xteink/.test(d)), devices.join(' | '));
   r.check('the panel is the app\'s Send to panel', /Send to/i.test(await page.eval("document.querySelector('#panel-send .px-panel-head').innerText")) && !!(await page.rect('#panel-send .px-new')));

@@ -430,6 +430,38 @@ struct Pdf {
     xref_size: usize,
 }
 
+#[tokio::test]
+async fn the_pages_of_a_long_strip_are_all_made_one_width_and_other_chapters_are_left_alone() {
+    let l = lib("strip");
+    // A strip: a wide cover and one narrower page among pages that are all 400 wide.
+    let strip = vec![jpeg(900, 700, 1), jpeg(400, 1200, 2), png(400, 1100, 3), jpeg(400, 1300, 4), jpeg(300, 1000, 5)];
+    // Ordinary pages of different sizes (a double spread) are not touched.
+    let paged = vec![jpeg(300, 450, 6), jpeg(600, 450, 7)];
+    let series = series_with(&l, &[strip.clone(), paged.clone()]);
+    let j = job(&l, &series, OriginalFormat::Cbz, Grouping::Single);
+    let outcome = export_series(&l.files, &j, None, &CancelFlag::new()).await.unwrap();
+    let entries = zip_entries(&PathBuf::from(&outcome.files[0].location));
+    let pages: Vec<&(String, Vec<u8>)> = entries.iter().filter(|(n, _)| n != "ComicInfo.xml").collect();
+    assert_eq!(pages.len(), 7);
+    let size = |i: usize| {
+        let img = image::load_from_memory(&pages[i].1).unwrap();
+        (img.width(), img.height())
+    };
+    // Every page of the strip is 400 wide, its height following its shape.
+    assert_eq!(size(0), (400, 311));
+    assert_eq!(size(1), (400, 1200));
+    assert_eq!(size(2), (400, 1100));
+    assert_eq!(size(3), (400, 1300));
+    assert_eq!(size(4), (400, 1333));
+    // A page that was the right width is the saved file itself, and a PNG stays a PNG.
+    assert_eq!(pages[1].1, strip[1]);
+    assert_eq!(pages[2].1, strip[2]);
+    assert!(pages[0].0.ends_with(".jpg"));
+    // The ordinary chapter is byte for byte as saved.
+    assert_eq!(pages[5].1, paged[0]);
+    assert_eq!(pages[6].1, paged[1]);
+}
+
 fn find(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
     hay.get(from..)?.windows(needle.len()).position(|w| w == needle).map(|p| p + from)
 }

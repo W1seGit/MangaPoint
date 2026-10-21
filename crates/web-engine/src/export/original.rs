@@ -2,7 +2,8 @@
 //!
 //! The same rules as `crates/pipeline/src/original.rs`: a CBZ keeps every JPEG,
 //! PNG and WebP byte for byte (a GIF becomes a PNG, which loses nothing); a PDF
-//! embeds a JPEG as it is and writes other pictures without loss.
+//! embeds a JPEG as it is and writes other pictures without loss. The pages of a
+//! long strip are made one width (see `strip_width`).
 
 use super::cbz::CbzBuilder;
 use super::pdf::{jpeg_info, PdfBuilder, PdfColor, PdfImage};
@@ -65,6 +66,54 @@ fn flatten_to_rgb(img: &image::DynamicImage) -> image::RgbImage {
         *to = image::Rgb([blend(r), blend(g), blend(b)]);
     }
     rgb
+}
+
+// ---- one width for a long strip ----------------------------------------------------------------
+
+/// A chapter whose pages are this much taller than wide (the middle of them) is a long strip.
+const STRIP_ASPECT: f64 = 2.2;
+
+/// The width every page of a long strip is made, when the pages do not already share one: the
+/// width most of them have (the larger when two tie). `None` when the chapter is not a long strip,
+/// or its pages are one width already, so nothing is touched. A cover or a credits page of another
+/// width is then scaled to match the rest, instead of showing at a size of its own in the reader.
+/// `sizes` is each page's `(width, height)`; a page whose size is not known is left out.
+pub fn strip_width(sizes: &[(u32, u32)]) -> Option<u32> {
+    let known: Vec<(u32, u32)> = sizes.iter().copied().filter(|(w, h)| *w > 0 && *h > 0).collect();
+    if known.len() < 2 {
+        return None;
+    }
+    let mut ratios: Vec<f64> = known.iter().map(|(w, h)| f64::from(*h) / f64::from(*w)).collect();
+    ratios.sort_by(f64::total_cmp);
+    if ratios[ratios.len() / 2] < STRIP_ASPECT {
+        return None;
+    }
+    let mut counts: std::collections::BTreeMap<u32, usize> = std::collections::BTreeMap::new();
+    for (w, _) in &known {
+        *counts.entry(*w).or_default() += 1;
+    }
+    if counts.len() < 2 {
+        return None;
+    }
+    // The most common width; on a tie the larger one (the map is in ascending order).
+    counts.into_iter().max_by_key(|(w, n)| (*n, *w)).map(|(w, _)| w)
+}
+
+/// The page scaled to `target` wide (its height follows), or `None` when it is that wide already
+/// or its size cannot be read. A PNG stays a PNG; anything else becomes a high-quality JPEG.
+pub fn fit_width(bytes: &[u8], target: u32) -> Result<Option<Vec<u8>>, String> {
+    let Ok((w, h)) = converter::decode::image_dimensions(bytes) else { return Ok(None) };
+    if w == target || w == 0 || h == 0 {
+        return Ok(None);
+    }
+    let height = ((f64::from(h) * f64::from(target) / f64::from(w)).round() as u32).max(1);
+    let img = decode(bytes)?;
+    let scaled = img.resize_exact(target, height, image::imageops::FilterType::Lanczos3);
+    if is_png(bytes) {
+        encode_png(&scaled).map(Some)
+    } else {
+        encode_jpeg(&flatten_to_rgb(&scaled)).map(Some)
+    }
 }
 
 /// Put one saved page into a CBZ: a JPEG, PNG or WebP as it is; anything else
