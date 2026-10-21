@@ -196,8 +196,7 @@ try {
     await sleep(300);
     await page.click('.zoom-list .menu-item', '50%');
     await sleep(400);
-    r.check('Fit page is one page wide, not the whole column', w100 <= 401 && w100 < await page.eval("document.querySelector('#export-pages').clientWidth"), String(w100));
-    r.check('zoom changes the size of the pages', Math.abs((await tileW()) - w100) > 5, `${w100} -> ${await tileW()}`);
+    r.check('50% is 400px wide, the same for every page', await page.eval("[...document.querySelectorAll('.original-preview .reader-tile')].every(t => Math.abs(t.getBoundingClientRect().width - 400) < 1)"), String(await tileW()));    r.check('Fit page is no wider than 800px', w100 <= 801, String(w100));
     await page.click('.editor-toolbar .zoom-chevron');
     await sleep(300);
     await page.click('.zoom-list .menu-item', 'Fit page');

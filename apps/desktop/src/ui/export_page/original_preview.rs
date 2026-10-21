@@ -29,21 +29,19 @@ fn show_page(index: usize) {
     show_thumb(index);
 }
 
-/// A page's size at this zoom, as in the other previews: Fit shows the whole page (as tall as the
-/// list, never wider than a usual page), Width fills the column, a percentage is that much of the
-/// page's own size. `ratio` is the page's `width / height` in pixels.
+/// What 100% is: every page is drawn this wide at 100%, whatever its own size, so a zoom looks the
+/// same for every book and every page of it (a wide cover is scaled to match the rest).
+const PAGE_WIDTH: u32 = 800;
+
+/// A page's size at this zoom: Fit and Width show it one page wide and as wide as the list, and a
+/// percentage is that much of `PAGE_WIDTH`. `ratio` is the page's `width / height` in pixels.
 fn page_style(zoom: Zoom, ratio: &str) -> String {
-    let (w, h) = ratio
-        .split_once('/')
-        .and_then(|(w, h)| Some((w.trim().parse::<u32>().ok()?, h.trim().parse::<u32>().ok()?)))
-        .filter(|(w, h)| *w > 0 && *h > 0)
-        .unwrap_or((400, 600));
     let size = match zoom {
-        Zoom::Fit => format!("height:min(var(--reader-page-height),calc(var(--reader-page-width) * {h} / {w}));width:auto;"),
-        Zoom::Width => "width:100%;height:auto;".to_string(),
-        Zoom::Custom(percent) => format!("width:{}px;height:auto;", w * percent as u32 / 100),
+        Zoom::Fit => format!("width:min(100%,{PAGE_WIDTH}px);"),
+        Zoom::Width => "width:100%;".to_string(),
+        Zoom::Custom(percent) => format!("width:{}px;", PAGE_WIDTH * percent as u32 / 100),
     };
-    format!("--ar: {w} / {h}; {size}")
+    format!("--ar: {ratio}; {size}height:auto;")
 }
 
 #[component]
