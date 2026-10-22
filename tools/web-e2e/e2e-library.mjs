@@ -221,7 +221,7 @@ try {
   await press('#book-import-more');
   await page.waitFor("!!document.querySelector('#import-add')", 60, 'the review');
   const dup = await page.eval("document.querySelector('.import-duplicates')?.textContent || ''");
-  r.check('chapters the book has already are flagged and left unticked', /already in Hero Saga/.test(dup) && (await page.eval("[...document.querySelectorAll('.import-chapter input[type=checkbox]')].every((c) => !c.checked)")), dup);
+  r.check('chapters the book has already are flagged and left unticked', /already in Hero Saga/.test(dup) && (await page.eval("[...document.querySelectorAll('.import-table tbody input[type=checkbox]')].every((c) => !c.checked)")), dup);
   r.check('so there is nothing to add until one is ticked again', await page.eval("document.querySelector('#import-add').disabled"));
   await page.shot(`${viewport}-55-duplicates`);
   await clearToasts(page);

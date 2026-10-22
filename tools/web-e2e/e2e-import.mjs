@@ -16,8 +16,31 @@ try {
   r.check('CBZ: review showed chapters and Add worked', /chapter/i.test(text) && (await titles(page)).length === 1, text.slice(0, 80).replace(/\n/g, ' | '));
   await page.shot(`${viewport}-2-one-book`);
 
-  text = await importBooks(page, [fx('Hero Saga Vol 2.zip')]);
+  text = await importBooks(page, [fx('Hero Saga Vol 2.zip')], { keep: false });
   r.check('ZIP of chapter folders: 3 chapters found', /3 chapters/.test(text), text.replace(/\n/g, ' | ').slice(0, 120));
+  // The chapters are a table: a tick for every chapter shown, a filter and a range in a bar that stays in view.
+  const ticks = () => page.eval("[...document.querySelectorAll('.import-table tbody input[type=checkbox]')].map((c) => c.checked).join()");
+  const heads = await page.eval("[...document.querySelectorAll('.import-table thead th')].map((t) => t.textContent.trim()).join('|')");
+  r.check('the chapters are a table with a tick-all box, No., Title and Pages', /No\.\|Title\|Pages/.test(heads) && !!(await page.eval("document.querySelector('.import-table thead input[type=checkbox]')")), heads);
+  r.check('the bar with the filter and the range stays in view', (await page.eval("getComputedStyle(document.querySelector('.import-chapter-tools')).position")) === 'sticky');
+  await page.click('.import-filter');
+  await page.type('3');
+  await sleep(250);
+  r.check('the filter shows the chapters that match', (await page.eval("document.querySelectorAll('.import-table tbody tr').length")) === 1);
+  await page.eval("(() => { const i = document.querySelector('.import-filter'); i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await sleep(250);
+  await page.click('.import-range-text');
+  await page.type('2-3');
+  await page.key('Enter', { code: 'Enter', vk: 13, text: '\r' });
+  await sleep(250);
+  r.check('a range keeps those chapters and leaves out the rest', (await ticks()) === 'true,true,false', await ticks());
+  await page.click('.import-table thead input[type=checkbox]');
+  await sleep(250);
+  r.check('the box at the top ticks every chapter shown', (await ticks()) === 'true,true,true', await ticks());
+  await page.shot(`${viewport}-2b-chapter-table`);
+  await page.click('#import-add');
+  await page.waitFor("!document.querySelector('#import-dialog')", 120, 'the import to finish');
+  await sleep(300);
 
   text = await importBooks(page, [fx('Picture Book.epub')]);
   r.check('EPUB with pictures imported', (await titles(page)).length === 3, JSON.stringify(await titles(page)));

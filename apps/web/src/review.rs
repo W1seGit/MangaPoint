@@ -145,6 +145,22 @@ impl Review {
         }
     }
 
+    /// Keep (or leave out) these chapters.
+    pub fn set_included(&mut self, chapters: &[usize], on: bool) {
+        for &i in chapters {
+            if let Some(c) = self.chapters.get_mut(i) {
+                c.included = on;
+            }
+        }
+    }
+
+    /// Keep these chapters and leave out the others (a range typed in).
+    pub fn include_only(&mut self, chapters: &[usize]) {
+        for (i, c) in self.chapters.iter_mut().enumerate() {
+            c.included = chapters.contains(&i);
+        }
+    }
+
     pub fn set_all(&mut self, on: bool) {
         for c in &mut self.chapters {
             c.included = on;
@@ -223,6 +239,17 @@ mod tests {
             rtl: None,
             existing: None,
         }
+    }
+
+    #[test]
+    fn a_range_keeps_only_those_and_a_group_can_be_ticked_at_once() {
+        let mut r = Review::new(draft());
+        r.include_only(&[1]);
+        assert_eq!(r.chapters.iter().map(|c| c.included).collect::<Vec<_>>(), vec![false, true, false]);
+        r.set_included(&[0, 2], true);
+        assert_eq!(r.included_count(), 3);
+        r.set_included(&[0, 1], false);
+        assert_eq!(r.chapters.iter().map(|c| c.included).collect::<Vec<_>>(), vec![false, false, true]);
     }
 
     #[test]

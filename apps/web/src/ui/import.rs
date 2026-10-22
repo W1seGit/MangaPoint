@@ -55,6 +55,16 @@ fn remove_review(ctx: Ctx, index: usize) {
     });
 }
 
+/// The chapter numbers of review `index` as they stand (for picking a range).
+fn edit_numbers(ctx: Ctx, index: usize) -> Vec<Option<f64>> {
+    ctx.import
+        .peek()
+        .reviews
+        .get(index)
+        .map(|r| r.chapters.iter().map(|c| crate::review::parse_number(&c.number).ok().flatten()).collect())
+        .unwrap_or_default()
+}
+
 fn edit(ctx: Ctx, index: usize, f: impl FnOnce(&mut Review)) {
     let mut imp = ctx.import;
     let mut guard = imp.write();
@@ -264,6 +274,19 @@ fn ReviewStage(state: ImportState) -> Element {
 fn BookCard(index: usize, review: Review) -> Element {
     let ctx = use_context::<Ctx>();
     let mut leaving = use_signal(|| false);
+    let mut filter = use_signal(String::new);
+    let mut range_text = use_signal(String::new);
+    let mut range_error = use_signal(|| None::<String>);
+    // The chapters the filter shows (every word in the name or the number).
+    let words: Vec<String> = filter.read().split_whitespace().map(str::to_lowercase).collect();
+    let shown: Vec<usize> = (0..review.chapters.len())
+        .filter(|&c| {
+            let ch = &review.chapters[c];
+            let hay = format!("{} {}", ch.name.to_lowercase(), ch.number);
+            words.iter().all(|w| hay.contains(w.as_str()))
+        })
+        .collect();
+    let all_shown_on = !shown.is_empty() && shown.iter().all(|&c| review.chapters[c].included);
     let class = if leaving() { "import-book open leaving" } else { "import-book open" };
     let d = &review.draft;
     let counts = format!(
@@ -341,24 +364,95 @@ fn BookCard(index: usize, review: Review) -> Element {
                     if let Some(p) = problem {
                         p { class: "import-warning small import-problem", Icon { name: "circle-alert", size: 13 } " {p}" }
                     }
-                    div { class: "import-chapters",
-                        for (c, chapter) in review.chapters.iter().enumerate() {
-                            div { class: if chapter.included { "import-chapter" } else { "import-chapter off" }, key: "{c}",
+                    div { class: "import-chapter-box",
+                        // The bar stays on screen while the chapters scroll under it.
+                        div { class: "toolbar import-chapter-tools",
+                            div { class: "input-icon",
+                                Icon { name: "list-filter", size: 16 }
                                 input {
-                                    r#type: "checkbox", checked: chapter.included, title: "Keep this chapter", "aria-label": "Keep chapter {c + 1}",
-                                    onchange: move |_| edit(ctx, index, |r| r.toggle(c)),
+                                    r#type: "search", class: "import-filter", placeholder: "Filter chapters", "aria-label": "Filter chapters",
+                                    value: "{filter}", oninput: move |e| filter.set(e.value()),
                                 }
+                            }
+                            form {
+                                class: "row import-range",
+                                onsubmit: move |e| {
+                                    e.prevent_default();
+                                    let numbers = edit_numbers(ctx, index);
+                                    match crate::ranges::select_by_text(&range_text.read(), &numbers) {
+                                        Ok(found) => {
+                                            range_error.set(None);
+                                            edit(ctx, index, |r| r.include_only(&found));
+                                        }
+                                        Err(msg) => range_error.set(Some(msg)),
+                                    }
+                                },
                                 input {
-                                    class: "import-number", r#type: "text", inputmode: "decimal", value: "{chapter.number}", placeholder: "No.",
-                                    "aria-label": "Chapter number", spellcheck: "false",
-                                    "aria-invalid": if review.number_is_valid(c) { "false" } else { "true" },
-                                    oninput: move |e| edit(ctx, index, |r| r.set_number(c, &e.value())),
+                                    r#type: "text", class: "import-range-text", placeholder: "Range: 1-20, 25, 30-", "aria-label": "Chapters to keep",
+                                    value: "{range_text}", oninput: move |e| range_text.set(e.value()),
                                 }
-                                input {
-                                    class: "import-name", r#type: "text", value: "{chapter.name}", "aria-label": "Chapter name",
-                                    oninput: move |e| edit(ctx, index, |r| r.set_name(c, &e.value())),
+                                button { class: "btn small", r#type: "submit", "Select" }
+                            }
+                        }
+                        if let Some(msg) = range_error() {
+                            p { class: "small import-range-error", "{msg}" }
+                        }
+                        div { class: "table-wrap import-table-wrap",
+                            div { class: "table-scroll import-table-scroll",
+                                table { class: "chapters import-table",
+                                    thead {
+                                        tr {
+                                            th { class: "check",
+                                                input {
+                                                    r#type: "checkbox", checked: all_shown_on, disabled: shown.is_empty(),
+                                                    title: "Tick or clear every chapter shown", "aria-label": "Keep every chapter shown",
+                                                    onclick: {
+                                                        let shown = shown.clone();
+                                                        move |_| edit(ctx, index, |r| r.set_included(&shown, !all_shown_on))
+                                                    },
+                                                }
+                                            }
+                                            th { class: "num", "No." }
+                                            th { "Title" }
+                                            th { class: "size", "Pages" }
+                                        }
+                                    }
+                                    tbody {
+                                        for c in shown.iter().copied() {
+                                            {
+                                                let chapter = review.chapters[c].clone();
+                                                rsx! {
+                                                    tr { key: "{c}", class: if chapter.included { "on" } else { "off" },
+                                                        td { class: "check",
+                                                            input {
+                                                                r#type: "checkbox", checked: chapter.included, title: "Keep this chapter", "aria-label": "Keep chapter {c + 1}",
+                                                                onchange: move |_| edit(ctx, index, |r| r.toggle(c)),
+                                                            }
+                                                        }
+                                                        td { class: "num",
+                                                            input {
+                                                                class: "import-number", r#type: "text", inputmode: "decimal", value: "{chapter.number}", placeholder: "No.",
+                                                                "aria-label": "Chapter number", spellcheck: "false",
+                                                                "aria-invalid": if review.number_is_valid(c) { "false" } else { "true" },
+                                                                oninput: move |e| edit(ctx, index, |r| r.set_number(c, &e.value())),
+                                                            }
+                                                        }
+                                                        td { class: "name",
+                                                            input {
+                                                                class: "import-name", r#type: "text", value: "{chapter.name}", "aria-label": "Chapter name",
+                                                                oninput: move |e| edit(ctx, index, |r| r.set_name(c, &e.value())),
+                                                            }
+                                                        }
+                                                        td { class: "size muted small", "{chapter.count}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                                span { class: "muted small import-pages", "{plural(chapter.count, \"page\")}" }
+                                if shown.is_empty() {
+                                    p { class: "muted small import-none", "No chapter matches \u{201c}{filter}\u{201d}." }
+                                }
                             }
                         }
                     }

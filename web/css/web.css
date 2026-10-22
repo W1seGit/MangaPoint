@@ -347,3 +347,26 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .book-chapters-head h2 { margin: 0; font-size: 1.15rem; }
 /* A card with its menu open sits above the cards after it, so the menu is never under them. */
 .poster:has(.poster-menu) { z-index: 30; }
+
+/* The chapters of a book being imported: the app's chapter table, with a filter, a range and a tick for
+   every chapter shown in a bar that stays in view while the list scrolls. */
+.import-chapter-box { margin-top: 12px; }
+.import-chapter-tools {
+  position: sticky; top: -4px; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin: 0; padding: 8px 0; background: var(--panel-2);
+}
+.import-chapter-tools .input-icon { flex: 1 1 180px; min-width: 0; }
+.import-range { gap: 6px; margin-left: auto; }
+.import-range-text { width: 170px; }
+.import-range-error { color: var(--bad); margin: 0 0 6px; }
+.import-table-scroll { max-height: 340px; min-height: 0; }
+.import-table thead th { position: sticky; top: 0; z-index: 2; }
+.import-table th, .import-table td { padding: 5px 8px; }
+.import-table th.check, .import-table td.check { width: 34px; }
+.import-table td.num { width: 84px; }
+.import-table .import-number { width: 68px; }
+.import-table .import-name { width: 100%; }
+.import-table tr.off .import-name, .import-table tr.off .import-number { opacity: 0.5; }
+.import-table td.size { width: 64px; text-align: right; }
+.import-none { padding: 10px 12px; margin: 0; }
+@media (max-width: 800px) { .import-range { margin-left: 0; } .import-range-text { width: auto; flex: 1; } }
