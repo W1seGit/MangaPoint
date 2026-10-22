@@ -35,7 +35,7 @@ Step 'desktop app builds' { $env:CARGO_TARGET_DIR = $desk; cargo build -p mangap
 Step 'website builds (wasm32)' { $env:CARGO_TARGET_DIR = $web; cargo check -p mangapoint-web --target wasm32-unknown-unknown }
 Step 'unit tests' {
     $env:CARGO_TARGET_DIR = $desk
-    cargo test -p library -p converter -p device-profiles -p pipeline -p web-engine -p mangapoint -p mangapoint-web
+    cargo test -p library -p converter -p device-profiles -p pipeline -p web-engine -p mangapoint-ui -p mangapoint -p mangapoint-web
 }
 Step 'web engine parity with the desktop' { $env:CARGO_TARGET_DIR = $desk; cargo test -p web-engine --test parity }
 

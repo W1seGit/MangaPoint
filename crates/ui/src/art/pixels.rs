@@ -65,7 +65,7 @@ fn attribute<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
 
 /// The same picture with each run of rectangles written as a few paths.
 /// Markup that is not made of `<rect x y width height fill/>` is left alone.
-pub(super) fn compact(svg: &str) -> String {
+pub fn compact(svg: &str) -> String {
     let mut out = String::with_capacity(svg.len() / 3);
     let mut run = Run::default();
     let mut rest = svg;

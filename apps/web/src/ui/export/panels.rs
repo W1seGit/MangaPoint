@@ -12,7 +12,7 @@ use crate::bridge::{self};
 use crate::ui::readers::ReaderPicker;
 use crate::format::{human_bytes, human_duration, plural};
 use crate::model::Book;
-use crate::ranges::select_by_text;
+use mangapoint_ui::logic::chapters::select_by_text;
 use crate::ui::widgets::{Chip, Cover, Help, Icon, ProgressBar};
 use dioxus::prelude::*;
 use library::PresetEntry;

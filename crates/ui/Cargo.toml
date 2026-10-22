@@ -1,0 +1,11 @@
+[package]
+name = "mangapoint-ui"
+version.workspace = true
+edition.workspace = true
+description = "What the desktop app and the website both show or decide: the art, the small widgets, the chapter table and the pure logic behind the screens."
+publish = false
+
+[dependencies]
+# No renderer: each app turns on its own (desktop or web).
+dioxus = { version = "0.7", default-features = false, features = ["macro", "html", "signals", "hooks"] }
+library = { path = "../library" }

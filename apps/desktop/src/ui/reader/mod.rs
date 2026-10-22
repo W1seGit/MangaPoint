@@ -12,7 +12,7 @@ mod load;
 
 use crate::logic::{self, Action, ReaderLook, ZoomChoice};
 use crate::state::{AppState, PendingReading, ReaderOpen};
-use crate::ui::widgets::{EmptyState, Help, Icon, Loading};
+use crate::ui::widgets::{EmptyState, Icon, Loading, SettingRow};
 use dioxus::document::Eval;
 use dioxus::prelude::*;
 use library::{DownloadedChapter, ReaderPrefs, SeriesInfo};
@@ -114,9 +114,9 @@ impl Ctx {
     fn look(&self) -> ReaderLook {
         let data = self.data.peek();
         let Some(d) = data.as_ref() else {
-            return logic::resolve_look(&ReaderPrefs::default());
+            return logic::resolve_look(None);
         };
-        logic::resolve_look(&d.prefs)
+        logic::resolve_look(d.prefs.zoom)
     }
 
     /// How many pages each chapter has: as listed if it has been, else as the
@@ -769,17 +769,6 @@ fn ReaderBar(
         ReaderCaption { title: title.clone(), pos }
         if settings() {
             ReaderSettings { look, always, on_close: move |_| settings.set(false), on_zoom, on_always }
-        }
-    }
-}
-
-/// One setting of the reading settings: what it is on the left, how to change it on the right.
-#[component]
-fn SettingRow(label: String, help: String, children: Element) -> Element {
-    rsx! {
-        div { class: "sx-row",
-            div { class: "sx-text", div { class: "sx-label", "{label}" Help { text: help } } }
-            div { class: "sx-control", {children} }
         }
     }
 }

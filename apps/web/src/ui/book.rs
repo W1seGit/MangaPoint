@@ -7,7 +7,7 @@ use crate::app::{Ctx, Modal, ModalAction, Page};
 use crate::bridge;
 use crate::format::{human_bytes, plural};
 use super::chapter_table::{ChapterGrid, GridRow};
-use crate::logic::SortKey;
+use mangapoint_ui::logic::chapters::SortKey;
 use dioxus::prelude::*;
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -214,7 +214,7 @@ pub fn BookPage() -> Element {
                 class: "row", style: "gap: 6px; margin-left: auto",
                 onsubmit: move |e| {
                     e.prevent_default();
-                    match crate::ranges::select_by_text(&range_text.read(), &numbers) {
+                    match mangapoint_ui::logic::chapters::select_by_text(&range_text.read(), &numbers) {
                         Ok(found) => { range_error.set(None); picked.set(found.into_iter().collect()); }
                         Err(msg) => range_error.set(Some(msg)),
                     }
@@ -245,7 +245,7 @@ pub fn BookPage() -> Element {
             },
             on_sort: move |key| {
                 let current = sort();
-                sort.set(crate::logic::next_sort(current, key));
+                sort.set(mangapoint_ui::logic::chapters::next_sort(current, key));
             },
             on_toggle: move |index: usize| {
                 let mut s = picked.write();

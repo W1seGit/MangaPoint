@@ -1,21 +1,13 @@
 //! The MangaPoint website: read, import and export your own books in the
 //! browser. Nothing is uploaded; see `docs/web.md`.
 //!
-//! The pure parts (the library's bookkeeping, the import review, the reader's
-//! decisions) compile and are tested natively. The screens and the bridge to
-//! the browser exist only for `wasm32`.
+//! The pure parts (the library's bookkeeping, the import review) compile and are tested natively;
+//! what the website shares with the desktop app is in `mangapoint_ui`. The screens and the bridge
+//! to the browser exist only for `wasm32`.
 
-
-pub mod art;
-/// The desktop app's number and text helpers (one source of truth).
-#[path = "../../desktop/src/logic/format.rs"]
-pub mod format;
-pub mod logic;
+pub use mangapoint_ui::art;
+pub use mangapoint_ui::logic::format;
 pub mod model;
-pub mod ranges;
-#[cfg(target_arch = "wasm32")]
-mod update_cat;
-pub mod reader_logic;
 pub mod review;
 
 #[cfg(target_arch = "wasm32")]

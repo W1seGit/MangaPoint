@@ -1,136 +1,8 @@
-//! Small pieces used by several screens.
+//! Small pieces used by several screens: the shared ones (`mangapoint_ui::widgets`) and the app's own.
 
 use crate::state::AppState;
 use dioxus::prelude::*;
-
-/// A Lucide icon by name (see `icons.rs`). Takes the surrounding text color.
-#[component]
-pub fn Icon(name: &'static str, size: Option<u32>) -> Element {
-    let size = size.unwrap_or(18);
-    let body = super::icons::body(name).unwrap_or("");
-    rsx! {
-        svg {
-            class: "icon",
-            width: "{size}",
-            height: "{size}",
-            view_box: "0 0 24 24",
-            fill: "none",
-            stroke: "currentColor",
-            stroke_width: "2",
-            stroke_linecap: "round",
-            stroke_linejoin: "round",
-            "aria-hidden": "true",
-            dangerous_inner_html: "{body}",
-        }
-    }
-}
-
-/// A screen with nothing on it yet: the cat napping, and a friendly line.
-#[component]
-pub fn EmptyState(
-    title: String,
-    message: String,
-    compact: Option<bool>,
-    /// The cat beside the words, in a card, rather than above them.
-    side: Option<bool>,
-    /// Show the cat asleep on an empty bookshelf instead of on its own.
-    shelf: Option<bool>,
-    /// Or another scene: "search", "ocean" or "waiting".
-    scene: Option<&'static str>,
-    children: Element,
-) -> Element {
-    let class = if side.unwrap_or(false) {
-        "empty side"
-    } else if compact.unwrap_or(false) {
-        "empty compact"
-    } else {
-        "empty"
-    };
-    rsx! {
-        div { class: "{class}",
-            if scene == Some("ocean") {
-                super::ocean::OceanCat {}
-            } else if scene == Some("search") {
-                super::scenes::SearchCat {}
-            } else if scene == Some("waiting") {
-                super::hang::HangingCat {}
-            } else if shelf.unwrap_or(false) {
-                super::shelf::ShelfCat {}
-            } else {
-                super::cat::RestingCat {}
-            }
-            div { class: "empty-words",
-                h2 { "{title}" }
-                p { "{message}" }
-                {children}
-            }
-        }
-    }
-}
-
-#[component]
-pub fn ProgressBar(fraction: Option<f32>) -> Element {
-    match fraction {
-        Some(f) => {
-            let pct = (f.clamp(0.0, 1.0) * 100.0).round();
-            rsx! { div { class: "progress", div { style: "width: {pct}%" } } }
-        }
-        None => rsx! { div { class: "progress indeterminate", div {} } },
-    }
-}
-
-/// A switch that slides between off and on.
-#[component]
-pub fn Toggle(on: bool, onchange: EventHandler<bool>) -> Element {
-    let checked = if on { "true" } else { "false" };
-    rsx! {
-        button {
-            r#type: "button", role: "switch", "aria-checked": "{checked}",
-            class: if on { "toggle on" } else { "toggle" },
-            onclick: move |_| onchange.call(!on),
-            span { class: "knob" }
-        }
-    }
-}
-
-/// A small question mark that explains a setting when the pointer is on it.
-#[component]
-pub fn Help(text: String) -> Element {
-    rsx! {
-        span { class: "help", tabindex: "0", "data-tip": "{text}", "aria-label": "{text}",
-            Icon { name: "circle-help", size: 15 }
-        }
-    }
-}
-
-#[component]
-pub fn Chip(text: String, kind: Option<String>) -> Element {
-    let class = format!("chip {}", kind.unwrap_or_default());
-    rsx! { span { class: "{class}", "{text}" } }
-}
-
-/// Something is loading: the cat runs in circles in the middle of the place
-/// where it will show up.
-#[component]
-pub fn Loading(label: String) -> Element {
-    rsx! {
-        div { class: "loading",
-            super::cat::CirclingCat {}
-            span { "{label}" }
-        }
-    }
-}
-
-/// A small working marker with a few words, to sit in a line of text.
-#[component]
-pub fn Busy(label: String, size: Option<u32>) -> Element {
-    rsx! {
-        span { class: "busy",
-            super::cat::CirclingCat { size: size.unwrap_or(44) }
-            "{label}"
-        }
-    }
-}
+pub use mangapoint_ui::widgets::*;
 
 /// What a page that needs the catalog engine shows while it is still
 /// starting: the cat, how far it is, and that the rest of the app works.
@@ -182,12 +54,6 @@ pub fn Cover(key_id: String) -> Element {
         }
         _ => rsx! { NoCover {} },
     }
-}
-
-/// The picture for a cover that is missing or has not loaded yet.
-#[component]
-pub fn NoCover() -> Element {
-    rsx! { div { class: "cover empty art", dangerous_inner_html: super::placeholder::svg() } }
 }
 
 /// Point a cover at the sources' picture. Nothing is fetched or kept here:

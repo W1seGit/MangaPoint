@@ -99,8 +99,8 @@ A small JSON file (a few hundred bytes per book, no pictures). The engine
 
 | path | what |
 |---|---|
-| `apps/web` | the page: Rust, Dioxus 0.7 (`wasm32`), `model.rs` (library, state, sorting), `review.rs` (import review), `reader_logic.rs` (port of the desktop reader's decisions), `ui/*` (screens), `bridge.rs` (calls into the browser) |
-| `apps/desktop/src/ui/{cat,ocean,scenes,walker,shelf,pixels,icons,placeholder,hang}.rs`, `logic/format.rs` | included by `#[path]` (one source of truth) |
+| `apps/web` | the page: Rust, Dioxus 0.7 (`wasm32`), `model.rs` (library, state, sorting), `review.rs` (import review), `ui/*` (screens), `bridge.rs` (calls into the browser) |
+| `crates/ui` (`mangapoint-ui`) | what the website and the desktop app share: the art, the small widgets, the chapter table, and the logic behind the screens (reader keys and zoom, chapter sorting and ranges, the page editor's layout, number and date wording) |
 | `apps/desktop/src/{style,import,reader}.css` | copied unchanged at build time; `web/css/web.css` only adapts the layout (safe areas, 44 px targets, bottom tab bar under 800 px, no sideways scroll) |
 | `crates/web-engine` | the engine: chapter guessing, fingerprints, state file, devices, options (`core`, linked into the page) and the converter/writers (`convert`, its own `.wasm`, loaded only by the export worker) |
 | `web/js` | browser glue as plain ES modules: `zip.js` (lazy ZIP reader), `store.js` (IndexedDB/OPFS), `importer.js`, `pages.js` (blob URL lifecycle), `reader.js` (tiles, keys, touch), `fsa.js`, `export-worker.js`, `mp.js` (the bridge) |

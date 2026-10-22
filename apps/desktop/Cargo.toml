@@ -10,6 +10,7 @@ repository = "https://github.com/W1seGit/MangaPoint"
 dioxus = { version = "0.7", features = ["desktop"] }
 catalog = { path = "../../crates/catalog" }
 library = { path = "../../crates/library" }
+mangapoint-ui = { path = "../../crates/ui" }
 sources = { path = "../../crates/sources" }
 search = { path = "../../crates/search" }
 pipeline = { path = "../../crates/pipeline" }

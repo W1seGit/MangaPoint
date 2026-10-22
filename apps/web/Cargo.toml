@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 dioxus = { version = "0.7", default-features = false, features = ["web", "macro", "html", "signals", "hooks", "launch"] }
 library = { path = "../../crates/library" }
+mangapoint-ui = { path = "../../crates/ui" }
 converter = { path = "../../crates/converter", features = ["serde"] }
 device-profiles = { path = "../../crates/device-profiles", features = ["serde"] }
 web-engine = { path = "../../crates/web-engine", default-features = false, features = ["core"] }

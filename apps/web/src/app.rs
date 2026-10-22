@@ -526,7 +526,7 @@ fn Shell() -> Element {
             if update && !*later.read() {
                 div { class: "overlay", id: "update-dialog", onclick: move |_| later.set(true),
                     div { class: "modal update-modal", onclick: move |e| e.stop_propagation(),
-                        div { class: "upd-top", crate::update_cat::UpdateCat {} }
+                        div { class: "upd-top", crate::art::update_cat::UpdateCat {} }
                         h2 { "A new version of MangaPoint is ready" }
                         p { class: "muted small", style: "margin: 0 0 10px", "Reload to use it. Your library and settings are not touched." }
                         div { class: "actions",

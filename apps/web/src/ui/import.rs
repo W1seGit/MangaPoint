@@ -379,7 +379,7 @@ fn BookCard(index: usize, review: Review) -> Element {
                                 onsubmit: move |e| {
                                     e.prevent_default();
                                     let numbers = edit_numbers(ctx, index);
-                                    match crate::ranges::select_by_text(&range_text.read(), &numbers) {
+                                    match mangapoint_ui::logic::chapters::select_by_text(&range_text.read(), &numbers) {
                                         Ok(found) => {
                                             range_error.set(None);
                                             edit(ctx, index, |r| r.include_only(&found));

@@ -1,5 +1,5 @@
-//! The cat with a parcel of the update dialog: the desktop app's own sprite
-//! (`apps/desktop/src/ui/update_dialog.rs`).
+//! The cat with a parcel in the dialog that offers a newer version of the desktop app. The website
+//! shows the same dialog when a new version of the site is ready.
 
 use dioxus::prelude::*;
 use std::sync::OnceLock;

@@ -10,84 +10,8 @@ use crate::bridge;
 use crate::model::Book;
 use crate::ui::widgets::{EmptyState, Icon, Loading, ZoomDropdown, ZoomPick};
 use dioxus::prelude::*;
+use mangapoint_ui::logic::preview::{groups, part_note, reader_style, row_height, seams, PageSlot, Seam};
 use serde_json::json;
-
-/// What the page after this one repeats of it: how many rows, and where those
-/// rows sit on the page (as shares of the screen height).
-#[derive(Clone, PartialEq)]
-struct Seam {
-    rows: u32,
-    band_top: f32,
-    band_height: f32,
-}
-
-/// The seam after each page of a strip chapter; `None` for the last page and
-/// for chapters that are not strips.
-fn seams(sources: &[PageSource], screen_height: u32) -> Vec<Option<Seam>> {
-    let rows_of = |s: &PageSource| (s.part == "strip").then_some((s.top, s.height));
-    (0..sources.len())
-        .map(|i| {
-            let (top, height) = rows_of(&sources[i])?;
-            let (next_top, _) = rows_of(sources.get(i + 1)?)?;
-            let rows = (top + height).saturating_sub(next_top);
-            let screen = screen_height.max(1) as f32;
-            Some(Seam {
-                rows,
-                band_top: height.saturating_sub(rows) as f32 / screen * 100.0,
-                band_height: rows as f32 / screen * 100.0,
-            })
-        })
-        .collect()
-}
-
-/// How tall a page is at this zoom, as a CSS length.
-fn row_height(zoom: Zoom, width: u32, height: u32) -> String {
-    match zoom {
-        Zoom::Fit => format!("min(var(--reader-page-height),calc(var(--reader-page-width) * {height} / {width}))"),
-        Zoom::Width => format!("calc(var(--reader-page-width) * {height} / {width})"),
-        Zoom::Custom(percent) => format!("{}px", height * percent as u32 / 100),
-    }
-}
-
-fn reader_style(zoom: Zoom, width: u32, height: u32) -> String {
-    let size = match zoom {
-        Zoom::Fit => format!("height:{};width:auto;", row_height(zoom, width, height)),
-        Zoom::Width => "height:auto;width:100%;".to_string(),
-        Zoom::Custom(percent) => format!("height:{}px;width:{}px;", height * percent as u32 / 100, width * percent as u32 / 100),
-    };
-    format!("{size}aspect-ratio:{width}/{height};")
-}
-
-/// Which pages share a picture: a double page split in two, or a page zoomed into pieces, is several
-/// reader pages from one source page. Every other page is a group of its own. As
-/// `(first, one past the last)`.
-fn groups(sources: &[PageSource]) -> Vec<(usize, usize)> {
-    let mut out: Vec<(usize, usize)> = Vec::new();
-    for (i, page) in sources.iter().enumerate() {
-        match out.last_mut() {
-            Some(last) if page.image.is_some() && sources[last.0].image == page.image => {
-                last.1 = i + 1;
-            }
-            _ => out.push((i, i + 1)),
-        }
-    }
-    out
-}
-
-/// What a page is of its source page, when the source page makes several
-/// ("left half of source page 12"): which one of them this is.
-fn part_note(page: &PageSource, k: usize, of: usize) -> Option<String> {
-    let image = page.image?;
-    if of < 2 {
-        return None;
-    }
-    let what = match page.part.as_str() {
-        "left" => "left half".to_string(),
-        "right" => "right half".to_string(),
-        _ => format!("part {} of {of}", k + 1),
-    };
-    Some(format!("{what} of source page {}", image + 1))
-}
 
 /// One page of the chapter in the scrolling list: the page as the reader will show it.
 #[component]
@@ -337,7 +261,8 @@ pub fn Preview(book: Book) -> Element {
     let classes = if e.source_focus { "page-editor source-focused" } else { "page-editor" };
     let compare = e.compare;
     let strip = sources.iter().any(|s| s.part == "strip");
-    let seams = seams(&sources, device.height);
+    let slots: Vec<PageSlot> = sources.iter().map(PageSource::slot).collect();
+    let seams = seams(&slots, device.height);
     let chapter = e.shown;
     let device_name = device.name.clone();
     rsx! {
@@ -410,7 +335,7 @@ pub fn Preview(book: Book) -> Element {
                         if total == 0 && !matches!(e.look, Look::Failed(_)) {
                             div { class: "editor-image-loading", id: "export-making", "Preparing the chapter…" }
                         }
-                        for (start, end) in groups(&sources) {
+                        for (start, end) in groups(&slots) {
                             div {
                                 key: "{chapter}/g{start}",
                                 class: match (compare, end - start) {
@@ -444,7 +369,7 @@ pub fn Preview(book: Book) -> Element {
                                         index: i,
                                         selected: i == selected,
                                         url: converted.get(i).cloned().unwrap_or_default(),
-                                        label: match part_note(&sources[i], i - start, end - start) {
+                                        label: match part_note(&slots[i], i - start, end - start) {
                                             Some(note) => format!("Page {} · {note}", i + 1),
                                             None => format!("Page {}", i + 1),
                                         },

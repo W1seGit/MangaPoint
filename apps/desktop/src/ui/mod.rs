@@ -1,36 +1,30 @@
 //! The app's screens.
 
-pub mod cat;
 mod browse;
-mod chapter_table;
 mod conversion;
 mod devices;
 mod download_dialog;
 mod tasks_page;
 mod update_dialog;
 mod export_page;
-mod hang;
 mod import;
 mod onboarding;
-mod walker;
-mod icons;
 mod library_page;
-mod ocean;
-mod pixels;
-mod placeholder;
 mod plan_page;
 mod presets;
 mod reader;
-mod scenes;
 mod search;
 mod settings;
 mod setup;
-mod shelf;
 mod sidebar;
 mod sources_page;
 mod widgets;
 pub mod work;
 mod workspace;
+
+// The art and the chapter table are shared with the website.
+pub use mangapoint_ui::art::{cat, ocean, pixels, walker};
+use mangapoint_ui::chapter_table;
 
 use crate::backend;
 use crate::state::spawn_forever;

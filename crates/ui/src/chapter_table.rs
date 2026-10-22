@@ -1,10 +1,10 @@
-//! The chapter table, shared by the Chapters tab and the download planner:
-//! tick boxes with a select-all in the header, sortable columns, and for each
-//! chapter whether it is downloaded (and how big it is). It only draws what it
-//! is given; whoever uses it decides what ticking and sorting do.
+//! The chapter table, shared by the desktop app's Chapters tab and download planner and the
+//! website's book page and import review: tick boxes with a select-all in the header, sortable
+//! columns, and for each chapter whether it is downloaded (and how big it is). It only draws what
+//! it is given; whoever uses it decides what ticking and sorting do.
 
-use super::widgets::{Chip, EmptyState, Icon};
-use crate::logic::SortKey;
+use crate::widgets::{Chip, EmptyState, Icon};
+use crate::logic::chapters::SortKey;
 use dioxus::prelude::*;
 use std::collections::HashSet;
 

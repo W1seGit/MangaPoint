@@ -6,7 +6,7 @@ use super::widgets::{EmptyState, Icon, SettingRow};
 use crate::app::{Ctx, Reading};
 use crate::bridge::{self, Event};
 use crate::model::Book;
-use crate::reader_logic::{self as logic, Action, ReaderLook, ZoomChoice};
+use mangapoint_ui::logic::reader::{self as logic, Action, ReaderLook, ZoomChoice};
 use dioxus::prelude::*;
 use serde_json::json;
 use web_engine::state::Prefs;
@@ -64,7 +64,7 @@ pub fn close_reader(ctx: Ctx) {
 fn look_of(ctx: Ctx, book: &Book) -> ReaderLook {
     let lib = ctx.library.peek();
     let prefs = lib.state_of(&book.id).map(|s| s.prefs).unwrap_or_default();
-    logic::resolve_look(&prefs)
+    logic::resolve_look(prefs.zoom)
 }
 
 /// Remember where the reader is, in the library and on disk.

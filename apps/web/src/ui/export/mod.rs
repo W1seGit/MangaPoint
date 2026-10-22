@@ -18,6 +18,8 @@ use crate::format::plural;
 use crate::model::{Book, Chapter};
 use dioxus::prelude::*;
 use library::ConversionSettings;
+pub use mangapoint_ui::logic::preview::Zoom;
+use mangapoint_ui::logic::preview::{PageSlot, SlotPart};
 use panels::{BookPanel, ChaptersPanel, EditPanel, ExportFooter, PresetsPanel, RunCard, SendPanel};
 use preview::Preview;
 use serde::{Deserialize, Serialize};
@@ -103,21 +105,18 @@ pub struct PageSource {
     pub strip_url: String,
 }
 
-/// How big the pages are on screen.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Zoom {
-    /// As large as fits without scrolling.
-    #[default]
-    Fit,
-    /// As wide as the space allows; scroll down for the rest.
-    Width,
-    /// A percentage of the reader's own size.
-    Custom(u16),
-}
-
-impl Zoom {
-    pub const MIN_PERCENT: u16 = 25;
-    pub const MAX_PERCENT: u16 = 400;
+impl PageSource {
+    /// Where the page sits in its source page, for the layout shared with the app.
+    pub fn slot(&self) -> PageSlot {
+        let part = match self.part.as_str() {
+            "strip" => SlotPart::Strip,
+            "left" => SlotPart::Left,
+            "right" => SlotPart::Right,
+            "piece" => SlotPart::Piece,
+            _ => SlotPart::Whole,
+        };
+        PageSlot { image: self.image, part, top: self.top, height: self.height }
+    }
 }
 
 /// How a book was last exported (kept in the browser, by book).
