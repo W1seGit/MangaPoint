@@ -31,7 +31,6 @@ export function forgetSource(bookId) {
 // ---- blob URLs with a lifetime ----------------------------------------------------
 
 const urls = new Map(); // `${book}#${i}` -> { url, refs, last, promise }
-const pinned = new Set();
 let sweeper = 0;
 
 const keyOf = (book, i) => `${book}#${i}`;
@@ -76,17 +75,6 @@ export function release(book, i) {
   scheduleSweep();
 }
 
-/** Keep these pages ready (the next ones in a paged book). */
-export function pin(book, indexes) {
-  pinned.clear();
-  for (const i of indexes) {
-    pinned.add(keyOf(book, i));
-    const k = keyOf(book, i);
-    if (!urls.has(k)) acquire(book, i).then(() => release(book, i)).catch(() => {});
-  }
-  scheduleSweep();
-}
-
 function scheduleSweep() {
   if (sweeper) return;
   sweeper = setTimeout(() => {
@@ -94,7 +82,7 @@ function scheduleSweep() {
     const now = Date.now();
     let waiting = false;
     for (const [k, e] of urls) {
-      if (e.refs > 0 || !e.url || pinned.has(k)) continue;
+      if (e.refs > 0 || !e.url) continue;
       if (now - e.last > 1500) {
         URL.revokeObjectURL(e.url);
         urls.delete(k);
@@ -107,7 +95,6 @@ function scheduleSweep() {
 export function dropAllUrls() {
   for (const e of urls.values()) if (e.url) URL.revokeObjectURL(e.url);
   urls.clear();
-  pinned.clear();
 }
 
 // ---- measured sizes ------------------------------------------------------------------

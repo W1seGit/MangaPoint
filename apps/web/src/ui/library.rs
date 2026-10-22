@@ -2,7 +2,7 @@
 //! their file, as cards in one grid. Cards can be selected for the bar at the bottom.
 
 use super::widgets::{Cover, EmptyState, Help, Icon, NoCover};
-use crate::app::{Ctx, Modal, ModalAction, Page};
+use crate::app::{Ctx, Modal, ModalAction};
 use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
 use crate::model::{Book, LibrarySort, LibraryView};
@@ -221,7 +221,7 @@ pub fn LibraryPage() -> Element {
                                                             title: format!("Remove the download of {title}?"),
                                                             body: "Its file is deleted from this device to free the space. The book stays in your library with your place in it: import the file again to carry on.".into(),
                                                             confirm: "Remove download".into(), cancel: "Keep".into(), danger: true,
-                                                            action: ModalAction::RemoveBook { id: id.clone(), forget: false },
+                                                            action: ModalAction::RemoveDownloads(vec![id.clone()]),
                                                         });
                                                     }
                                                 },
@@ -235,7 +235,7 @@ pub fn LibraryPage() -> Element {
                                                     title: format!("Forget {remove_title}?"),
                                                     body: "The book, its file and your place in it are deleted from this device. Import the file again to read it from the start.".into(),
                                                     confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                                    action: ModalAction::RemoveBook { id: remove_id.clone(), forget: true },
+                                                    action: ModalAction::Forget(vec![remove_id.clone()]),
                                                 });
                                             },
                                             Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
@@ -322,7 +322,7 @@ pub fn LibraryPage() -> Element {
                                                     title: format!("Forget {forget_title}?"),
                                                     body: "Your place in it and the chapters you read are deleted from this device. They stay in any reading-state file you saved.".into(),
                                                     confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                                    action: ModalAction::ForgetWaiting(forget_id.clone()),
+                                                    action: ModalAction::Forget(vec![forget_id.clone()]),
                                                 });
                                             },
                                             Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
@@ -404,7 +404,7 @@ pub fn LibraryPage() -> Element {
                                             title: format!("Forget {}?", plural(ids.len(), "book")),
                                             body: "The books and your places in them are deleted from this device. This cannot be undone.".into(),
                                             confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                            action: ModalAction::ForgetMany(ids.clone()),
+                                            action: ModalAction::Forget(ids.clone()),
                                         });
                                         picked.set(BTreeSet::new());
                                     }
@@ -436,8 +436,4 @@ fn open_book(ctx: Ctx, id: &str) {
     if ctx.book(id).is_some() {
         super::book::open_overview(ctx, id);
     }
-}
-
-pub fn goto_library(ctx: Ctx) {
-    ctx.go(Page::Library);
 }

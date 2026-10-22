@@ -50,10 +50,6 @@ pub struct Book {
     pub stored: String,
     pub page_count: usize,
     pub has_cover: bool,
-    /// Height over width of the first picture; very tall pages read as a strip.
-    pub aspect: Option<f32>,
-    /// The book says it reads right to left (its ComicInfo.xml).
-    pub rtl: Option<bool>,
     pub chapters: Vec<Chapter>,
     /// Set by the page after a reload: the book is only a name, its file has to
     /// be imported again.
@@ -72,8 +68,6 @@ impl Default for Book {
             stored: "none".into(),
             page_count: 0,
             has_cover: false,
-            aspect: None,
-            rtl: None,
             chapters: Vec::new(),
             needs_file: false,
         }
@@ -81,13 +75,6 @@ impl Default for Book {
 }
 
 impl Book {
-    /// The chapter whose pages include this page of the book.
-    pub fn chapter_of_page(&self, page: usize) -> Option<usize> {
-        self.chapters
-            .iter()
-            .position(|c| page >= c.first && page < c.first + c.count)
-    }
-
     /// The pages of every chapter, in reading order.
     pub fn counts(&self) -> Vec<usize> {
         self.chapters.iter().map(|c| c.count).collect()

@@ -252,8 +252,6 @@ impl Ctx {
                     self.act(action);
                 }
             }
-            // A click anywhere on the page shows or hides the bars.
-            Some("zone") => self.act(Action::ToggleBar),
             Some("zoom") => {
                 let zoom = logic::zoom_wheel(look.zoom, number("d"));
                 if zoom != look.zoom {

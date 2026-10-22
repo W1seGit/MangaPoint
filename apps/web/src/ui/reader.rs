@@ -40,7 +40,6 @@ pub fn open_reader(ctx: Ctx, book_id: &str, wanted: Option<usize>) {
         chapter: start.chapter,
         page: start.page,
         scroll: start.scroll,
-        strip: vec![start.chapter],
         bar: true,
         opened: id,
         scroll_to: Some((first + sp, off)),
@@ -111,7 +110,6 @@ pub fn open_chapter(ctx: Ctx, index: usize) {
         r.chapter = index;
         r.page = 0;
         r.scroll = 0.0;
-        r.strip = vec![index];
         r.scroll_to = Some((first, 0.0));
     });
     bridge::send("reader", json!({ "cmd": "scrollTop", "args": [] }));
@@ -152,7 +150,7 @@ pub fn apply_action(ctx: Ctx, action: Action) {
     }
 }
 
-/// Keys, taps, swipes, pinches and where the strip has got to.
+/// Keys, taps, pinches and where the strip has got to.
 pub fn handle_reader_event(ctx: Ctx, ev: Event) {
     let Some(r) = ctx.reading.peek().clone() else { return };
     let Some(book) = ctx.book(&r.book_id) else { return };
@@ -165,7 +163,6 @@ pub fn handle_reader_event(ctx: Ctx, ev: Event) {
         }
         // A tap anywhere, even beside the page, shows or hides the bars; it never turns a page.
         Event::Tap { .. } => apply_action(ctx, Action::ToggleBar),
-        Event::Swipe { .. } => {}
         Event::Zoom { pct } => {
             let z = logic::zoom_from_pinch(pct);
             set_prefs(ctx, |p| p.zoom = Some(z));
@@ -295,21 +292,18 @@ fn ReaderScreen(opened: u64) -> Element {
             ReaderBar {
                 title: book.title.clone(), chapter_label: label.clone(), items, current, look,
                 percent: logic::percent_finished(r.scroll),
-                strip_page: Some((r.page + 1, chapter.count)),
+                page: (r.page + 1, chapter.count),
             }
             main { class: "reader-stage", id: "reader-stage",
                 {
                     rsx! {
                         div { class: "reader-strip", id: "reader-strip",
-                            for index in r.strip.iter().copied().take(1).filter(|i| *i < total) {
+                            for index in [current].into_iter().filter(|i| *i < total) {
                                 {
                                     let c = book.chapters[index].clone();
                                     let name = c.label(index);
                                     rsx! {
                                         section { class: "reader-chapter", key: "{index}", "data-chapter": "{index}",
-                                            if index != r.strip[0] {
-                                                div { class: "reader-divider", "{name}" }
-                                            }
                                             if c.count == 0 {
                                                 div { class: "reader-divider", "{name} has no pages" }
                                             }
@@ -390,15 +384,12 @@ fn ReaderBar(
     current: usize,
     look: ReaderLook,
     percent: u32,
-    strip_page: Option<(usize, usize)>,
+    /// The page at the top of the screen, and how many the chapter has.
+    page: (usize, usize),
 ) -> Element {
     let ctx = use_context::<Ctx>();
     let mut menu = use_signal(|| false);
     let mut settings = use_signal(|| false);
-    let counter = strip_page;
-    // The arrows are back and forward between chapters, whichever way the book reads.
-    let (left_action, left_label, right_action, right_label) =
-        (Action::PrevChapter, "Previous chapter", Action::NextChapter, "Next chapter");
     rsx! {
         header { class: "reader-bar reader-top",
             button { class: "reader-round", id: "reader-back", "aria-label": "Back to library", title: "Back to library (Esc)",
@@ -406,8 +397,8 @@ fn ReaderBar(
                 Icon { name: "book-open", size: 20 }
             }
             div { class: "reader-chapter-nav",
-            button { class: "reader-arrow", id: "reader-arrow-left", "aria-label": "{left_label}", title: "{left_label}",
-                onclick: move |_| { apply_action(ctx, left_action); set_reading(ctx, |r| r.bar = true); },
+            button { class: "reader-arrow", id: "reader-arrow-left", "aria-label": "Previous chapter", title: "Previous chapter",
+                onclick: move |_| { apply_action(ctx, Action::PrevChapter); set_reading(ctx, |r| r.bar = true); },
                 Icon { name: "chevron-left", size: 26 }
             }
             div { class: "menu-anchor reader-chapter-anchor",
@@ -430,8 +421,8 @@ fn ReaderBar(
                     }
                 }
             }
-            button { class: "reader-arrow", id: "reader-arrow-right", "aria-label": "{right_label}", title: "{right_label}",
-                onclick: move |_| { apply_action(ctx, right_action); set_reading(ctx, |r| r.bar = true); },
+            button { class: "reader-arrow", id: "reader-arrow-right", "aria-label": "Next chapter", title: "Next chapter",
+                onclick: move |_| { apply_action(ctx, Action::NextChapter); set_reading(ctx, |r| r.bar = true); },
                 Icon { name: "chevron-right", size: 26 }
             }
             }
@@ -445,7 +436,7 @@ fn ReaderBar(
                 strong { id: "reader-title", title: "{title}", "{title}" }
                 span { class: "reader-percent", id: "reader-percent", "{percent}%" }
                 span { class: "sr-only", id: "reader-page-counter", "aria-label": "Page", "aria-live": "polite",
-                    {match counter { Some((p, n)) => format!("{p} / {n}"), None => "\u{2013}".to_string() }}
+                    "{page.0} / {page.1}"
                 }
             }
         }

@@ -19,7 +19,7 @@
 .import-book-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; padding: 4px 12px 12px; }
 .import-book-body:not(:has(.import-cover)) { grid-template-columns: minmax(0, 1fr); }
 .import-cover { position: relative; width: 112px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); align-self: start; }
-.import-cover img, .import-cover .cover, .import-cover .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.import-cover img, .import-cover .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
 .import-cover-change { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border: 0; background: rgba(0, 0, 0, 0.62); color: #fff; font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; opacity: 0; transition: opacity 0.16s ease; }
 .import-cover:hover .import-cover-change, .import-cover-change:focus-visible { opacity: 1; }
 .import-main { min-width: 0; }
@@ -46,7 +46,7 @@
 .info-field textarea { resize: vertical; min-height: 84px; font: inherit; }
 .info-cover-row { display: flex; gap: 14px; align-items: flex-end; }
 .info-cover-art { width: 84px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); flex: none; }
-.info-cover-art img, .info-cover-art .no-cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.info-cover-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .info-cover-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .edit-info { margin-top: 4px; }
 .edit-info .info-fields { margin-top: 0; }

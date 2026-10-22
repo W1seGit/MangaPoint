@@ -1,7 +1,7 @@
 // The reader's page glue: it fills the empty page tiles the Rust UI draws,
 // watches the keyboard, taps, swipes and pinches, and tells the UI where the
 // reader is. The UI decides what any of that means.
-import { acquire, release, rememberSize, source, knownRatio, pin } from './pages.js';
+import { acquire, release, rememberSize, source, knownRatio } from './pages.js';
 import { imageSize } from './imagesize.js';
 
 let emit = () => {};
@@ -387,7 +387,7 @@ function onWheel(e) {
   emit({ t: 'wheel', dy: e.deltaY });
 }
 
-// ---- where the reader is (scroll mode) --------------------------------------------------------
+// ---- where the reader is in the strip --------------------------------------------------------
 
 let posTimer = 0;
 let lastPos = '';
@@ -479,7 +479,6 @@ export const commands = {
     quiet();
     document.querySelector('.reader-stage')?.scrollTo({ top: 0 });
   },
-  pin,
   fullscreen() {
     const el = document.documentElement;
     if (document.fullscreenElement) document.exitFullscreen?.();

@@ -384,11 +384,6 @@ const handlers = {
     return true;
   },
 
-  async db_put({ store: s, key, value }) {
-    await store.dbPut(s, key, value);
-    return true;
-  },
-
   async db_delete({ store: s, key }) {
     await store.dbDelete(s, key);
     return true;
@@ -523,10 +518,6 @@ const handlers = {
     return true;
   },
 
-  download_result({ index }) {
-    return downloadResult(index);
-  },
-
   async download_all() {
     for (let i = 0; i < exportResult.length; i++) {
       downloadResult(i);
@@ -580,7 +571,6 @@ const immediate = {
     });
   },
   export_start: (job) => exportStart(job),
-  pin: ({ book, indexes }) => pages.pin(book, indexes),
   db_put_soon: ({ store: s, key, value }) => store.dbPutSoon(s, key, value),
   reader: ({ cmd, args }) => {
     const f = commands[cmd];

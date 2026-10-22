@@ -3,9 +3,6 @@
 .editor-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .editor-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 .page-editor .btn.on { color: var(--text); background: var(--panel-3); border-color: var(--accent); }
-.editor-custom-zoom { display: flex; align-items: center; gap: 8px; }
-.editor-custom-zoom input[type="range"] { width: 120px; accent-color: var(--accent); }
-.editor-custom-zoom input[type="number"] { width: 78px; padding: 7px 8px; }
 
 .editor-body { display: grid; grid-template-columns: 84px minmax(0, 1fr); min-height: 0; }
 
@@ -57,7 +54,7 @@
 .editor-crop-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .editor-overview-button { position: sticky; bottom: 0; width: 100%; margin-top: 6px; padding-left: 4px; padding-right: 4px; font-size: 0.8rem; background: var(--panel-2); }
 .editor-bottom { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 14px; border-top: 1px solid var(--line); background: var(--panel); }
-.editor-status { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 0.78rem; min-width: 74px; justify-content: flex-end; }
+
 .editor-mobile-switch { display: none; }
 
 /* the chapter overview */

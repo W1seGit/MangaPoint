@@ -37,32 +37,24 @@ body.dragging .drop-overlay { display: flex; }
 .menu-note { padding: 8px 12px 4px; max-width: 250px; white-space: normal; border-top: 1px solid var(--line); margin-top: 4px; }
 .import-anchor .menu { right: 0; }
 .poster-menu { right: auto; left: 8px; top: auto; }
-.poster { position: relative; }
 .menu-scrim { z-index: 70; }
 .menu { z-index: 71; }
 
 /* Library */
 .empty-actions { justify-content: center; margin-top: 8px; }
 .poster-title { overflow: hidden; text-overflow: ellipsis; }
-.cover-box { display: block; }
 img.cover { background: var(--panel); }
 
 /* Settings cards */
 .page > .card { max-width: 860px; }
 .page > .card + .card { margin-top: 14px; }
-.privacy { border-color: var(--line-strong); }
 
 /* Export */
-.export-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; max-width: 1100px; }
-.export-grid > .card + .card { margin-top: 0; }
-.export-chapters { max-height: 360px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; background: var(--panel-2); }
-.export-chapter { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 2px; cursor: pointer; }
-.export-chapter + .export-chapter { border-top: 1px solid var(--line); }
-.export-chapter input { width: 18px; height: 18px; flex: none; }
+
 .export-run { margin-top: 14px; max-width: 1100px; }
 .export-file { padding: 10px 2px; }
 .export-file-name { overflow-wrap: anywhere; }
-.device-note { margin-top: 6px; }
+
 .panel-section select { max-width: 100%; }
 input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 8px; }
 
@@ -77,14 +69,12 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .reader[data-hpan="no"] .reader-stage { touch-action: pan-y; }
 .reader-end .btn { min-height: 44px; }
 .reader-menu { max-height: 60vh; max-height: 60dvh; }
-.reader-end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 
 /* Settings rows stack on narrow screens */
 @media (max-width: 700px) {
   .sx-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .sx-control { justify-content: flex-start; }
   .sx-control .seg { width: 100%; }
-  .reader-settings .zoom-menu { max-width: none; margin-left: 0; }
 }
 
 /* ---- tablets and phones: a bottom tab bar instead of the sidebar ---- */
@@ -141,10 +131,10 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   .modal .actions .btn { flex: 1 1 auto; }
 
   /* Export and settings */
-  .export-grid { grid-template-columns: minmax(0, 1fr); }
-  .export-chapters { max-height: 280px; }
-  .export-chapter { min-height: 46px; }
-  .export-chapter input { width: 22px; height: 22px; }
+  
+  
+  
+  
   .seg { flex-wrap: nowrap; }
   .seg button { flex: 1; white-space: normal; }
 
@@ -170,16 +160,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 
 /* ---- Export: the desktop app's three columns on a computer; pages, tabs and a settings sheet on a phone ---- */
 .export-preview { min-height: 0; }
-.px-preview-head { flex: none; padding: 10px 14px; gap: 12px; border-bottom: 1px solid var(--line); }
-.px-preview-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.px-preview-head select { max-width: 40%; }
-.px-pages { flex: 1; min-height: 0; overflow-y: auto; display: flex; justify-content: center; align-items: flex-start; gap: 16px; padding: 14px; box-sizing: border-box; }
-.px-col { flex: 1 1 0; min-width: 0; max-width: 760px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.px-col-title { align-self: stretch; text-align: center; color: var(--muted); font-size: 0.78rem; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
-.px-page { margin: 0; width: 100%; min-height: 120px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.px-page img { width: 100%; height: auto; display: block; }
-.px-page figcaption { padding: 28px 12px; }
-.px-making { align-self: stretch; }
+
 .px-more { text-align: center; margin: 0; padding: 8px 14px 14px; }
 .export-side .export-run { padding: 0 14px; }
 .export-side .export-run .card { margin: 10px 0; }
@@ -190,15 +171,12 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 
 @media (max-width: 900px) {
   .export-screen.narrow { height: 100%; }
-  .xm-tabs { flex: none; display: flex; background: var(--panel); border-bottom: 1px solid var(--line); }
-  .xm-tabs button {
-    flex: 1; min-height: 46px; border: 0; border-bottom: 2px solid transparent; background: transparent;
-    color: var(--muted); font: inherit; font-weight: 600; cursor: pointer;
-  }
-  .xm-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+  
+  
+  
   .export-screen.narrow > .export-center { flex: 1; min-height: 0; }
-  .export-screen.narrow .px-pages { padding: 10px; }
-  .export-screen.narrow .px-preview-head { padding: 8px 12px; }
+  
+  
   .xm-bottom { flex: none; max-height: 55vh; overflow-y: auto; background: var(--panel); border-top: 1px solid var(--line); }
   .xm-bottom .export-run { padding: 0 12px; }
   .xm-bottom .export-run .card, .xm-bottom .export-run .banner { margin: 10px 0 0; }
@@ -249,8 +227,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .original-preview[data-zoom="custom"] .reader-tile, .original-preview[data-zoom="custom"] .original-img { width: calc(8px * var(--zoom) * 100); height: auto; max-width: none; }
 
 /* The warning about a big export: the words, then the button under them. */
-.banner.big-export { flex-direction: column; align-items: stretch; gap: 8px; font-size: 0.8rem; line-height: 1.45; padding: 9px 12px; }
-.banner.big-export { position: relative; padding-right: 36px; }
+.banner.big-export { position: relative; flex-direction: column; align-items: stretch; gap: 8px; font-size: 0.8rem; line-height: 1.45; padding: 9px 36px 9px 12px; }
 .banner.big-export .btn { align-self: stretch; }
 .banner.big-export .big-export-close { position: absolute; top: 4px; right: 4px; align-self: auto; min-height: 0; padding: 4px; }
 
@@ -318,8 +295,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 @media (prefers-reduced-motion: reduce) {
   .desk-scene .found, .desk-scene .drop, .desk-scene .fill, .desk-scene .crop, .desk-scene .pick, .desk-scene .wave { animation: none; opacity: 1; }
 }
-.desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.desk-downloads { margin-top: 22px; }
+.desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
 .desk-download {
   display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 4px 0; color: var(--text);
 }

@@ -170,7 +170,7 @@ pub fn BookPage() -> Element {
                                                 title: format!("Remove the download of {remove_title}?"),
                                                 body: "Its file is deleted from this device to free the space. The book stays in your library with your place in it: import the file again to carry on.".into(),
                                                 confirm: "Remove download".into(), cancel: "Keep".into(), danger: true,
-                                                action: ModalAction::RemoveBook { id: remove_id.clone(), forget: false },
+                                                action: ModalAction::RemoveDownloads(vec![remove_id.clone()]),
                                             });
                                         },
                                         Icon { name: "x", size: 15 } "Remove download"
@@ -183,7 +183,7 @@ pub fn BookPage() -> Element {
                                             title: format!("Forget {forget_title}?"),
                                             body: "The book, its file and your place in it are deleted from this device. Import the file again to read it from the start.".into(),
                                             confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                            action: ModalAction::RemoveBook { id: forget_id.clone(), forget: true },
+                                            action: ModalAction::Forget(vec![forget_id.clone()]),
                                         });
                                     },
                                     Icon { name: "trash", size: 15 } span { class: "grow", "Forget" }

@@ -107,16 +107,6 @@ fn PresetItem(kind: Kind, id: String, name: String, description: String, setting
     }
 }
 
-fn ago(ms_then: u64) -> String {
-    let secs = bridge::now_ms().saturating_sub(ms_then) / 1000;
-    match secs {
-        0..=59 => "just now".to_string(),
-        60..=3599 => format!("{} minutes ago", secs / 60),
-        3600..=86_399 => format!("{} hours ago", secs / 3600),
-        _ => format!("{} days ago", secs / 86_400),
-    }
-}
-
 #[component]
 pub fn PresetsPanel(book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
@@ -142,7 +132,7 @@ pub fn PresetsPanel(book: Book, open: bool) -> Element {
                     PresetItem {
                         key: "{book.id}-last",
                         kind: Kind::Last, id: LAST.to_string(), name: "Last export",
-                        description: format!("The settings this book was last exported with ({}), so the next part matches the first. Only an export changes it.", ago(last.at)),
+                        description: format!("The settings this book was last exported with ({}), so the next part matches the first. Only an export changes it.", crate::format::ago(bridge::now_ms() / 1000, last.at / 1000)),
                         settings: last.settings.clone(), on: e.preset == LAST,
                     }
                 }

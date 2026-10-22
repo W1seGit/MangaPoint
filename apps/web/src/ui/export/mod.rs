@@ -16,7 +16,6 @@ use crate::app::{Ctx, Page};
 use crate::bridge::{self, Event, ExportFile};
 use crate::format::plural;
 use crate::model::{Book, Chapter};
-use converter::xtc::ReadDirection;
 use dioxus::prelude::*;
 use library::ConversionSettings;
 use panels::{BookPanel, ChaptersPanel, EditPanel, ExportFooter, PresetsPanel, RunCard, SendPanel};
@@ -72,7 +71,6 @@ impl Target {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Look {
     Idle,
-    Loading,
     Ready {
         /// Blob URLs of the pages as they are (empty text for one that could not be read).
         originals: Vec<String>,
@@ -243,17 +241,6 @@ pub fn chosen_size(book: &Book, chosen: &BTreeSet<usize>) -> (usize, u64) {
 /// Is this much work worth a warning, and does one file per chapter help?
 pub fn is_big(pages: usize, bytes: u64) -> bool {
     pages > BIG_PAGES || bytes > BIG_BYTES
-}
-
-/// The name a file type goes by in the readers' lists.
-pub fn type_name(t: FileType) -> &'static str {
-    match t {
-        FileType::Xtc => "XTC",
-        FileType::Xtch => "XTCH",
-        FileType::Epub => "EPUB",
-        FileType::Pdf => "PDF",
-        FileType::Cbz => "CBZ",
-    }
 }
 
 pub fn type_of(name: &str) -> FileType {
@@ -906,7 +893,3 @@ pub fn on(yes: bool) -> &'static str {
     if yes { "on" } else { "" }
 }
 
-/// The reading direction the settings carry, for the Original tab's note.
-pub fn direction_of(opts: &ExportOptions) -> ReadDirection {
-    opts.settings.direction
-}

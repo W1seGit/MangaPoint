@@ -73,10 +73,9 @@ pub enum Event {
     StateFile { name: String, text: String },
     #[serde(rename = "key")]
     Key { key: String, shift: bool, ctrl: bool },
+    /// A tap or a click on the page (it shows or hides the bars).
     #[serde(rename = "tap")]
-    Tap { x: f64, w: f64 },
-    #[serde(rename = "swipe")]
-    Swipe { dx: f64 },
+    Tap {},
     #[serde(rename = "zoom")]
     Zoom { pct: f64 },
     #[serde(rename = "wheel")]
@@ -123,7 +122,7 @@ pub enum Event {
     Route { path: String, hash: String },
     /// The pages in view in the Export screen's list: the first, the last and the one at the top.
     #[serde(rename = "editor")]
-    Editor { first: i64, last: i64, current: i64 },
+    Editor { current: i64 },
     /// The window is as narrow as a phone's (the Export screen changes its layout).
     #[serde(rename = "narrow")]
     Narrow { narrow: bool },
@@ -153,8 +152,6 @@ pub struct Boot {
     pub meta: Value,
     #[serde(default)]
     pub caps: Caps,
-    #[serde(default)]
-    pub persisted: bool,
     #[serde(default)]
     pub error: Option<String>,
 }

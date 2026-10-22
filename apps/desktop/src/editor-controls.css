@@ -47,7 +47,7 @@
 .mp-contrast-track input { width: 100%; accent-color: var(--accent); }
 .mp-neutral-marker { position: absolute; left: 50%; bottom: -2px; height: 5px; border-left: 1px solid #8a8a8a; pointer-events: none; }
 .mp-contrast-labels { display: flex; justify-content: space-between; font-size: .68rem; color: var(--muted); padding-top: 3px; }
-.mp-control-note { color: var(--muted); font-size: .8rem; line-height: 1.45; }
+
 .mp-tuning { border: 1px solid var(--line-strong); border-radius: 7px; padding: 9px; margin: 10px 0; background: var(--panel); }
 .mp-tuning summary { cursor: pointer; color: var(--muted); font-size: .8rem; }.mp-tuning .field { margin-top: 10px; }
 .mp-conversion .field { margin-top: 12px; }.mp-conversion .hint { color: var(--muted); }.mp-conversion .advanced-toggle { width: 100%; margin-top: 15px; border: 1px solid var(--line-strong); }

@@ -4,7 +4,6 @@
 //! tested without a browser. The desktop's tests for the same functions are
 //! repeated here so the two stay in step. Books are read as one long strip.
 
-use library::ReaderPrefs;
 use web_engine::state::Prefs;
 
 /// The zoom limits and step, in percent.
@@ -21,10 +20,6 @@ pub struct ReaderLook {
 /// What the visitor chose for a book, and the defaults for what they did not.
 pub fn resolve_look(prefs: &Prefs) -> ReaderLook {
     ReaderLook { zoom: prefs.zoom.unwrap_or(100).clamp(ZOOM_MIN, ZOOM_MAX) }
-}
-
-pub fn prefs_of(p: &ReaderPrefs) -> Prefs {
-    Prefs::from_reader_prefs(p)
 }
 
 pub fn zoom_step(zoom: u16, up: bool) -> u16 {
@@ -154,12 +149,6 @@ pub fn percent_finished(along: f32) -> u32 {
     (along.clamp(0.0, 1.0) * 100.0).round() as u32
 }
 
-/// A swipe that starts at the left edge of the screen and goes right leaves
-/// the book (the back gesture of phones).
-pub fn is_edge_back(start_x: f64, dx: f64, dy: f64) -> bool {
-    start_x.is_finite() && start_x <= 28.0 && dx > 70.0 && dx > dy.abs() * 1.5
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,14 +230,5 @@ mod tests {
         assert_eq!(percent_finished(0.0), 0);
         assert_eq!(percent_finished(0.426), 43);
         assert_eq!(percent_finished(7.0), 100);
-    }
-
-    #[test]
-    fn the_back_swipe_starts_at_the_left_edge() {
-        assert!(is_edge_back(6.0, 120.0, 10.0));
-        assert!(!is_edge_back(200.0, 120.0, 10.0));
-        assert!(!is_edge_back(6.0, 40.0, 0.0));
-        assert!(!is_edge_back(6.0, 100.0, 90.0));
-        assert!(!is_edge_back(6.0, -120.0, 0.0));
     }
 }

@@ -8,8 +8,8 @@ use crate::model::{Book, Library};
 use crate::review::{Failure, Review};
 use crate::ui::{self, widgets::Icon};
 use dioxus::prelude::*;
-use serde_json::{json, Value};
-use web_engine::state::{BookState, Settings};
+use serde_json::json;
+use web_engine::state::Settings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -67,10 +67,8 @@ pub struct Toast {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ModalAction {
-    RemoveBook { id: String, forget: bool },
-    ForgetWaiting(String),
-    /// Books and places, by id, taken out of the library together, with their reading state.
-    ForgetMany(Vec<String>),
+    /// Books and places waiting for their file, by id, taken out of the library with their reading state.
+    Forget(Vec<String>),
     /// The files of these books deleted; the books stay in the library, waiting for their file.
     RemoveDownloads(Vec<String>),
     ClearAll,
@@ -96,8 +94,6 @@ pub struct Reading {
     /// The page at the top of the strip.
     pub page: usize,
     pub scroll: f32,
-    /// Chapters drawn in the strip (scroll mode), in order.
-    pub strip: Vec<usize>,
     pub bar: bool,
     /// Counts up so the screen starts fresh for every open.
     pub opened: u64,
@@ -244,10 +240,6 @@ impl Ctx {
 
     // ---- keeping records ----
 
-    pub fn save_book(self, book: &Book) {
-        bridge::put_soon("books", &book.id, book);
-    }
-
     /// Write the reading state of a book (the browser merges quick repeats).
     pub fn save_state_of(self, id: &str) {
         if let Some(s) = self.library.peek().state_of(id) {
@@ -276,10 +268,6 @@ impl Ctx {
             return Some(ui::export::sample_book());
         }
         self.library.peek().find(id).cloned()
-    }
-
-    pub fn is_online(self) -> bool {
-        *self.online.peek()
     }
 }
 
@@ -427,7 +415,7 @@ fn handle_event(ctx: Ctx, ev: Event) {
         }
         Event::StateFile { name, text } => ui::settings::state_file_loaded(ctx, name, text),
         Event::Route { path, hash } => apply_route(ctx, &path, &hash),
-        Event::Key { .. } | Event::Tap { .. } | Event::Swipe { .. } | Event::Zoom { .. } | Event::Wheel { .. } | Event::Pos { .. } | Event::Scrolled { .. } | Event::EdgeBack => {
+        Event::Key { .. } | Event::Tap { .. } | Event::Zoom { .. } | Event::Wheel { .. } | Event::Pos { .. } | Event::Scrolled { .. } | Event::EdgeBack => {
             ui::reader::handle_reader_event(ctx, ev)
         }
         Event::ExportStatus { .. }
@@ -631,61 +619,41 @@ fn ModalHost() -> Element {
 fn run_action(ctx: Ctx, action: ModalAction) {
     dioxus::core::spawn_forever(async move {
         match action {
-            ModalAction::RemoveBook { id, forget } => {
-                if ctx.reading.peek().as_ref().is_some_and(|r| r.book_id == id) {
-                    ui::reader::close_reader(ctx);
-                }
-                match bridge::call_ok("remove_book", json!({ "id": id })).await {
-                    Ok(()) => {
-                        let title = ctx.book(&id).map(|b| b.title.clone()).unwrap_or_default();
-                        let mut lib = ctx.library;
-                        // Only the download goes: the book stays, waiting for its file.
-                        if !forget {
-                            if let Some(book) = ctx.book(&id) {
-                                lib.write().keep_place(&book);
-                                ctx.save_state_of(&id);
-                            }
-                        }
-                        lib.write().remove_book(&id, forget);
-                        if forget {
-                            let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
-                        }
-                        ctx.notify(if forget { format!("Forgot {title}.") } else { format!("Removed the download of {title}.") });
-                    }
-                    Err(e) => ctx.error(format!("Could not remove it: {e}")),
-                }
-            }
-            ModalAction::ForgetWaiting(id) => {
-                let mut lib = ctx.library;
-                lib.write().forget_state(&id);
-                let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
-            }
             ModalAction::RemoveDownloads(ids) => {
-                let mut removed = 0usize;
+                // The files go; the books stay, waiting for their file.
+                let mut removed = Vec::new();
                 for id in ids {
                     let Some(book) = ctx.book(&id) else { continue };
                     if ctx.reading.peek().as_ref().is_some_and(|r| r.book_id == id) {
                         ui::reader::close_reader(ctx);
                     }
-                    if bridge::call_ok("remove_book", json!({ "id": id })).await.is_err() {
+                    if let Err(e) = bridge::call_ok("remove_book", json!({ "id": id })).await {
+                        ctx.error(format!("Could not remove the download of {}: {e}", book.title));
                         continue;
                     }
                     let mut lib = ctx.library;
                     lib.write().keep_place(&book);
                     ctx.save_state_of(&id);
                     lib.write().remove_book(&id, false);
-                    removed += 1;
+                    removed.push(book.title);
                 }
-                ctx.notify(format!("Removed the downloads of {}. They stay in your library.", plural(removed, "book")));
+                match removed.as_slice() {
+                    [] => {}
+                    [title] => ctx.notify(format!("Removed the download of {title}.")),
+                    many => ctx.notify(format!("Removed the downloads of {}. They stay in your library.", plural(many.len(), "book"))),
+                }
             }
-            ModalAction::ForgetMany(ids) => {
-                let mut forgotten = 0usize;
+            ModalAction::Forget(ids) => {
+                // Books here and places waiting for their file alike: gone, with their reading state.
+                let mut forgotten = Vec::new();
                 for id in ids {
+                    let title = ctx.book(&id).map(|b| b.title).or_else(|| ctx.library.peek().state_of(&id).map(|s| s.title.clone())).unwrap_or_default();
                     if ctx.book(&id).is_some() {
                         if ctx.reading.peek().as_ref().is_some_and(|r| r.book_id == id) {
                             ui::reader::close_reader(ctx);
                         }
-                        if bridge::call_ok("remove_book", json!({ "id": id })).await.is_err() {
+                        if let Err(e) = bridge::call_ok("remove_book", json!({ "id": id })).await {
+                            ctx.error(format!("Could not forget {title}: {e}"));
                             continue;
                         }
                         let mut lib = ctx.library;
@@ -695,9 +663,13 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                         lib.write().forget_state(&id);
                     }
                     let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
-                    forgotten += 1;
+                    forgotten.push(title);
                 }
-                ctx.notify(format!("Forgot {}.", plural(forgotten, "book")));
+                match forgotten.as_slice() {
+                    [] => {}
+                    [title] => ctx.notify(format!("Forgot {title}.")),
+                    many => ctx.notify(format!("Forgot {}.", plural(many.len(), "book"))),
+                }
             }
             ModalAction::DeletePreset(id) => {
                 let mut presets = ctx.presets;
@@ -798,23 +770,11 @@ fn DropOverlay() -> Element {
     }
 }
 
-/// "3 books" for a count.
-pub fn books(n: usize) -> String {
-    plural(n, "book")
-}
-
-/// A book's state as the file would hold it, for the Settings counts.
 /// A first visit has no readers: the visitor adds their own. Until then pages are made for a
 /// phone or tablet, as they are.
 fn first_visit_readers() -> library::Settings {
     library::Settings { device: device_profiles::PHONE_ORIGINAL_ID.to_string(), ..Default::default() }
 }
-
-pub fn state_count(lib: &Library) -> usize {
-    lib.states.len()
-}
-
-pub fn _unused(_: &BookState, _: &Value) {}
 
 /// The address of the screen being shown, without the leading slash: `` (the library), `export`,
 /// `settings` (with the part of Settings after `#`) or `read?book=<id>&chapter=<n>`.

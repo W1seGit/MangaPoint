@@ -284,7 +284,7 @@ fn OriginalPages(book: Book) -> Element {
                                 }
                             } else {
                                 {match &e.look {
-                                    Look::Idle | Look::Loading => rsx! { Loading { label: "Opening the pages\u{2026}" } },
+                                    Look::Idle => rsx! { Loading { label: "Opening the pages\u{2026}" } },
                                     Look::Failed(message) => rsx! { EmptyState { title: "These pages could not be shown", message: "{message}", compact: true } },
                                     Look::Ready { originals, total, shown, .. } => rsx! {
                                         for (n, url) in originals.iter().enumerate() {

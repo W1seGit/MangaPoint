@@ -4,7 +4,7 @@
 //! The pure parts (the library's bookkeeping, the import review, the reader's
 //! decisions) compile and are tested natively. The screens and the bridge to
 //! the browser exist only for `wasm32`.
-#![allow(dead_code)]
+
 
 pub mod art;
 /// The desktop app's number and text helpers (one source of truth).

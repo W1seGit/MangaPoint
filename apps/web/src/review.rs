@@ -20,10 +20,6 @@ pub struct Draft {
     pub warnings: Vec<String>,
     #[serde(default)]
     pub cover_url: Option<String>,
-    #[serde(default)]
-    pub aspect: Option<f32>,
-    #[serde(default)]
-    pub rtl: Option<bool>,
     /// The same book is already kept here (`stored` says where).
     #[serde(default)]
     pub existing: Option<Existing>,
@@ -161,12 +157,6 @@ impl Review {
         }
     }
 
-    pub fn set_all(&mut self, on: bool) {
-        for c in &mut self.chapters {
-            c.included = on;
-        }
-    }
-
     pub fn included_count(&self) -> usize {
         self.chapters.iter().filter(|c| c.included).count()
     }
@@ -208,11 +198,6 @@ impl Review {
         }
         out
     }
-
-    /// The pages not in any kept chapter (they stay in the file but cannot be read).
-    pub fn left_out_pages(&self) -> usize {
-        self.draft.page_count - self.included_pages().min(self.draft.page_count)
-    }
 }
 
 #[cfg(test)]
@@ -235,8 +220,6 @@ mod tests {
             ],
             warnings: vec![],
             cover_url: None,
-            aspect: None,
-            rtl: None,
             existing: None,
         }
     }
@@ -290,7 +273,6 @@ mod tests {
         assert_eq!(r.included_pages(), 9);
         assert_eq!(r.problem(), None);
         assert_eq!(r.final_chapters(), draft().chapters);
-        assert_eq!(r.left_out_pages(), 0);
     }
 
     #[test]
@@ -306,7 +288,6 @@ mod tests {
         assert_eq!((chapters[0].name.as_str(), chapters[0].number), ("Prologue", Some(0.0)));
         assert_eq!((chapters[1].name.as_str(), chapters[1].number), ("Chapter 7", Some(7.0)));
         assert_eq!((chapters[1].first, chapters[1].count), (4, 3));
-        assert_eq!(r.left_out_pages(), 2);
     }
 
     #[test]
@@ -330,9 +311,9 @@ mod tests {
         assert!(!r.number_is_valid(1));
         r.toggle(1); // a left-out chapter's number does not matter
         assert_eq!(r.problem(), None);
-        r.set_all(false);
+        r.set_included(&[0, 1, 2], false);
         assert_eq!(r.problem(), Some("Keep at least one chapter."));
-        r.set_all(true);
+        r.set_included(&[0, 1, 2], true);
         assert_eq!(r.included_count(), 3);
     }
 

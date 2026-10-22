@@ -1,5 +1,6 @@
-// The reader's side in the web view: keys, the wheel, taps on the thirds of a
-// page, how far down a strip is scrolled, and the bar that hides while reading.
+// The reader's side in the web view: keys, the wheel, a click on the page (it
+// shows or hides the bars), how far down the strip is scrolled, and the bars
+// that hide while reading.
 // It reports what happened to the app with dioxus.send({t: ...}) and does what
 // the app asks with {c: ...} messages. What a key or a tap means is decided in
 // the app (logic/reader.rs); this only passes them on.
