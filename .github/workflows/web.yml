@@ -12,10 +12,7 @@ on:
       - "web/**"
       - "tools/*web*"
       - "tools/web-e2e/**"
-      - "apps/desktop/src/style.css"
-      - "apps/desktop/src/reader.css"
-      - "apps/desktop/src/import.css"
-      - "apps/desktop/src/ui/**"
+      - "crates/ui/**"
       - ".github/workflows/web.yml"
   workflow_dispatch:
     inputs:
@@ -54,11 +51,11 @@ jobs:
 
       - name: Clippy (page and engine, native and WebAssembly)
         run: |
-          cargo clippy -p mangapoint-web -p web-engine --all-targets --locked -- -D warnings
+          cargo clippy -p mangapoint-web -p mangapoint-ui -p web-engine --all-targets --locked -- -D warnings
           cargo clippy -p mangapoint-web --target wasm32-unknown-unknown --locked -- -D warnings
 
       - name: Native tests
-        run: cargo test -p mangapoint-web -p web-engine --locked
+        run: cargo test -p mangapoint-web -p mangapoint-ui -p web-engine --locked
 
       - name: Build the site
         run: bash tools/build-web.sh

@@ -4,7 +4,7 @@
 //! big and visible. There is no frame: toward the edges the scene breaks up
 //! into scattered pixels (decided pixel by pixel, not by a fade effect), until
 //! only the page's own background is left, and the cat sits solid in the
-//! middle. The motion is CSS (see `style.css`).
+//! middle. The motion is CSS (see `css/art.css`).
 
 use dioxus::prelude::*;
 use std::collections::BTreeMap;

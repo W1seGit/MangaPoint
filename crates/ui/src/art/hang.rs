@@ -1,7 +1,7 @@
 //! The logo cat asleep upside down, hanging by its paws from a tree branch,
 //! for the empty Downloads page. It is the same sprite as the logo (see
 //! `cat.rs`), turned over, on a 48x38 grid with the same big pixels as the
-//! other cats; the motion is CSS (see `style.css`).
+//! other cats; the motion is CSS (see `css/art.css`).
 
 use super::cat::body_markup;
 use super::ocean::{group_plain, Layer};

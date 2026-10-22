@@ -14,13 +14,9 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <!-- The desktop app's own style sheets, copied unchanged at build time -->
-  <link rel="stylesheet" href="css/style.css">
-  <link rel="stylesheet" href="css/import.css">
-  <link rel="stylesheet" href="css/reader.css">
-  <link rel="stylesheet" href="css/editor-controls.css">
-  <link rel="stylesheet" href="css/page-editor.css">
-  <!-- Only the layout changes for the web live here -->
+  <!-- The look shared with the desktop app (crates/ui/css, joined at build time) -->
+  <link rel="stylesheet" href="css/ui.css">
+  <!-- What a browser and a phone add (web/css) -->
   <link rel="stylesheet" href="css/web.css">
 </head>
 <body>

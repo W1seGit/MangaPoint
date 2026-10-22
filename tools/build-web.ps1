@@ -65,11 +65,15 @@ Copy-Item (Join-Path $root 'web\index.html') (Join-Path $dist '404.html')
 Copy-Item -Recurse (Join-Path $root 'web\js') (Join-Path $dist 'js')
 Remove-Item -Recurse -Force (Join-Path $dist 'js\test') -ErrorAction SilentlyContinue
 Copy-Item -Recurse (Join-Path $root 'web\icons') (Join-Path $dist 'icons')
-Copy-Item (Join-Path $root 'web\css\web.css') (Join-Path $dist 'css')
-# The desktop app's own style sheets, unchanged (one source of truth for the look).
-foreach ($css in 'style.css', 'import.css', 'reader.css', 'editor-controls.css', 'page-editor.css') {
-    Copy-Item (Join-Path $root "apps\desktop\src\$css") (Join-Path $dist 'css')
+# The style sheets, each folder's files in the order of its ORDER file: css/ui.css is the look shared
+# with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (web/css).
+function Join-Css([string]$Folder, [string]$Out) {
+    $names = Get-Content (Join-Path $Folder 'ORDER') | Where-Object { $_.Trim() }
+    $text = ($names | ForEach-Object { [IO.File]::ReadAllText((Join-Path $Folder $_.Trim())) }) -join "`n"
+    [IO.File]::WriteAllText($Out, $text, (New-Object System.Text.UTF8Encoding $false))
 }
+Join-Css (Join-Path $root 'crates\ui\css') (Join-Path $dist 'css\ui.css')
+Join-Css (Join-Path $root 'web\css') (Join-Path $dist 'css\web.css')
 
 # The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.
 New-Item -ItemType Directory -Force (Join-Path $dist 'js\ui') | Out-Null

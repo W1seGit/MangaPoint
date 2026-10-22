@@ -14,6 +14,9 @@
 //! - `scripts`: the page scripts both apps run (`crates/ui/js`).
 //! - `library`: the Library's cards and the bar for the ticked ones.
 //! - `logic`: the decisions behind the screens, plain data in and out, tested without a window.
+//!
+//! Next to the code: `css/` (the shared style sheets, loaded in the order of `css/ORDER`; `CSS`
+//! holds them all) and `js/` (the shared page scripts, see `scripts`).
 
 pub mod art;
 pub mod host;
@@ -27,3 +30,29 @@ pub mod reader;
 pub mod readers;
 pub mod scripts;
 pub mod widgets;
+
+// The shared style sheets as one text, in their order (see `build.rs` and `css/ORDER`).
+include!(concat!(env!("OUT_DIR"), "/css.rs"));
+
+#[cfg(test)]
+mod css_tests {
+    /// Every style sheet in `css/` is loaded, and only once.
+    #[test]
+    fn every_style_sheet_is_in_the_order() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("css");
+        let order = std::fs::read_to_string(dir.join("ORDER")).unwrap();
+        let listed: Vec<&str> = order.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+        let mut on_disk: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".css"))
+            .collect();
+        on_disk.sort();
+        let mut sorted: Vec<String> = listed.iter().map(|s| s.to_string()).collect();
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), listed.len(), "a style sheet is listed twice");
+        assert_eq!(sorted, on_disk);
+        assert!(super::CSS.contains("--panel"), "the colours come first");
+    }
+}

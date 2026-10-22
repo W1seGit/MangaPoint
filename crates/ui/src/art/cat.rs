@@ -2,7 +2,7 @@
 //!
 //! An original 32x32 sprite drawn in code. Five frames are built once as SVG
 //! rectangles; the browser plays the animation from CSS keyframes (see
-//! `style.css`), so it costs almost nothing while it runs.
+//! `css/art.css`), so it costs almost nothing while it runs.
 
 use dioxus::prelude::*;
 use std::sync::OnceLock;

@@ -1,7 +1,7 @@
 //! A small pixel-art cat walking along a city sidewalk at night, seen from the
 //! side, with a skyline, buildings and street lamps drifting past behind it.
 //! The whole picture is one SVG built once; the browser plays it from CSS
-//! keyframes (see `style.css`). Nothing glides: the cat changes pose six times
+//! keyframes (see `css/art.css`). Nothing glides: the cat changes pose six times
 //! in a step cycle, and the street moves in whole pixels in time with its feet.
 
 use dioxus::prelude::*;

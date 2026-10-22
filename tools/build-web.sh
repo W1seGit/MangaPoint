@@ -59,9 +59,16 @@ cp "$root/web/index.html" "$dist/404.html"
 cp -r "$root/web/js" "$dist/js"
 rm -rf "$dist/js/test"
 cp -r "$root/web/icons" "$dist/icons"
-cp "$root/web/css/web.css" "$dist/css/"
-# The desktop app's own style sheets, unchanged (one source of truth for the look).
-cp "$root/apps/desktop/src/style.css" "$root/apps/desktop/src/import.css" "$root/apps/desktop/src/reader.css" "$root/apps/desktop/src/editor-controls.css" "$root/apps/desktop/src/page-editor.css" "$dist/css/"
+# The style sheets, each folder's files in the order of its ORDER file: css/ui.css is the look shared
+# with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (web/css).
+join_css() {
+  : > "$2"
+  while IFS= read -r name; do
+    [ -n "$name" ] && { cat "$1/$name"; printf '\n'; } >> "$2"
+  done < "$1/ORDER"
+}
+join_css "$root/crates/ui/css" "$dist/css/ui.css"
+join_css "$root/web/css" "$dist/css/web.css"
 
 # The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.
 mkdir -p "$dist/js/ui"

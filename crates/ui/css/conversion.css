@@ -1,3 +1,4 @@
+/* The controls for how pages are converted (the Edit panel). */
 .mp-conversion .group { margin: 22px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); font-size: .95rem; }
 .mp-conversion .group:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
 .mp-control-heading { margin: 16px 0 8px; font-size: .84rem; font-weight: 600; color: var(--muted); }
@@ -36,8 +37,8 @@
 .mp-diagram.rtl:after { content: '2 ← 1'; }.mp-diagram.ltr:after { content: '1 → 2'; }
 .mp-diagram.trim i:first-child { outline: 3px solid var(--panel-2); outline-offset: -5px; }
 .mp-diagram.manual:after { content: ''; position: absolute; height: 27px; width: 16px; border: 2px solid #ffffff; box-shadow: 0 0 0 4px rgba(0,0,0,0.6); }
-.mp-diagram.smooth,.mp-diagram.atkinson,.mp-diagram.ordered,.mp-diagram.none { border-radius: 3px; background: linear-gradient(135deg,#fff,#888 50%,#111); height: 52px; width: 100%; }
-.mp-diagram.smooth i,.mp-diagram.atkinson i,.mp-diagram.ordered i,.mp-diagram.none i { display: none; }
+.mp-diagram.smooth, .mp-diagram.atkinson, .mp-diagram.ordered, .mp-diagram.none { border-radius: 3px; background: linear-gradient(135deg,#fff,#888 50%,#111); height: 52px; width: 100%; }
+.mp-diagram.smooth i, .mp-diagram.atkinson i, .mp-diagram.ordered i, .mp-diagram.none i { display: none; }
 .mp-diagram.smooth { background: radial-gradient(#222 20%,transparent 22%) 0 0 / 3px 3px,linear-gradient(135deg,#fff,#999,#111); }
 .mp-diagram.atkinson { background: radial-gradient(#111 25%,transparent 27%) 0 0 / 4px 4px,linear-gradient(135deg,#fff 25%,#aaa,#111 75%); }
 .mp-diagram.ordered { background: repeating-conic-gradient(#222 0 25%,#ddd 0 50%) 0 0 / 5px 5px; }
@@ -57,7 +58,7 @@
 .controls.mp-conversion .field { grid-template-columns: 1fr; gap: 6px; }
 .controls.mp-conversion .field .hint { grid-column: 1; margin-top: 0; }
 .controls.mp-conversion .check-line { color: var(--muted); }
-@media (max-width: 520px) { .mp-choice-grid { gap: 5px; }.mp-choice { padding: 8px 4px; } }
+@media (max-width: 520px) { .mp-choice-grid { gap: 5px; } .mp-choice { padding: 8px 4px; } }
 
 /* the two ways of cutting a long strip */
 .mp-diagram.cutquiet, .mp-diagram.cutrepeat { flex-direction: column; gap: 3px; }

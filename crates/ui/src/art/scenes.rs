@@ -1,6 +1,6 @@
 //! A small pixel-art scene for an empty screen starring the gray cat: it
 //! searches with a magnifying glass. Original art drawn in code as SVG rectangles; the
-//! motion is CSS (see `style.css`).
+//! motion is CSS (see `css/art.css`).
 
 use super::cat::sitting_markup;
 use dioxus::prelude::*;

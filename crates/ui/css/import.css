@@ -1,0 +1,24 @@
+/* Importing files: the review of what was found. */
+/* Importing books and pictures. */
+.modal.import { max-width: 860px; width: min(860px, 100%); max-height: 90vh; display: flex; flex-direction: column; }
+.import-body { overflow-y: auto; min-height: 0; padding: 4px 2px 2px; display: flex; flex-direction: column; gap: 12px; }
+.import-wait { padding: 30px 0; }
+.import-failures { margin: 0; }
+.import-book { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); animation: import-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; transition: opacity 0.2s ease, transform 0.2s ease; flex: none; }
+.import-book.leaving { opacity: 0; transform: translateX(24px) scale(0.98); pointer-events: none; }
+@keyframes import-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.import-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+.import-title { flex: 1; min-width: 0; font-weight: 600; }
+.import-file { flex: 0 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.import-remove { flex: none; }
+.import-book-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px; padding: 4px 12px 12px; }
+.import-book-body:not(:has(.import-cover)) { grid-template-columns: minmax(0, 1fr); }
+.import-cover { position: relative; width: 112px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--panel-3); align-self: start; }
+.import-cover img, .import-cover .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+.import-main { min-width: 0; }
+.import-count { margin: 2px 0 0; }
+.import-warning { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--warn); }
+.import-number { width: 74px; text-align: center; }
+.import-name { min-width: 0; }
+.import-progress { padding: 10px 0 4px; }
+.import-anchor { display: inline-block; }

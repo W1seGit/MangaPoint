@@ -156,7 +156,7 @@ pub fn SearchPage() -> Element {
     };
 
     // Before anything is searched the box sits in the middle of the window, under
-    // the cat. Searching moves it up and widens it (see style.css).
+    // the cat. Searching moves it up and widens it (see css/desktop.css).
     let idle = view.query.is_empty() && !view.searching;
     // Until the catalog engine is up there is nothing to search with: show how
     // far it is instead of the box, which then arrives.
@@ -214,7 +214,7 @@ pub fn SearchPage() -> Element {
                         // The sort and the sources flow and wrap together, so a
                         // second row starts under the sort pill. Pointing anywhere
                         // at the box, typing in it, or opening the panel folds the
-                        // source pills into one dropdown (see style.css).
+                        // source pills into one dropdown (see css/desktop.css).
                         div { class: "pills-flow",
                             div { class: "sort-pill",
                                 select {

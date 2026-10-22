@@ -1,0 +1,62 @@
+/* The chapter table: ticks, sorting, sizes and the hover details. */
+
+/* ---- series page: table + export panel ---- */
+.side { position: sticky; top: 0; }
+.toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.table-wrap { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--panel); }
+.table-scroll { max-height: calc(100vh - 330px); min-height: 220px; overflow-y: auto; }
+table.chapters { width: 100%; border-collapse: collapse; }
+table.chapters th, table.chapters td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--line); }
+table.chapters thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--panel-2); color: var(--muted); font-weight: 600;
+  font-size: 0.82rem; user-select: none; white-space: nowrap;
+}
+table.chapters th.sortable { cursor: pointer; }
+table.chapters th.sortable:hover { color: var(--text); }
+table.chapters th.sorted { color: var(--text); }
+table.chapters th .th { display: inline-flex; align-items: center; gap: 5px; }
+table.chapters th.num, table.chapters td.num { width: 84px; font-variant-numeric: tabular-nums; }
+table.chapters th.src, table.chapters td.src { width: 210px; }
+table.chapters td.src { white-space: nowrap; overflow: hidden; }
+.src-tag { display: inline-block; margin-right: 6px; padding: 2px 9px; border: 1px solid var(--line-strong); border-radius: 999px; font-size: 0.78rem; color: var(--muted); }
+.src-tag.used { color: var(--ok); border-color: rgba(127, 209, 139, 0.45); }
+table.chapters th.date, table.chapters td.date { width: 112px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+table.chapters th.check, table.chapters td.check { width: 40px; }
+table.chapters tbody tr { cursor: pointer; height: 42px; }
+table.chapters tbody td { height: 42px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; white-space: nowrap; }
+table.chapters tbody tr.spacer, table.chapters tbody tr.spacer:hover { cursor: default; background: transparent; }
+table.chapters tbody tr.spacer td { padding: 0; border: 0; }
+table.chapters tbody tr:hover { background: var(--panel-2); }
+table.chapters tbody tr.on { background: #1a1a1a; box-shadow: inset 3px 0 0 var(--accent); }
+table.chapters td.name { overflow: hidden; text-overflow: ellipsis; max-width: 0; white-space: nowrap; }
+.summary-line { display: flex; justify-content: space-between; padding: 4px 0; }
+.summary-line span:last-child { color: var(--text); }
+.seg { display: flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.seg button {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0;
+  background: var(--panel); padding: 7px 8px; cursor: pointer; border-left: 1px solid var(--line-strong); color: var(--muted);
+}
+.seg button:first-child { border-left: 0; }
+.seg button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.seg.stack { flex-direction: column; }
+.seg.stack button { border-left: 0; border-top: 1px solid var(--line-strong); justify-content: flex-start; padding: 8px 11px; }
+.seg.stack button:first-child { border-top: 0; }
+
+table.chapters tbody tr.locked { cursor: default; opacity: 0.6; }
+table.chapters tbody tr.locked:hover { background: transparent; }
+
+/* ---- hover details in the chapter table ---- */
+.tip { position: relative; display: inline-block; }
+.tip.dotted { border-bottom: 1px dotted var(--muted); cursor: help; line-height: 1.1; }
+.tip::after {
+  content: attr(data-tip); position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%);
+  white-space: pre; padding: 7px 11px; border-radius: 8px; background: var(--panel-3); border: 1px solid var(--line-strong);
+  color: var(--text); font-size: 0.82rem; font-weight: 400; text-align: left; pointer-events: none; opacity: 0; transition: opacity 0.12s; z-index: 30;
+}
+.tip[data-tip=""]::after { display: none; }
+.tip:hover::after { opacity: 1; }
+table.chapters th.status, table.chapters td.status { width: 130px; }
+table.chapters th.size, table.chapters td.size { width: 90px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.chapters-summary { margin-bottom: 12px; }
+
+table.chapters tbody tr[data-cursor] { outline: 2px solid var(--accent); outline-offset: -2px; }

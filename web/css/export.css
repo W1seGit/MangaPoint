@@ -1,0 +1,77 @@
+/* The Export screen in a browser: the run and its files, the pages of a phone or tablet book, and
+   the narrow window (one pane, a settings sheet). */
+
+/* Export */
+
+.export-run { margin-top: 14px; max-width: 1100px; }
+.export-file { padding: 10px 2px; }
+.export-file-name { overflow-wrap: anywhere; }
+
+/* ---- Export: the desktop app's three columns on a computer; pages, tabs and a settings sheet on a phone ---- */
+.export-preview { min-height: 0; }
+
+.px-more { text-align: center; margin: 0; padding: 8px 14px 14px; }
+.export-side .export-run { padding: 0 14px; }
+.export-side .export-run .card { margin: 10px 0; }
+.export-side .export-run .banner { margin: 10px 0; }
+.export-side .export-files { max-height: 180px; overflow-y: auto; }
+.px-footer.compact { border-top: 0; padding: 10px 12px; }
+.px-footer.compact .btn.big { width: 100%; }
+
+@media (max-width: 900px) {
+  .export-screen.narrow { height: 100%; }
+  
+  .export-screen.narrow > .export-center { flex: 1; min-height: 0; }
+  
+  .xm-bottom { flex: none; max-height: 55vh; overflow-y: auto; background: var(--panel); border-top: 1px solid var(--line); }
+  .xm-bottom .export-run { padding: 0 12px; }
+  .xm-bottom .export-run .card, .xm-bottom .export-run .banner { margin: 10px 0 0; }
+  .xm-settings-tab {
+    display: flex; align-items: center; gap: 8px; width: 100%; height: 46px; box-sizing: border-box; padding: 0 14px;
+    border: 0; border-top: 1px solid var(--line-strong); background: var(--panel-3); color: #bdbdbd; cursor: pointer;
+    font: inherit; font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .xm-settings-tab:hover { color: var(--text); }
+  .xm-settings-tab span { flex: 1; text-align: left; }
+  .xm-sheet {
+    position: fixed; inset: 0; z-index: 40; display: flex; flex-direction: column; background: var(--panel);
+    padding-top: var(--sat);
+  }
+  .xm-sheet-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+  .xm-sheet .px-panel, .xm-sheet .px-panel.open, .xm-sheet .px-panel.open.fixed { flex: none; overflow: visible; min-height: 0; }
+  .xm-sheet .px-panel.collapsed .px-panel-body { display: none; }
+  .xm-sheet .px-panel-body { overflow: visible; flex: none; padding-bottom: 16px; }
+  .xm-sheet .px-chapters { max-height: 46vh; overflow-y: auto; }
+  .xm-sheet .banner { margin: 12px; }
+  .px-panel-head { height: 46px; }
+  .px-chapter { min-height: 44px; }
+  .px-chapter input { width: 22px; height: 22px; }
+}
+
+/* The page list on a narrow window: one pane at a time (the Original / Reader switch picks it), so
+   the page takes the whole width and Compare, which the switch replaces, is not drawn. */
+@media (max-width: 1100px) {
+  .editor-group.comparing { grid-template-columns: minmax(0, 1fr); }
+  .editor-group.comparing > .editor-row { grid-column: 1; }
+  .compare-tab { display: none; }
+  .editor-columns.solo { padding-top: 12px; }
+  .source-cell { padding-top: 0; }
+}
+
+/* A phone or tablet gets the pages as they are: one long page, nothing between them. */
+.original-thumb { width: 100%; height: 100%; aspect-ratio: auto; margin: 0; background: transparent; }
+.original-thumb img { object-fit: contain; background: #fff; }
+.original-preview.continuous { display: block; background: #000; }
+.original-preview.continuous .reader-tile { display: block; margin: 0 auto; background: transparent; max-width: none; }
+.original-preview.continuous .reader-tile img { pointer-events: none; }
+.original-preview.continuous .original-img { display: block; margin: 0 auto; height: auto; }
+/* Zoom is the same for every page and book: 100% is 800px, so a wide cover is scaled to match the rest.
+   Fit is one page wide (or the column, if that is narrower), Width fills the column. */
+.original-preview[data-zoom="fit"] .reader-tile, .original-preview[data-zoom="fit"] .original-img { width: min(100%, 800px); height: auto; max-width: none; }
+.original-preview[data-zoom="width"] .reader-tile, .original-preview[data-zoom="width"] .original-img { width: 100%; height: auto; }
+.original-preview[data-zoom="custom"] .reader-tile, .original-preview[data-zoom="custom"] .original-img { width: calc(8px * var(--zoom) * 100); height: auto; max-width: none; }
+
+/* The warning about a big export: the words, then the button under them. */
+.banner.big-export { position: relative; flex-direction: column; align-items: stretch; gap: 8px; font-size: 0.8rem; line-height: 1.45; padding: 9px 36px 9px 12px; }
+.banner.big-export .btn { align-self: stretch; }
+.banner.big-export .big-export-close { position: absolute; top: 4px; right: 4px; align-self: auto; min-height: 0; padding: 4px; }

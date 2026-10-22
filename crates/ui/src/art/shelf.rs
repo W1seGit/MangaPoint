@@ -5,7 +5,7 @@
 //! An original scene drawn in code on a 96x80 grid, turned into SVG rectangles
 //! once. The cat is the same sleeping sprite as the one on its own (see
 //! `cat.rs`), so it breathes and dreams the same way; the rest of the motion is
-//! CSS (see `style.css`).
+//! CSS (see `css/art.css`).
 
 use dioxus::prelude::*;
 use std::sync::OnceLock;

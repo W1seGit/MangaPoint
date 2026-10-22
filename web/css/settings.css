@@ -1,0 +1,83 @@
+/* Settings in a browser: its rows, and the App page about the desktop app. */
+
+/* Settings cards */
+.page > .card { max-width: 860px; }
+.page > .card + .card { margin-top: 14px; }
+
+/* Settings page */
+.sx-bar { margin: 2px 0 10px; }
+.sx-buttons { gap: 8px; justify-content: flex-end; }
+@media (max-width: 700px) { .sx-buttons { justify-content: flex-start; } }
+
+/* Settings, App: the desktop app, what it does and where to get it */
+.desk-app { margin-top: 34px; }
+.desk-title { text-align: center; font-size: 1.6rem; margin: 0 0 18px; }
+.desk-slider { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
+.desk-slide {
+  position: relative; margin: 0; width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center;
+  overflow: hidden; touch-action: pan-y;
+  animation: desk-slide-in 0.28s ease;
+}
+@keyframes desk-slide-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.desk-art { width: 100%; display: flex; align-items: center; justify-content: center; padding: 10px 10px 4px; }
+.desk-art .desk-scene { width: 100%; max-width: 336px; height: auto; margin: 0; }
+.desk-slide figcaption { padding: 6px 22px 4px; }
+.desk-slide strong { display: block; font-size: 1.1rem; margin-bottom: 6px; }
+.desk-slide p { margin: 0; line-height: 1.5; }
+.desk-arrow {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line-strong); background: rgba(20, 20, 20, 0.85);
+  color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.desk-arrow.prev { left: 14px; }
+.desk-arrow.next { right: 14px; }
+.desk-arrow:hover { background: var(--panel-3); }
+.desk-dots { display: flex; gap: 8px; justify-content: center; }
+.desk-dot { width: 9px; height: 9px; padding: 0; border: 0; border-radius: 50%; background: var(--line-strong); cursor: pointer; transition: width 0.2s, background 0.2s; }
+.desk-dot.on { width: 22px; border-radius: 5px; background: var(--text); }
+@media (prefers-reduced-motion: reduce) { .desk-slide { animation: none; } }
+.pixel-mark { shape-rendering: crispEdges; image-rendering: pixelated; flex: none; }
+/* The scenes move in steps, like the cat. */
+.desk-scene .found { opacity: 0; animation: desk-found 3.6s step-end infinite; }
+.desk-scene .found.f1 { animation-delay: 0.6s; }
+.desk-scene .found.f2 { animation-delay: 1.2s; }
+@keyframes desk-found { 0% { opacity: 0; } 10%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.desk-scene .drop { animation: desk-drop 1.6s steps(4) infinite; }
+@keyframes desk-drop { from { transform: translateY(-2px); } to { transform: translateY(6px); } }
+.desk-scene .fill { opacity: 0; animation: desk-fill 3s step-end infinite; }
+.desk-scene .fill.p0 { animation-name: desk-fill0; }
+.desk-scene .fill.p1 { animation-name: desk-fill1; }
+.desk-scene .fill.p2 { animation-name: desk-fill2; }
+@keyframes desk-fill0 { 0% { opacity: 0; } 20%, 100% { opacity: 1; } }
+@keyframes desk-fill1 { 0%, 45% { opacity: 0; } 46%, 100% { opacity: 1; } }
+@keyframes desk-fill2 { 0%, 72% { opacity: 0; } 73%, 92% { opacity: 1; } 93%, 100% { opacity: 0; } }
+.desk-scene .crop { animation: desk-blink 2.4s step-end infinite; }
+.desk-scene .pick { animation: desk-blink 2.4s step-end infinite; }
+@keyframes desk-blink { 0%, 60% { opacity: 1; } 61%, 80% { opacity: 0; } 81%, 100% { opacity: 1; } }
+.desk-scene .wave { opacity: 0; animation: desk-wave 1.8s step-end infinite; }
+.desk-scene .wave.w1 { animation-delay: 0.3s; }
+.desk-scene .wave.w2 { animation-delay: 0.6s; }
+@keyframes desk-wave { 0% { opacity: 0; } 15%, 60% { opacity: 1; } 61%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .desk-scene .found, .desk-scene .drop, .desk-scene .fill, .desk-scene .crop, .desk-scene .pick, .desk-scene .wave { animation: none; opacity: 1; }
+}
+.desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 22px; }
+.desk-download {
+  display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 4px 0; color: var(--text);
+}
+.desk-download-head { display: flex; align-items: center; gap: 12px; }
+.desk-os { font-size: 1.35rem; font-weight: 700; }
+.desk-kinds { display: flex; }
+.desk-kinds button { flex: 1; white-space: nowrap; }
+.desk-get { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; margin-top: auto; }
+.desk-github {
+  display: flex; align-items: center; gap: 16px; margin-top: 26px; padding: 4px 0; color: var(--text); text-decoration: none;
+}
+.desk-github:hover strong { text-decoration: underline; }
+.desk-github > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+@media (max-width: 700px) {
+  .desk-downloads { grid-template-columns: minmax(0, 1fr); }
+  .desk-arrow { width: 36px; height: 36px; top: 34%; }
+  .desk-arrow.prev { left: 8px; }
+  .desk-arrow.next { right: 8px; }
+}

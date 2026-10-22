@@ -1,0 +1,13 @@
+/* The reader in a browser: touch, pinch and the dynamic viewport. */
+
+.reader-stage {
+  touch-action: pan-x pan-y; overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none; padding-bottom: 0;
+}
+/* A touch on a page is the reader's (pinch, swipe), not the picture's. */
+.reader-tile img { pointer-events: none; }
+/* Not zoomed: only vertical drags pan. */
+.reader[data-hpan="no"] .reader-stage { touch-action: pan-y; }
+/* A touch target, and a menu that follows the phone's address bar. */
+.reader-end .btn { min-height: 44px; }
+.reader-menu { max-height: 60vh; max-height: 60dvh; }

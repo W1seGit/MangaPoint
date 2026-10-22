@@ -36,7 +36,8 @@ use dioxus::prelude::*;
 use sources::SourceManager;
 use widgets::{Icon, ProgressBar};
 
-const CSS: &str = include_str!("../style.css");
+/// What only the desktop app shows, after the shared style sheets (`mangapoint_ui::CSS`).
+const DESKTOP_CSS: &str = include_str!("../../css/desktop.css");
 /// Keyboard shortcuts.
 const KEYS_SCRIPT: &str = include_str!("../js/keys.js");
 /// Remembers the scroll position of each page.
@@ -149,11 +150,8 @@ pub fn App() -> Element {
     let boot = state.boot.read().clone();
     let setup_step = state.ui.settings.read().setup_step;
     rsx! {
-        style { "{CSS}" }
-        style { {include_str!("../page-editor.css")} }
-        style { {include_str!("../editor-controls.css")} }
-        style { {include_str!("../import.css")} }
-        style { {include_str!("../reader.css")} }
+        style { {mangapoint_ui::CSS} }
+        style { {DESKTOP_CSS} }
         div { class: "app", "data-motion": if snappy { "snappy" } else { "clean" },
             {match boot {
                 BootState::Failed(message) => rsx! { Failed { message } },
