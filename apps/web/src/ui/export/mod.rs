@@ -96,6 +96,13 @@ pub struct PageSource {
     pub part: String,
     pub top: u32,
     pub height: u32,
+    /// For a strip page: the downloaded rows it is made from (a picture), and their size.
+    #[serde(default)]
+    pub rows_width: u32,
+    #[serde(default)]
+    pub rows_height: u32,
+    #[serde(skip)]
+    pub strip_url: String,
 }
 
 /// How big the pages are on screen.
@@ -609,6 +616,9 @@ struct Previewed {
     urls: Vec<String>,
     #[serde(default)]
     sources: Vec<PageSource>,
+    /// The picture of each strip page's downloaded rows ('' for the others).
+    #[serde(default)]
+    strip_urls: Vec<String>,
 }
 
 /// Let go of the pages held open for the preview.
@@ -691,7 +701,13 @@ fn request_preview(ctx: Ctx) {
         }
         edit(ctx, |e| {
             e.look = match made {
-                Ok(p) => Look::Ready { originals, converted: p.urls, total, shown, sources: p.sources, sizes },
+                Ok(p) => {
+                    let mut sources = p.sources;
+                    for (source, url) in sources.iter_mut().zip(p.strip_urls) {
+                        source.strip_url = url;
+                    }
+                    Look::Ready { originals, converted: p.urls, total, shown, sources, sizes }
+                }
                 Err(message) => Look::Failed(message),
             }
         });

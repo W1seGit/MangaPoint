@@ -1,13 +1,14 @@
 //! The Library: the books kept in this browser, and the places waiting for
-//! their file.
+//! their file, as cards in one grid. Cards can be selected for the bar at the bottom.
 
-use super::widgets::{Cover, EmptyState, Icon};
+use super::widgets::{Cover, EmptyState, Icon, NoCover};
 use crate::app::{Ctx, Modal, ModalAction, Page};
 use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
 use crate::model::{Book, LibrarySort, LibraryView};
 use dioxus::prelude::*;
 use serde_json::json;
+use std::collections::BTreeSet;
 
 /// Open the browser's file picker (it must start inside the click).
 pub fn pick_files() {
@@ -16,6 +17,11 @@ pub fn pick_files() {
 
 pub fn pick_folder() {
     bridge::send("pick_folder", json!({}));
+}
+
+/// Open the file picker for one book that is waiting for its file: only that book's file is taken.
+pub fn pick_for(fingerprint: &str) {
+    bridge::send("pick_for", json!({ "fingerprint": fingerprint }));
 }
 
 fn kind_label(book: &Book) -> &'static str {
@@ -34,14 +40,29 @@ pub fn LibraryPage() -> Element {
     let mut filter = use_signal(String::new);
     let mut import_menu = use_signal(|| false);
     let mut menu = use_signal(|| None::<String>);
+    let mut selecting = use_signal(|| false);
+    let mut picked = use_signal(BTreeSet::<String>::new);
 
     let lib = ctx.library.read();
     let order = lib.order(view(), sort(), &filter.read());
     let total_bytes: u64 = lib.books.iter().map(|b| b.size).sum();
     let count = lib.books.len();
-    let waiting: Vec<_> = lib.waiting().into_iter().cloned().collect();
-    let empty = count == 0;
+    // The places in the reading state whose file is not on this device yet are cards too.
+    let needle = filter.read().trim().to_lowercase();
+    let waiting: Vec<_> = if view() == LibraryView::All {
+        lib.waiting()
+            .into_iter()
+            .filter(|w| needle.is_empty() || w.title.to_lowercase().contains(&needle) || w.file_name.to_lowercase().contains(&needle))
+            .cloned()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let empty = count == 0 && lib.waiting().is_empty();
     let now = bridge::now_ms() / 1000;
+    let everything: Vec<String> = order.iter().map(|&i| lib.books[i].id.clone()).chain(waiting.iter().map(|w| w.fingerprint.clone())).collect();
+    let chosen = picked.read().clone();
+    let chosen_books: Vec<String> = chosen.iter().filter(|id| lib.find(id).is_some_and(|b| !b.needs_file)).cloned().collect();
 
     rsx! {
         div { class: "q-head",
@@ -53,6 +74,13 @@ pub fn LibraryPage() -> Element {
                     } else {
                         "{plural(count, \"book\")} \u{b7} {human_bytes(total_bytes)} on this device"
                     }
+                }
+            }
+            if !empty {
+                button {
+                    class: if selecting() { "btn on" } else { "btn" }, id: "select-button", title: "Pick several books at once",
+                    onclick: move |_| { selecting.set(!selecting()); picked.set(BTreeSet::new()); },
+                    Icon { name: "check", size: 16 } if selecting() { "Done" } else { "Select" }
                 }
             }
             div { class: "menu-anchor import-anchor",
@@ -115,7 +143,7 @@ pub fn LibraryPage() -> Element {
                     }
                 }
             }
-            if order.is_empty() {
+            if order.is_empty() && waiting.is_empty() {
                 EmptyState {
                     title: "Nothing matches",
                     message: "No book in this view has that in its name. Try fewer letters or another view.",
@@ -136,16 +164,23 @@ pub fn LibraryPage() -> Element {
                             (id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone());
                         let remove_title = b.title.clone();
                         let needs_file = b.needs_file;
-                        let file_name = b.file_name.clone();
+                        let is_on = picked.read().contains(&id);
+                        let toggle_id = id.clone();
+                        let read_pick = id.clone();
                         rsx! {
-                            div { class: "poster", key: "{id}", "data-book": "{id}",
+                            div { class: if is_on { "poster on" } else { "poster" }, key: "{id}", "data-book": "{id}",
                                 div { class: "poster-art", title: "Open {b.title}",
-                                    onclick: move |_| open_book(ctx, &open_id),
+                                    onclick: move |_| {
+                                        if selecting() { toggle(picked, &toggle_id); } else { open_book(ctx, &open_id); }
+                                    },
                                     Cover { id: id.clone(), has_cover: b.has_cover }
                                     if needs_file {
                                         span { class: "poster-badge saved", title: "The browser did not keep this file", "Needs its file" }
                                     }
-                                    button {
+                                    if selecting() {
+                                        span { class: if is_on { "poster-check on" } else { "poster-check" }, Icon { name: "check", size: 15 } }
+                                    }
+                                    if !selecting() { button {
                                         class: if menu_open { "poster-more open" } else { "poster-more" },
                                         title: "More actions", "aria-label": "More actions for {b.title}",
                                         onclick: move |e| {
@@ -153,9 +188,9 @@ pub fn LibraryPage() -> Element {
                                             menu.set(if menu_open { None } else { Some(menu_id.clone()) });
                                         },
                                         Icon { name: "ellipsis", size: 16 }
-                                    }
+                                    } }
                                 }
-                                if menu_open {
+                                if menu_open && !selecting() {
                                     div { class: "menu-scrim", onclick: move |_| menu.set(None) }
                                     div { class: "menu down poster-menu",
                                         if !needs_file {
@@ -169,26 +204,26 @@ pub fn LibraryPage() -> Element {
                                             }
                                         } else {
                                             button { class: "menu-item",
-                                                onclick: move |_| { menu.set(None); ctx.warn(format!("Import {file_name} again to read it.")); pick_files(); let _ = &again_id; },
-                                                Icon { name: "file-up", size: 15 } "Import the file again"
+                                                onclick: move |_| { menu.set(None); pick_for(&again_id); },
+                                                Icon { name: "file-up", size: 15 } "Import"
                                             }
                                         }
                                         button { class: "menu-item danger",
                                             onclick: move |_| {
                                                 menu.set(None);
                                                 ctx.ask(Modal {
-                                                    title: format!("Remove {remove_title} from this device?"),
-                                                    body: "The book's file is deleted from this browser. Your place in it is remembered, so importing the same file again carries on where you stopped.".into(),
-                                                    confirm: "Remove".into(), cancel: "Keep".into(), danger: true,
-                                                    action: ModalAction::RemoveBook { id: remove_id.clone(), forget: false },
+                                                    title: format!("Forget {remove_title}?"),
+                                                    body: "The book and your place in it are deleted from this device. Import the file again to read it from the start.".into(),
+                                                    confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
+                                                    action: ModalAction::RemoveBook { id: remove_id.clone(), forget: true },
                                                 });
                                             },
-                                            Icon { name: "trash", size: 15 } "Remove from this device"
+                                            Icon { name: "trash", size: 15 } "Forget"
                                         }
                                     }
                                 }
                                 div { class: "poster-text", title: "Open {b.title}",
-                                    onclick: move |_| open_book(ctx, &text_id),
+                                    onclick: move |_| { if selecting() { toggle(picked, &text_id); } else { open_book(ctx, &text_id); } },
                                     strong { class: "poster-title", title: "{b.title}", "{b.title}" }
                                     div { class: "poster-stats",
                                         div { span { class: "poster-stat-label", "Chapters" } strong { "{have}" } }
@@ -204,7 +239,7 @@ pub fn LibraryPage() -> Element {
                                     button {
                                         class: "btn poster-read", id: "read-{id}", "data-book": "{id}",
                                         "aria-label": "{reading.label} {b.title}", title: "Read {b.title}",
-                                        onclick: move |_| super::reader::open_reader(ctx, &read_id, None),
+                                        onclick: move |_| { if selecting() { toggle(picked, &read_pick); } else { super::reader::open_reader(ctx, &read_id, None); } },
                                         Icon { name: "book-open", size: 15 } "{reading.label}"
                                     }
                                     if let Some(done) = reading.fraction {
@@ -218,55 +253,123 @@ pub fn LibraryPage() -> Element {
                         }
                     }
                 }
-            }
-        }
-
-        if !waiting.is_empty() {
-            section { class: "waiting", id: "waiting",
-                h2 { "Waiting for the file" }
-                p { class: "muted small",
-                    "These books are in your reading state, but their file is not on this device yet. Import the same file again and each one carries on where you stopped."
-                }
-                div { class: "card waiting-list",
-                    for w in waiting.iter() {
-                        {
-                            let id = w.fingerprint.clone();
-                            let title = if w.title.is_empty() { w.file_name.clone() } else { w.title.clone() };
-                            let place = if w.last_read_at > 0 {
-                                format!("{} \u{b7} page {} \u{b7} {}", w.position.chapter_name, w.position.page + 1, ago(now, w.last_read_at / 1000))
-                            } else {
-                                "Not started".to_string()
-                            };
-                            let read = w.chapters_read.len();
-                            let forget = id.clone();
-                            rsx! {
-                                div { class: "list-row waiting-row", key: "{id}", "data-fingerprint": "{id}",
-                                    Icon { name: "clock", size: 18 }
-                                    div { class: "grow",
-                                        strong { class: "waiting-title", "{title}" }
-                                        div { class: "muted small", "{w.file_name} \u{b7} {human_bytes(w.size)}" }
-                                        div { class: "muted small", "{place}" if read > 0 { " \u{b7} {plural(read, \"chapter\")} read" } }
+                for w in waiting.iter() {
+                    {
+                        let fp = w.fingerprint.clone();
+                        let title = if w.title.is_empty() { w.file_name.clone() } else { w.title.clone() };
+                        let place = if w.last_read_at > 0 {
+                            format!("{} \u{b7} page {} \u{b7} {}", w.position.chapter_name, w.position.page + 1, ago(now, w.last_read_at / 1000))
+                        } else {
+                            "Not started".to_string()
+                        };
+                        let menu_open = menu().as_deref() == Some(fp.as_str());
+                        let is_on = picked.read().contains(&fp);
+                        let (toggle_id, text_id, menu_id, import_id, button_id, forget_id) = (fp.clone(), fp.clone(), fp.clone(), fp.clone(), fp.clone(), fp.clone());
+                        let forget_title = title.clone();
+                        rsx! {
+                            div { class: if is_on { "poster waiting on" } else { "poster waiting" }, key: "{fp}", "data-fingerprint": "{fp}",
+                                div { class: "poster-art",
+                                    onclick: move |_| { if selecting() { toggle(picked, &toggle_id); } },
+                                    NoCover {}
+                                    if selecting() {
+                                        span { class: if is_on { "poster-check on" } else { "poster-check" }, Icon { name: "check", size: 15 } }
+                                    } else {
+                                        button {
+                                            class: if menu_open { "poster-more open" } else { "poster-more" },
+                                            title: "More actions", "aria-label": "More actions for {title}",
+                                            onclick: move |e| {
+                                                e.stop_propagation();
+                                                menu.set(if menu_open { None } else { Some(menu_id.clone()) });
+                                            },
+                                            Icon { name: "ellipsis", size: 16 }
+                                        }
                                     }
-                                    button { class: "btn ghost small", title: "Forget this place",
-                                        onclick: move |_| ctx.ask(Modal {
-                                            title: "Forget this place?".into(),
-                                            body: format!("Your place in {title} and the chapters you read are deleted from this device. They stay in any reading-state file you saved."),
-                                            confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                            action: ModalAction::ForgetWaiting(forget.clone()),
-                                        }),
-                                        Icon { name: "x", size: 15 } "Forget"
+                                }
+                                if menu_open && !selecting() {
+                                    div { class: "menu-scrim", onclick: move |_| menu.set(None) }
+                                    div { class: "menu down poster-menu",
+                                        button { class: "menu-item",
+                                            onclick: move |_| { menu.set(None); pick_for(&import_id); },
+                                            Icon { name: "file-up", size: 15 } "Import"
+                                        }
+                                        button { class: "menu-item danger",
+                                            onclick: move |_| {
+                                                menu.set(None);
+                                                ctx.ask(Modal {
+                                                    title: format!("Forget {forget_title}?"),
+                                                    body: "Your place in it and the chapters you read are deleted from this device. They stay in any reading-state file you saved.".into(),
+                                                    confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
+                                                    action: ModalAction::ForgetWaiting(forget_id.clone()),
+                                                });
+                                            },
+                                            Icon { name: "trash", size: 15 } "Forget"
+                                        }
                                     }
+                                }
+                                div { class: "poster-text",
+                                    onclick: move |_| { if selecting() { toggle(picked, &text_id); } },
+                                    strong { class: "poster-title", title: "{title}", "{title}" }
+                                    span { class: "muted small poster-status", "Not installed yet" }
+                                    span { class: "muted small poster-place", "{place}" }
+                                }
+                                button {
+                                    class: "btn poster-read", id: "import-{fp}", "data-fingerprint": "{fp}",
+                                    "aria-label": "Import {title}", title: "Pick the file for {title}",
+                                    onclick: move |_| { if selecting() { toggle(picked, &button_id); } else { pick_for(&button_id); } },
+                                    Icon { name: "file-up", size: 15 } "Import"
                                 }
                             }
                         }
                     }
                 }
-                div { class: "row wrap", style: "margin-top: 10px",
-                    button { class: "btn", onclick: move |_| pick_files(), Icon { name: "file-up", size: 16 } "Import files" }
-                    button { class: "btn", onclick: move |_| pick_folder(), Icon { name: "folder-open", size: 16 } "Import a folder" }
+            }
+        }
+
+        if selecting() {
+            div { class: "select-bar", id: "select-bar", role: "toolbar", "aria-label": "Actions for the books you picked",
+                span { class: "select-count", id: "select-count", "{chosen.len()} selected" }
+                div { class: "select-actions",
+                    button { class: "btn ghost", id: "select-all",
+                        onclick: move |_| {
+                            let all = everything.clone();
+                            if picked.read().len() == all.len() { picked.set(BTreeSet::new()); } else { picked.set(all.into_iter().collect()); }
+                        },
+                        if chosen.len() == everything.len() && !everything.is_empty() { "Select none" } else { "Select all" }
+                    }
+                    button { class: "btn", id: "select-export", disabled: chosen_books.len() != 1 || chosen.len() != 1,
+                        title: "Export one book at a time",
+                        onclick: move |_| {
+                            let first = picked.read().iter().next().cloned();
+                            if let Some(id) = first { selecting.set(false); picked.set(BTreeSet::new()); super::export::export_book(ctx, &id); }
+                        },
+                        Icon { name: "file-down", size: 15 } "Export"
+                    }
+                    button { class: "btn danger", id: "select-forget", disabled: chosen.is_empty(),
+                        onclick: move |_| {
+                            let ids: Vec<String> = picked.read().iter().cloned().collect();
+                            let n = ids.len();
+                            ctx.ask(Modal {
+                                title: format!("Forget {}?", plural(n, "book")),
+                                body: "The books and your places in them are deleted from this device. This cannot be undone.".into(),
+                                confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
+                                action: ModalAction::ForgetMany(ids),
+                            });
+                            selecting.set(false);
+                            picked.set(BTreeSet::new());
+                        },
+                        Icon { name: "trash", size: 15 } "Forget"
+                    }
                 }
             }
         }
+    }
+}
+
+/// Add the card to the pick, or take it off.
+fn toggle(mut picked: Signal<BTreeSet<String>>, id: &str) {
+    let mut set = picked.write();
+    if !set.remove(id) {
+        set.insert(id.to_string());
     }
 }
 

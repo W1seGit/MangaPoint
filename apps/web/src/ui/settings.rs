@@ -1,5 +1,5 @@
 //! Settings and About: what is kept on this device, the reading-state file,
-//! the privacy promise, installing the app, and deleting everything.
+//! the privacy promise, installing the app (and the desktop app), and deleting everything.
 
 use super::widgets::{Icon, ProgressBar, SettingRow, Toggle};
 use crate::app::{current_iso, Ctx, Modal, ModalAction};
@@ -176,27 +176,6 @@ pub fn SettingsPage() -> Element {
                             }
                         }
                         h2 { class: "sx-group", "Data" }
-                        div { id: "danger-card",
-                            SettingRow {
-                                label: "Delete everything",
-                                help: "Removes every book, your places and your settings from this browser. Files you exported or saved stay where they are.",
-                                button { class: "btn danger", id: "clear-all",
-                                    onclick: move |_| ctx.ask(Modal {
-                                        title: "Delete everything on this device?".into(),
-                                        body: format!("{} and your reading places will be deleted from this browser. This cannot be undone. A reading-state file you saved earlier stays untouched.", plural(books, "book")),
-                                        confirm: "Delete everything".into(), cancel: "Keep".into(), danger: true,
-                                        action: ModalAction::ClearAll,
-                                    }),
-                                    Icon { name: "trash", size: 15 } "Delete everything"
-                                }
-                            }
-                        }
-                    },
-                    Section::Readers => rsx! {
-                        super::readers::DevicesEditor {}
-                    },
-                    Section::State => rsx! {
-                        h2 { class: "sx-group", "Reading state" }
                         div { id: "state-card",
                             SettingRow {
                                 label: "Reading state file",
@@ -227,6 +206,24 @@ pub fn SettingsPage() -> Element {
                                 p { class: "sx-note", id: "state-waiting", "{plural(waiting, \"book\")} waiting for their file (see the Library)." }
                             }
                         }
+                        div { id: "danger-card",
+                            SettingRow {
+                                label: "Delete everything",
+                                help: "Removes every book, your places and your settings from this browser. Files you exported or saved stay where they are.",
+                                button { class: "btn danger", id: "clear-all",
+                                    onclick: move |_| ctx.ask(Modal {
+                                        title: "Delete everything on this device?".into(),
+                                        body: format!("{} and your reading places will be deleted from this browser. This cannot be undone. A reading-state file you saved earlier stays untouched.", plural(books, "book")),
+                                        confirm: "Delete everything".into(), cancel: "Keep".into(), danger: true,
+                                        action: ModalAction::ClearAll,
+                                    }),
+                                    Icon { name: "trash", size: 15 } "Delete everything"
+                                }
+                            }
+                        }
+                    },
+                    Section::Readers => rsx! {
+                        super::readers::DevicesEditor {}
                     },
                     Section::App => rsx! {
                         h2 { class: "sx-group", "App" }
@@ -244,6 +241,37 @@ pub fn SettingsPage() -> Element {
                                         span { id: "install-hint" }
                                     }
                                 }
+                            }
+                        }
+                        h2 { class: "sx-group", "The desktop app" }
+                        div { class: "desk-app", id: "desktop-app",
+                            p { class: "desk-intro",
+                                "This website reads and exports the books you already have. The MangaPoint desktop app is the one that finds them: it searches your sources, downloads the chapters and makes them fit your e-reader."
+                            }
+                            div { class: "desk-features",
+                                for (icon, title, text) in DESKTOP_FEATURES {
+                                    div { class: "desk-feature", key: "{title}",
+                                        span { class: "desk-icon", Icon { name: icon, size: 19 } }
+                                        div {
+                                            strong { "{title}" }
+                                            p { class: "muted small", "{text}" }
+                                        }
+                                    }
+                                }
+                            }
+                            h3 { class: "desk-heading", "Download it" }
+                            div { class: "desk-downloads",
+                                for (name, detail, slug) in DESKTOP_DOWNLOADS {
+                                    a { class: "desk-download", id: "download-{slug}", key: "{slug}", href: "{RELEASES}", target: "_blank", rel: "noopener",
+                                        span { class: "desk-os", "{name}" }
+                                        span { class: "desk-detail muted small", "{detail}" }
+                                        span { class: "desk-get", Icon { name: "download", size: 15 } "Download" }
+                                    }
+                                }
+                            }
+                            p { class: "desk-source muted small",
+                                "Free and open source, for Windows, macOS and Linux. "
+                                a { href: "{REPO}", target: "_blank", rel: "noopener", id: "github-link", Icon { name: "external-link", size: 13 } "MangaPoint on GitHub" }
                             }
                         }
                     },
@@ -264,11 +292,30 @@ pub fn SettingsPage() -> Element {
     }
 }
 
+const REPO: &str = "https://github.com/W1seGit/MangaPoint";
+const RELEASES: &str = "https://github.com/W1seGit/MangaPoint/releases/latest";
+
+/// What the desktop app does that the website does not: (icon, title, text).
+const DESKTOP_FEATURES: [(&str, &str, &str); 6] = [
+    ("search", "Search many sources at once", "Type a title and every source you installed is asked together. The same series from several sources becomes one card."),
+    ("download", "A download queue that keeps going", "Pick chapters, press download. Pause, resume, retry, and carry on after you close the app."),
+    ("sliders-horizontal", "Made for your reader's screen", "Cropping, spreads, long strips cut into screen-sized pages, contrast and dithering, with a live preview of the result."),
+    ("hard-drive", "Send it straight to the device", "Export to a folder, a USB drive, an SD card or over Wi-Fi, in the formats your e-reader opens."),
+    ("layers", "29 readers ready to go", "Xteink, Kindle, Kobo, Boox, PocketBook and reMarkable, each with its own size, formats and colour."),
+    ("book-open", "A library and a reader", "Everything you downloaded or imported, with the reader you are using here, and exports for phones and tablets."),
+];
+
+/// The downloads: (name, what it is, id).
+const DESKTOP_DOWNLOADS: [(&str, &str, &str); 3] = [
+    ("macOS", "Apple silicon and Intel (.dmg)", "macos"),
+    ("Windows", "Installer (.exe)", "windows"),
+    ("Linux", ".deb, .rpm or the plain program", "linux"),
+];
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {
     Library,
     Readers,
-    State,
     App,
     About,
 }
@@ -284,10 +331,9 @@ impl Section {
     }
 }
 
-const SECTIONS: [(Section, &str, &str, &str); 5] = [
+const SECTIONS: [(Section, &str, &str, &str); 4] = [
     (Section::Library, "hard-drive", "Your library", "library"),
     (Section::Readers, "hard-drive", "Your reader", "reader"),
-    (Section::State, "save", "Reading state", "state"),
     (Section::App, "download", "App", "app"),
     (Section::About, "info", "About", "about"),
 ];

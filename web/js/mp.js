@@ -45,12 +45,21 @@ async function events() {
 
 let analyzing = Promise.resolve();
 
-function startAnalyze(items) {
+function startAnalyze(items, only = null) {
   if (!items.length) return;
   analyzing = analyzing.then(async () => {
     emit({ t: 'analyzing', status: 'Looking at what you picked…' });
     try {
       const r = await importer.analyze(items, (status) => emit({ t: 'analyzing', status }));
+      if (only) {
+        // The Import button of one card takes that book's file and nothing else.
+        const keep = r.drafts.filter((d) => d.fingerprint === only);
+        for (const d of r.drafts) if (d.fingerprint !== only) importer.dropDraft(d.draft_id);
+        r.drafts = keep;
+        if (!keep.length && !r.failures.length) {
+          r.failures.push({ name: items[0].file.name, message: 'This is not the file for that book. Pick the same file you imported before.' });
+        }
+      }
       emit({ t: 'import', drafts: r.drafts, failures: r.failures });
     } catch (e) {
       console.error(e);
@@ -59,20 +68,20 @@ function startAnalyze(items) {
   });
 }
 
-function pickFiles(folder) {
+function pickFiles(folder, only = null) {
   const input = document.createElement('input');
   input.type = 'file';
   input.style.display = 'none';
   if (folder) {
     input.webkitdirectory = true;
   } else {
-    input.multiple = true;
+    input.multiple = !only;
     input.accept = '.cbz,.zip,.epub,.cbr,.rar,.7z,.cb7,.pdf,image/*';
   }
   input.addEventListener('change', () => {
     const items = importer.filesFromInput(input.files || []);
     input.remove();
-    startAnalyze(items);
+    startAnalyze(items, only);
   });
   input.addEventListener('cancel', () => input.remove());
   document.body.appendChild(input);
@@ -198,7 +207,15 @@ function preview({ options, book, first, count }) {
       if (m.t === 'preview') {
         freePreview();
         previewUrls = m.images.map((bytes) => URL.createObjectURL(new Blob([bytes], { type: sniff(bytes) })));
-        resolve({ id, urls: previewUrls.slice(), sources: JSON.parse(m.sources || '[]') });
+        const urls = previewUrls.slice();
+        // A strip page comes with the downloaded rows it is made from ('' for the others).
+        const strip_urls = (m.strips || []).map((bytes) => {
+          if (!bytes) return '';
+          const url = URL.createObjectURL(new Blob([bytes], { type: sniff(bytes) }));
+          previewUrls.push(url);
+          return url;
+        });
+        resolve({ id, urls, strip_urls, sources: JSON.parse(m.sources || '[]') });
       } else {
         reject(new Error(m.message));
       }
@@ -547,6 +564,7 @@ const handlers = {
 const immediate = {
   pick_files: () => pickFiles(false),
   pick_folder: () => pickFiles(true),
+  pick_for: ({ fingerprint }) => pickFiles(false, fingerprint),
   pick_state: () => {
     fsa.pickStateFile().then((f) => {
       if (f) emit({ t: 'state_file', name: f.name, text: f.text });

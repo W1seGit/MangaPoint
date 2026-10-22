@@ -500,6 +500,21 @@ fn a_long_strip_is_made_one_width_the_same_way_as_the_desktop() {
 }
 
 #[test]
+fn a_strip_preview_carries_the_downloaded_rows_each_page_is_made_from() {
+    let options = ExportOptions::from_json(&web_engine::options::default_options_json("xteink-x4-pro", "manhwa").unwrap()).unwrap();
+    let pages = vec![gray_png(480, 3000, 1), gray_png(480, 3000, 2)];
+    let (made, sources) = web_engine::export::preview_pages_with_sources(&options, &pages).unwrap();
+    assert_eq!(made.len(), sources.len());
+    assert!(sources.len() >= 2);
+    for source in &sources {
+        assert_eq!(source.part, "strip");
+        let rows = source.rows.as_ref().expect("a strip page has its rows");
+        assert!(source.rows_width > 0 && source.rows_height > 0);
+        assert_eq!(image::load_from_memory(rows).unwrap().height(), source.rows_height);
+    }
+}
+
+#[test]
 fn a_phone_pdf_matches_the_desktop() {
     let chapters = vec![
         vec![colour_jpeg(300, 450, 1), png_of(&colour_image(120, 180, 2)), webp_of(60, 90, 3)],

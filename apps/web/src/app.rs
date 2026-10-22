@@ -65,6 +65,8 @@ pub struct Toast {
 pub enum ModalAction {
     RemoveBook { id: String, forget: bool },
     ForgetWaiting(String),
+    /// Books and places, by id, taken out of the library together, with their reading state.
+    ForgetMany(Vec<String>),
     ClearAll,
     DeletePreset(String),
     RemoveReader(String),
@@ -536,7 +538,7 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                         if forget {
                             let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
                         }
-                        ctx.notify(format!("Removed {title}."));
+                        ctx.notify(if forget { format!("Forgot {title}.") } else { format!("Removed {title}.") });
                     }
                     Err(e) => ctx.error(format!("Could not remove it: {e}")),
                 }
@@ -545,6 +547,27 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                 let mut lib = ctx.library;
                 lib.write().forget_state(&id);
                 let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
+            }
+            ModalAction::ForgetMany(ids) => {
+                let mut forgotten = 0usize;
+                for id in ids {
+                    if ctx.book(&id).is_some() {
+                        if ctx.reading.peek().as_ref().is_some_and(|r| r.book_id == id) {
+                            ui::reader::close_reader(ctx);
+                        }
+                        if bridge::call_ok("remove_book", json!({ "id": id })).await.is_err() {
+                            continue;
+                        }
+                        let mut lib = ctx.library;
+                        lib.write().remove_book(&id, true);
+                    } else {
+                        let mut lib = ctx.library;
+                        lib.write().forget_state(&id);
+                    }
+                    let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
+                    forgotten += 1;
+                }
+                ctx.notify(format!("Forgot {}.", plural(forgotten, "book")));
             }
             ModalAction::DeletePreset(id) => {
                 let mut presets = ctx.presets;

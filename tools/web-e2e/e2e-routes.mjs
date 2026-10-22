@@ -33,9 +33,10 @@ try {
   await page.click('#settings-nav-reader');
   await sleep(300);
   r.check('a part of Settings is kept after the #', (await where()) === '/settings#reader', await where());
-  await page.click('#settings-nav-state');
+  await page.click('#settings-nav-app');
   await sleep(300);
-  r.check('another part: /settings#state', (await where()) === '/settings#state', await where());
+  r.check('another part: /settings#app', (await where()) === '/settings#app', await where());
+  r.check('there is no Reading state part any more', !(await page.rect('#settings-nav-state')) && !(await page.eval("!!document.querySelector('#settings-nav-state')")));
   await page.eval('history.back()');
   await sleep(500);
   r.check('Back goes to the part before', (await where()) === '/settings#reader' && /Add device/.test(await page.eval("document.querySelector('.settings-content').innerText")), await where());
@@ -47,8 +48,8 @@ try {
   r.check('opening /export shows Export', !!(await page.rect('#export-screen')) || !!(await page.eval("!!document.querySelector('#export-screen')")));
   await goTo('/settings#reader');
   r.check('opening /settings#reader shows that part', /Add device/.test(await page.eval("document.querySelector('.settings-content')?.innerText || ''")), await where());
-  await goTo('/settings#state');
-  r.check('opening /settings#state shows that part', !!(await page.rect('#state-save')), await where());
+  await goTo('/settings#library');
+  r.check('the reading state file is in the library part, under Data', !!(await page.rect('#state-save')) && !!(await page.rect('#danger-card')), await where());
   await goTo('/nowhere');
   r.check('an unknown address shows the library', (await titles(page)).length >= 1);
 

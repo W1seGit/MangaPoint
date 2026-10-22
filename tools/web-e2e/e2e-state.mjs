@@ -3,7 +3,7 @@
 // the installed app working offline.
 //   node tools/web-e2e/e2e-state.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { clearToasts, fx, openApp, nav, importBooks, openBook, counter, chapterLabel, closeReader } from './helpers.mjs';
+import { clearToasts, fx, openApp, nav, importBooks, openBook, counter, chapterLabel, closeReader, closeImport, waitReview } from './helpers.mjs';
 import { mkdtempSync, readdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,7 +35,7 @@ try {
 
   // ---- save (a browser without the picker downloads the file) ----
   await nav(page, 'Settings');
-  await page.click('#settings-nav-state');
+  await page.click('#settings-nav-library');
   await page.shot(`${viewport}-40-settings`);
   await clearToasts(page);
   await page.click('#state-save');
@@ -57,7 +57,7 @@ try {
   await page.send('Page.addScriptToEvaluateOnNewDocument', { source: noPicker });
   await openApp(page, server.url, viewport);
   await nav(page, 'Settings');
-  await page.click('#settings-nav-state');
+  await page.click('#settings-nav-library');
   page.answerFileChooser([join(dl, saved[0])]);
   await clearToasts(page);
   await page.click('#state-load');
@@ -65,15 +65,32 @@ try {
   const toast = await page.eval("document.querySelector('.toast-text').textContent");
   r.check('loading says what happened', /1 book waiting/.test(toast), toast);
   await nav(page, 'Library');
-  await page.waitFor("!!document.querySelector('#waiting')", 10, 'waiting list');
-  const waiting = await page.eval("[...document.querySelectorAll('.waiting-row')].map(e => e.innerText.replace(/\\s+/g,' '))");
-  r.check('the book is listed as waiting for the file', waiting.length === 1 && /Hero Saga/.test(waiting.join()), waiting.join(' || ').slice(0, 200));
+  await page.waitFor("!!document.querySelector('.poster.waiting')", 10, 'the waiting card');
+  const waiting = await page.eval("[...document.querySelectorAll('.poster.waiting')].map(e => e.innerText.replace(/\\s+/g,' '))");
+  r.check('the book is a card in the library, marked as not installed yet', waiting.length === 1 && /Hero Saga/.test(waiting.join()) && /Not installed yet/.test(waiting.join()), waiting.join(' || ').slice(0, 200));
+  r.check('the card has an Import button where Read would be', /Import/.test(await page.eval("document.querySelector('.poster.waiting .poster-read')?.textContent || ''")));
+  r.check('there is no separate Waiting for the file section', !(await page.eval("!!document.querySelector('#waiting, .waiting-row')")));
   await page.shot(`${viewport}-41-waiting`);
 
+  // ---- Import on the card takes only that book's file ----
+  page.answerFileChooser([fx('Color Test.cbz')]);
+  await page.click('.poster.waiting .poster-read');
+  await page.waitFor("!!document.querySelector('#import-dialog')", 60, 'the answer to the wrong file');
+  await sleep(600);
+  const wrong = await page.eval("document.querySelector('#import-dialog').innerText");
+  r.check('another book is refused: this is not the file for that card', /not the file for that book/i.test(wrong), wrong.slice(0, 200));
+  r.check('and it was not added to the library', !(await page.eval("!!document.querySelector('#import-add')")));
+  await closeImport(page);
+  r.check('the library still holds only the waiting card', (await page.eval("document.querySelectorAll('.poster').length")) === 1);
+
   // ---- import the matching file: it resumes ----
-  await importBooks(page, [fx('Hero Saga Vol 2.zip')]);
-  await sleep(500);
-  const left = await page.eval("document.querySelectorAll('.waiting-row').length");
+  page.answerFileChooser([fx('Hero Saga Vol 2.zip')]);
+  await page.click('.poster.waiting .poster-read');
+  await waitReview(page);
+  await page.click('#import-add');
+  await page.waitFor("!document.querySelector('#import-dialog')", 300, 'the import to finish');
+  await sleep(800);
+  const left = await page.eval("document.querySelectorAll('.poster.waiting').length");
   r.check('the imported book left the waiting list', left === 0, `${left} waiting`);
   const label = await page.eval("document.querySelector('.poster-read')?.textContent.trim()");
   r.check('Library offers Continue at Ch. 3', /Continue.*Ch\. 3/.test(label || ''), label);
@@ -94,7 +111,7 @@ try {
     };
   })()`);
   await nav(page, 'Settings');
-  await page.click('#settings-nav-state');
+  await page.click('#settings-nav-library');
   await page.waitFor("!!document.querySelector('#state-save')", 5, 'settings');
   await clearToasts(page);
   await page.click('#state-save');

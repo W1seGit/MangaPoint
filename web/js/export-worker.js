@@ -50,7 +50,7 @@ async function preview(job) {
     const made = engine.preview_chapter(JSON.stringify(options), engine.sample_pages());
     const images = [];
     for (const m of made.images) images.push(m);
-    self.postMessage({ t: 'preview', id, images, sources: made.sources }, images.map((b) => b.buffer));
+    self.postMessage({ t: 'preview', id, images, strips: [], sources: made.sources }, images.map((b) => b.buffer));
     return;
   }
   const [record, table] = await Promise.all([dbGet('books', book), dbGet('pages', book)]);
@@ -61,7 +61,10 @@ async function preview(job) {
   const made = engine.preview_chapter(JSON.stringify(options), pages);
   const images = [];
   for (const m of made.images) images.push(m);
-  self.postMessage({ t: 'preview', id, images, sources: made.sources }, images.map((b) => b.buffer));
+  // The downloaded rows of the strip pages (undefined for the others).
+  const strips = [];
+  for (const m of made.strips) strips.push(m || null);
+  self.postMessage({ t: 'preview', id, images, strips, sources: made.sources }, [...images, ...strips.filter(Boolean)].map((b) => b.buffer));
 }
 
 function post(m) {

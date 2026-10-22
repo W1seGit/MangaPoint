@@ -251,3 +251,57 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .original-preview[data-zoom="fit"] .reader-tile, .original-preview[data-zoom="fit"] .original-img { width: min(100%, 800px); height: auto; max-width: none; }
 .original-preview[data-zoom="width"] .reader-tile, .original-preview[data-zoom="width"] .original-img { width: 100%; height: auto; }
 .original-preview[data-zoom="custom"] .reader-tile, .original-preview[data-zoom="custom"] .original-img { width: calc(8px * var(--zoom) * 100); height: auto; max-width: none; }
+
+/* The warning about a big export: the words, then the button under them. */
+.banner.big-export { flex-direction: column; align-items: stretch; gap: 8px; font-size: 0.8rem; line-height: 1.45; padding: 9px 12px; }
+.banner.big-export .btn { align-self: stretch; }
+
+/* Library: picking several books, and a place waiting for its file shown as a card */
+.poster-check {
+  position: absolute; top: 8px; left: 8px; z-index: 2; width: 24px; height: 24px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; color: transparent;
+  background: rgba(0, 0, 0, 0.55); border: 2px solid rgba(255, 255, 255, 0.85);
+}
+.poster-check.on { background: var(--accent, #fff); color: var(--accent-text, #000); border-color: var(--accent, #fff); }
+.poster.on { border-color: var(--accent, var(--line-strong)); }
+.poster.waiting .poster-art .cover { opacity: 0.55; }
+.poster-place { display: block; margin-top: 2px; }
+/* With the bar up, the page fills the screen so the bar sits at its bottom even for a short list. */
+.content:has(.select-bar) { padding-bottom: 0; }
+.page:has(.select-bar) { display: flex; flex-direction: column; min-height: 100%; }
+.page:has(.select-bar) > * { flex: none; }
+.select-bar {
+  position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: auto -28px 0; padding: 12px 28px calc(12px + var(--sab)); background: var(--panel); border-top: 1px solid var(--line-strong);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+}
+.select-count { font-weight: 600; white-space: nowrap; }
+.select-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 800px) {
+  .select-bar { margin: auto -14px 0; padding: 10px 14px 10px; flex-direction: column; align-items: stretch; gap: 8px; }
+  .select-actions { justify-content: stretch; }
+  .select-actions .btn { flex: 1; justify-content: center; }
+}
+
+/* Settings, App: the desktop app, what it does and where to get it */
+.desk-app { max-width: 860px; }
+.desk-intro { margin: 0 0 18px; line-height: 1.55; color: var(--text); }
+.desk-features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.desk-feature { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.desk-feature strong { display: block; margin-bottom: 3px; }
+.desk-feature p { margin: 0; line-height: 1.45; }
+.desk-icon { flex: none; width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--panel-3); color: var(--text); }
+.desk-heading { margin: 26px 0 12px; font-size: 1.05rem; }
+.desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.desk-download {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 22px 20px; border: 1px solid var(--line-strong);
+  border-radius: 14px; background: var(--panel); color: var(--text); text-decoration: none; transition: border-color 0.15s, background 0.15s;
+}
+.desk-download:hover { border-color: var(--accent, var(--text)); background: var(--panel-2); }
+.desk-os { font-size: 1.35rem; font-weight: 700; }
+.desk-get { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.desk-source { margin-top: 18px; }
+.desk-source a { display: inline-flex; align-items: center; gap: 4px; color: var(--text); text-decoration: underline; }
+@media (max-width: 700px) {
+  .desk-features, .desk-downloads { grid-template-columns: minmax(0, 1fr); }
+}

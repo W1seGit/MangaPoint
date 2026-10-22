@@ -592,7 +592,7 @@ fn convert_chapter<P: AsRef<[u8]>>(
     opts: &ProcessOptions,
     pictures: bool,
 ) -> Result<Vec<Vec<u8>>, String> {
-    convert_chapter_planned(name, pages, opts, pictures).map(|(made, _)| made)
+    convert_chapter_planned(name, pages, opts, pictures, false).map(|(made, _)| made)
 }
 
 /// Where a converted page of a preview comes from.
@@ -605,6 +605,12 @@ pub struct PreviewSource {
     /// For a strip: the rows of the joined strip the page holds.
     pub top: u32,
     pub height: u32,
+    /// For a strip page of a preview: the downloaded rows it is made from (a JPEG), to show beside
+    /// the converted page, and their size. Not part of the JSON; the glue hands the bytes over apart.
+    #[serde(skip)]
+    pub rows: Option<Vec<u8>>,
+    pub rows_width: u32,
+    pub rows_height: u32,
 }
 
 fn source_of(page: &converter::plan::PlannedPage) -> PreviewSource {
@@ -622,17 +628,51 @@ fn source_of(page: &converter::plan::PlannedPage) -> PreviewSource {
             .into(),
             top: 0,
             height: 0,
+            rows: None,
+            rows_width: 0,
+            rows_height: 0,
         },
-        Source::Strip { top, height } => PreviewSource { image: None, part: "strip".into(), top, height },
+        Source::Strip { top, height } => PreviewSource { image: None, part: "strip".into(), top, height, rows: None, rows_width: 0, rows_height: 0 },
     }
 }
 
-/// [`convert_chapter`], with where each page came from.
+/// The downloaded rows of a strip page as a JPEG, with their size.
+fn strip_rows(prepared: &converter::plan::Prepared, page: &converter::plan::PlannedPage) -> Option<(Vec<u8>, u32, u32)> {
+    use image::ImageEncoder;
+    let rows = converter::plan::original_rows(prepared, page)?;
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 85)
+        .write_image(&rows.pixels, rows.width, rows.height, image::ExtendedColorType::L8)
+        .ok()?;
+    Some((out, rows.width, rows.height))
+}
+
+/// The sources of a plan's pages; for a preview (`with_rows`) a strip page carries its downloaded rows.
+fn sources_of(prepared: &converter::plan::Prepared, plan: &converter::plan::ChapterPlan, with_rows: bool) -> Vec<PreviewSource> {
+    plan.pages
+        .iter()
+        .map(|page| {
+            let mut source = source_of(page);
+            if with_rows {
+                if let Some((bytes, width, height)) = strip_rows(prepared, page) {
+                    source.rows = Some(bytes);
+                    source.rows_width = width;
+                    source.rows_height = height;
+                }
+            }
+            source
+        })
+        .collect()
+}
+
+/// [`convert_chapter`], with where each page came from. `with_rows`: a strip page also carries the
+/// downloaded rows it is made from (for a preview only).
 fn convert_chapter_planned<P: AsRef<[u8]>>(
     name: &str,
     pages: &[P],
     opts: &ProcessOptions,
     pictures: bool,
+    with_rows: bool,
 ) -> Result<(Vec<Vec<u8>>, Vec<PreviewSource>), String> {
     let unreadable = |index: usize, e: String| {
         format!("page {} of {name} could not be read ({e}); check that the file is a picture", index + 1)
@@ -653,7 +693,7 @@ fn convert_chapter_planned<P: AsRef<[u8]>>(
         })
         .map_err(|e| e.to_string())?;
         let made: Vec<Vec<u8>> = packed.into_iter().collect::<Result<_, _>>()?;
-        Ok((made, plan.pages.iter().map(source_of).collect()))
+        Ok((made, sources_of(&prepared, &plan, with_rows)))
     } else {
         let mut grays: Vec<GrayImage> = Vec::with_capacity(pages.len());
         for (index, page) in pages.iter().enumerate() {
@@ -673,7 +713,7 @@ fn convert_chapter_planned<P: AsRef<[u8]>>(
             })
             .map_err(|e| e.to_string())?;
         let made: Vec<Vec<u8>> = packed.into_iter().collect::<Result<_, _>>()?;
-        Ok((made, plan.pages.iter().map(source_of).collect()))
+        Ok((made, sources_of(&prepared, &plan, with_rows)))
     }
 }
 
@@ -705,12 +745,12 @@ pub fn preview_pages_with_sources<P: AsRef<[u8]>>(
     if device_profiles::is_original(&device.id) {
         let same = pages.iter().map(|p| p.as_ref().to_vec()).collect();
         let sources = (0..pages.len())
-            .map(|i| PreviewSource { image: Some(i), part: "whole".into(), top: 0, height: 0 })
+            .map(|i| PreviewSource { image: Some(i), part: "whole".into(), top: 0, height: 0, rows: None, rows_width: 0, rows_height: 0 })
             .collect();
         return Ok((same, sources));
     }
     let process = process_options_for(&device, &options.settings, options.file_type());
-    convert_chapter_planned("the preview", pages, &process, true)
+    convert_chapter_planned("the preview", pages, &process, true, true)
 }
 
 /// The cover as one page for the device: the whole picture, fitted to the

@@ -217,7 +217,16 @@ pub fn preview_chapter(options_json: &str, pages: Array) -> Result<js_sys::Objec
     for image in made {
         images.push(&Uint8Array::from(image.as_slice()));
     }
+    // The downloaded rows of the strip pages (a JPEG each, undefined for a page that has none).
+    let strips = Array::new();
+    for source in &sources {
+        match &source.rows {
+            Some(bytes) => strips.push(&Uint8Array::from(bytes.as_slice())),
+            None => strips.push(&JsValue::UNDEFINED),
+        };
+    }
     let out = js_sys::Object::new();
+    js_sys::Reflect::set(&out, &"strips".into(), &strips).map_err(|_| JsError::new("could not build the answer"))?;
     js_sys::Reflect::set(&out, &"images".into(), &images).map_err(|_| JsError::new("could not build the answer"))?;
     let json = serde_json::to_string(&sources).map_err(|e| JsError::new(&e.to_string()))?;
     js_sys::Reflect::set(&out, &"sources".into(), &json.into()).map_err(|_| JsError::new("could not build the answer"))?;

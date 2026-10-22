@@ -515,8 +515,7 @@ pub fn RunCard(book: Book) -> Element {
     rsx! {
         div { class: "export-run",
             if big && !running && e.run == Run::Idle {
-                div { class: "banner warn small", id: "export-big",
-                    Icon { name: "triangle-alert", size: 16 }
+                div { class: "banner warn big-export", id: "export-big",
                     div { class: "grow",
                         "This is a big export ({plural(pages, \"page\")}, about {human_bytes(bytes)} of pictures). The files are made in this tab's memory, and a phone may run out. "
                         if grouping == Group::One { "One file per chapter is safer." } else { "Per-chapter files keep each one small." }

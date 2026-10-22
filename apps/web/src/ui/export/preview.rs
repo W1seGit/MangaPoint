@@ -423,11 +423,19 @@ pub fn Preview(book: Book) -> Element {
                                     SourceCell {
                                         first: start,
                                         count: end - start,
-                                        original: sources[start].image.and_then(|img| {
-                                            let url = originals.get(img)?.clone();
-                                            let (w, h) = sizes.get(img).copied().filter(|(w, h)| *w > 0 && *h > 0).unwrap_or((600, 900));
-                                            (!url.is_empty()).then_some((url, w, h))
-                                        }),
+                                        original: match sources[start].image {
+                                            Some(img) => (|| {
+                                                let url = originals.get(img)?.clone();
+                                                let (w, h) = sizes.get(img).copied().filter(|(w, h)| *w > 0 && *h > 0).unwrap_or((600, 900));
+                                                (!url.is_empty()).then_some((url, w, h))
+                                            })(),
+                                            // A strip page: the downloaded rows it is made from.
+                                            None => {
+                                                let s = &sources[start];
+                                                (!s.strip_url.is_empty() && s.rows_width > 0 && s.rows_height > 0)
+                                                    .then(|| (s.strip_url.clone(), s.rows_width, s.rows_height))
+                                            }
+                                        },
                                     }
                                 }
                                 for i in start..end {

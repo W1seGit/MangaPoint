@@ -135,7 +135,7 @@ try {
   // ---- remove a book ----
   await page.click(`.poster[data-book="${id}"] .poster-more`);
   await sleep(200);
-  await page.click('.poster-menu .menu-item', 'Remove');
+  await page.click('.poster-menu .menu-item', 'Forget');
   await page.click('#modal-confirm');
   await page.waitFor(`!document.querySelector('.poster[data-book="${id}"]')`, 10, 'the book to go');
   await sleep(300);
