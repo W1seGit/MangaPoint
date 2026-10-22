@@ -16,7 +16,8 @@ New-Item -ItemType Directory -Path $data | Out-Null
 [IO.File]::WriteAllText((Join-Path $data 'settings.json'), '{"setup_step":"Done","readers_listed":true,"device":"xteink-x4-pro","custom_devices":[{"id":"xteink-x4-pro","name":"Xteink X4 Pro","width":480,"height":800}]}')
 $env:MANGAPOINT_HOME = $data
 $env:MANGAPOINT_DEBUG_PORT = "$Port"
-$app = Start-Process -FilePath (Join-Path $root $Exe) -PassThru
+$exePath = if ([IO.Path]::IsPathRooted($Exe)) { $Exe } else { Join-Path $root $Exe }
+$app = Start-Process -FilePath $exePath -PassThru
 $failures = @()
 
 function Check([string]$Name, [scriptblock]$Test) {
