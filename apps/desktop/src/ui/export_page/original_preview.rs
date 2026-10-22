@@ -9,13 +9,11 @@ use crate::ui::workspace::preview::ZoomMenu;
 use dioxus::prelude::*;
 use std::collections::HashSet;
 
-/// Sizes the list to the window and reports the page at the top as `[first, last, current]`.
-const EDITOR_SCRIPT: &str = include_str!("../../js/preview-editor.js");
 
 /// Scroll the thumbnails to page `index`.
 fn show_thumb(index: usize) {
     spawn(async move {
-        let js = format!("document.querySelector('[data-editor-page=\"{index}\"]')?.scrollIntoView({{block:'nearest'}})");
+        let js = mangapoint_ui::scripts::call_method("preview_editor", "thumb", &format!("{{index:{index}}}")).unwrap_or_default();
         let _ = document::eval(&js).await;
     });
 }
@@ -23,7 +21,7 @@ fn show_thumb(index: usize) {
 /// Show page `index`: scroll the list and the thumbnails to it.
 fn show_page(index: usize) {
     spawn(async move {
-        let js = format!("document.querySelector('.original-page[data-row=\"{index}\"]')?.scrollIntoView({{block:'start'}})");
+        let js = mangapoint_ui::scripts::call_method("preview_editor", "scroll", &format!("{{index:{index}}}")).unwrap_or_default();
         let _ = document::eval(&js).await;
     });
     show_thumb(index);
@@ -50,7 +48,7 @@ pub(super) fn OriginalPreview() -> Element {
     let mut failed = use_signal(HashSet::<usize>::new);
     let mut current = use_signal(|| 0usize);
     use_future(move || async move {
-        let mut eval = document::eval(EDITOR_SCRIPT);
+        let mut eval = document::eval(&crate::ui::workspace::preview::editor_script());
         while let Ok(message) = eval.recv::<Vec<i64>>().await {
             if let [_, _, at] = message.as_slice() {
                 if *at >= 0 && *current.peek() != *at as usize {

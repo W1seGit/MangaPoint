@@ -447,7 +447,7 @@ mod script_tests {
     const SCRIPTS: [(&str, &str); 9] = [
         ("crop-drag.js", include_str!("../js/crop-drag.js")),
         ("export-split.js", include_str!("../../../../crates/ui/js/export-split.js")),
-        ("preview-editor.js", include_str!("../js/preview-editor.js")),
+        ("preview-editor.js", include_str!("../../../../crates/ui/js/preview-editor.js")),
         ("tooltip.js", include_str!("../../../../crates/ui/js/tooltip.js")),
         ("zoom-scrub.js", include_str!("../../../../crates/ui/js/zoom-scrub.js")),
         ("adder-scroll.js", include_str!("../../../../crates/ui/js/adder-scroll.js")),

@@ -4,9 +4,10 @@
 //! one by name the first time it is asked for (`web/js/mp.js`, `run_script`).
 
 /// Each script by the name it registers, and its source.
-pub const SCRIPTS: [(&str, &str); 4] = [
+pub const SCRIPTS: [(&str, &str); 5] = [
     ("adder_scroll", include_str!("../js/adder-scroll.js")),
     ("export_split", include_str!("../js/export-split.js")),
+    ("preview_editor", include_str!("../js/preview-editor.js")),
     ("tooltip", include_str!("../js/tooltip.js")),
     ("zoom_scrub", include_str!("../js/zoom-scrub.js")),
 ];
@@ -18,9 +19,15 @@ pub fn source(name: &str) -> Option<&'static str> {
 
 /// The code that loads a script (when it is not loaded yet) and starts it with `args` (JSON).
 pub fn call(name: &str, args: &str) -> Option<String> {
+    call_method(name, "start", args)
+}
+
+/// The code that loads a script and calls one of its functions with `args` (JSON, or any
+/// JavaScript expression).
+pub fn call_method(name: &str, method: &str, args: &str) -> Option<String> {
     let source = source(name)?;
     let args = if args.trim().is_empty() { "{}" } else { args };
-    Some(format!("{source}\n;window.MP.{name}.start({args});"))
+    Some(format!("{source}\n;window.MP.{name}.{method}({args});"))
 }
 
 /// The file a script is kept in: `zoom_scrub` is `zoom-scrub.js`.

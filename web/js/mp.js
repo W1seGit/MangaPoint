@@ -10,7 +10,6 @@
 import * as store from './store.js';
 import * as importer from './importer.js';
 import * as pages from './pages.js';
-import { startEditor } from './preview-editor.js';
 import * as router from './router.js';
 import * as fsa from './fsa.js';
 import { installReader, commands, setCoverLoader } from './reader.js';
@@ -459,30 +458,29 @@ const handlers = {
     return { files: exportResult.map((f, i) => ({ index: i, name: f.name, size: f.size })), running: !!worker };
   },
 
-  /** Keep the row the adder would take in view when its list is long (only the list scrolls). */
-
-  /** Size the page list of the Export screen and report the pages in view. */
-  editor_start() {
-    startEditor((m) => emit({ t: 'editor', first: m[0], last: m[1], current: m[2] }));
+  /** Size the page list of the Export screen and report the pages in view (the shared editor). */
+  async editor_start() {
+    await import('./ui/preview-editor.js');
+    window.MP.preview_editor.start((m) => emit({ t: 'editor', first: m[0], last: m[1], current: m[2] }));
     return true;
   },
-
-  /** Make the bars of the Export screen draggable. */
 
   /** Scroll the list (and the thumbnails) to page `index`. */
-  editor_scroll({ index }) {
-    document.querySelector(`[data-editor-page="${index}"]`)?.scrollIntoView({ block: 'nearest' });
-    document.querySelector(`.editor-row[data-row="${index}"], .original-tile[data-row="${index}"]`)?.scrollIntoView({ block: 'start' });
+  async editor_scroll(args) {
+    await import('./ui/preview-editor.js');
+    window.MP.preview_editor.scroll(args);
     return true;
   },
 
-  editor_thumb({ index }) {
-    document.querySelector(`[data-editor-page="${index}"]`)?.scrollIntoView({ block: 'nearest' });
+  async editor_thumb(args) {
+    await import('./ui/preview-editor.js');
+    window.MP.preview_editor.thumb(args);
     return true;
   },
 
-  editor_top() {
-    document.querySelector('.editor-scroll')?.scrollTo(0, 0);
+  async editor_top() {
+    await import('./ui/preview-editor.js');
+    window.MP.preview_editor.top();
     return true;
   },
 

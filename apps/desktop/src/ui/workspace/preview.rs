@@ -23,9 +23,14 @@ fn slot(page: &crate::state::PreviewPage) -> PageSlot {
     PageSlot { image: page.image, part, top, height }
 }
 
-/// Sizes the viewer to the window, reports which pages are on screen (as
-/// `[first, last, current]`, `-1` when there are none), and wires the keys.
-const EDITOR_SCRIPT: &str = include_str!("../../js/preview-editor.js");
+
+/// Starts the page editor's script (`crates/ui/js/preview-editor.js`): it sizes the viewer to the
+/// window and reports which pages are on screen (as `[first, last, current]`, `-1` when there are
+/// none) over the eval's channel, so it stays alive.
+pub(crate) fn editor_script() -> String {
+    let source = mangapoint_ui::scripts::source("preview_editor").unwrap_or_default();
+    format!("{source}\n;window.MP.preview_editor.start((m) => dioxus.send(m));\nawait new Promise(() => {{}});")
+}
 
 /// One page of the chapter in the scrolling list: the page as the reader will
 /// show it. The original sits beside it, in the group's source cell.
@@ -219,7 +224,7 @@ pub(crate) fn switch_chapter(state: AppState, key: String) {
     w.shading_samples.clear();
     drop(w);
     spawn(async move {
-        let _ = document::eval("document.querySelector('.editor-scroll')?.scrollTo(0,0)").await;
+        let _ = document::eval(&mangapoint_ui::scripts::call_method("preview_editor", "top", "").unwrap_or_default()).await;
     });
     schedule_preview(state, 0);
 }
@@ -252,7 +257,7 @@ fn track_scroll(state: AppState, first: i64, last: i64, current: i64) {
     if page_changed {
         let selected = state.preview.peek().selected;
         spawn(async move {
-            let js = format!("document.querySelector('[data-editor-page=\"{selected}\"]')?.scrollIntoView({{block:'nearest'}})");
+            let js = mangapoint_ui::scripts::call_method("preview_editor", "thumb", &format!("{{index:{selected}}}")).unwrap_or_default();
             let _ = document::eval(&js).await;
         });
     }
@@ -294,7 +299,7 @@ pub fn PreviewTab() -> Element {
     let mut identity = use_signal(String::new);
     use_effect(move || prepare_preview(state));
     use_future(move || async move {
-        let mut eval = document::eval(EDITOR_SCRIPT);
+        let mut eval = document::eval(&editor_script());
         while let Ok(message) = eval.recv::<Vec<i64>>().await {
             if let [first, last, current] = message.as_slice() {
                 track_scroll(state, *first, *last, *current);
