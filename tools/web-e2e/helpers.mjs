@@ -55,7 +55,7 @@ export async function closeImport(page) {
 export const titles = (page) => page.eval("[...document.querySelectorAll('.poster-title')].map((e) => e.textContent)");
 
 export async function openBook(page, title) {
-  const id = await page.eval(`(() => { const p = [...document.querySelectorAll('.poster')].find((p) => p.querySelector('.poster-title').textContent.includes(${JSON.stringify(title)})); return p ? p.dataset.book : null; })()`);
+  const id = await page.eval(`(() => { const p = [...document.querySelectorAll('.poster')].find((p) => p.querySelector('.poster-title').textContent.includes(${JSON.stringify(title)})); return p ? p.dataset.id : null; })()`);
   if (!id) throw new Error(`no book called ${title}`);
   await page.click(`#read-${id}`);
   await page.waitFor("!!document.querySelector('#reader')", 20, 'the reader');
