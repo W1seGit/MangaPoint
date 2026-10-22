@@ -291,9 +291,12 @@ const DESKTOP_FEATURES: [(&str, &str, &str); 6] = [
     ("library", "A library and a reader", "Everything you downloaded or imported, with the reader you are using here, and exports for phones and tablets."),
 ];
 
-/// The files of each system's release: (id, name, [(tab, what it is, the end of the file name)]).
-/// The file is `MangaPoint-<version>-<end>` in the release of this version.
-const DESKTOP_DOWNLOADS: [(&str, &str, &[(&str, &str, &str)]); 3] = [
+/// One file of a system's release: (tab, what it is, the end of the file name).
+type DownloadFile = (&'static str, &'static str, &'static str);
+
+/// The files of each system's release: (id, name, files). The file is `MangaPoint-<version>-<end>`
+/// in the release of this version.
+const DESKTOP_DOWNLOADS: [(&str, &str, &[DownloadFile]); 3] = [
     ("macos", "macOS", &[
         ("Apple silicon", "For Macs with an M1 chip or newer (.dmg)", "macos-arm64.dmg"),
         ("Intel", "For Macs with an Intel chip (.dmg)", "macos-x86_64.dmg"),

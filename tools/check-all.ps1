@@ -33,6 +33,8 @@ $web = TargetDir 'target-web'
 
 Step 'desktop app builds' { $env:CARGO_TARGET_DIR = $desk; cargo build -p mangapoint }
 Step 'website builds (wasm32)' { $env:CARGO_TARGET_DIR = $web; cargo check -p mangapoint-web --target wasm32-unknown-unknown }
+Step 'clippy, warnings are errors (as in CI)' { $env:CARGO_TARGET_DIR = $desk; cargo clippy --workspace --all-targets --locked -- -D warnings }
+Step 'clippy for the website (wasm32)' { $env:CARGO_TARGET_DIR = $web; cargo clippy -p mangapoint-web --target wasm32-unknown-unknown --locked -- -D warnings }
 Step 'unit tests' {
     $env:CARGO_TARGET_DIR = $desk
     cargo test -p library -p converter -p device-profiles -p pipeline -p web-engine -p mangapoint-ui -p mangapoint -p mangapoint-web
