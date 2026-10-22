@@ -161,7 +161,7 @@ try {
   await page.waitFor("!!document.querySelector('#book-overview')", 10, 'the overview');
   r.check('a click on a card opens its overview, not the reader', !(await page.eval("!!document.querySelector('#reader')")) && /Hero Saga/.test(await text('#book-title')));
   r.check('the address names the book', /^\/book\?id=/.test(await page.eval('location.pathname + location.search')), await page.eval('location.pathname + location.search'));
-  const rows = () => page.eval("document.querySelectorAll('table.chapters tbody tr:not(.spacer)').length");
+  const rows = () => page.eval("document.querySelectorAll('table.chapters:not(.import-table) tbody tr:not(.spacer)').length");
   const before = await rows();
   r.check('the overview lists the chapters on this device', before === 3, String(before));
   r.check('with Read, Export and Import more chapters', !!(await page.eval("document.querySelector('#book-read')")) && !!(await page.eval("document.querySelector('#book-export')")) && !!(await page.eval("document.querySelector('#book-import-more')")));
@@ -171,7 +171,7 @@ try {
   r.check('a tick box on every row and one for all of them', (await page.eval("document.querySelectorAll('table.chapters input[type=checkbox]').length")) === 4);
   await sleep(900);
   await page.shot(`${viewport}-53-overview`);
-  const firstNo = () => page.eval("document.querySelector('table.chapters tbody tr:not(.spacer) td.num')?.textContent.trim()");
+  const firstNo = () => page.eval("document.querySelector('table.chapters:not(.import-table) tbody tr:not(.spacer) td.num')?.textContent.trim()");
   const n0 = await firstNo();
   await page.click('table.chapters thead th.num');
   await sleep(200);
@@ -213,7 +213,7 @@ try {
   r.check('nothing is added before the review is confirmed', (await rows()) === before);
   await page.shot(`${viewport}-54-import-more`);
   await page.click('#import-add');
-  await page.waitFor(`document.querySelectorAll('table.chapters tbody tr:not(.spacer)').length > ${before}`, 60, 'the new chapters');
+  await page.waitFor(`document.querySelectorAll('table.chapters:not(.import-table) tbody tr:not(.spacer)').length > ${before}`, 60, 'the new chapters');
   const after = await rows();
   r.check('the reviewed chapters are added to this book', after > before, `${before} -> ${after}`);
   // The same file again: its chapters are there already, so they start unticked, with a warning.
