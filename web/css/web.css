@@ -43,10 +43,6 @@ body.dragging .drop-overlay { display: flex; }
 
 /* Library */
 .empty-actions { justify-content: center; margin-top: 8px; }
-.waiting { margin-top: 30px; }
-.waiting-list { padding: 4px 14px; }
-.waiting-row { align-items: flex-start; }
-.waiting-title { overflow-wrap: anywhere; }
 .poster-title { overflow: hidden; text-overflow: ellipsis; }
 .cover-box { display: block; }
 img.cover { background: var(--panel); }
@@ -256,31 +252,14 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .banner.big-export { flex-direction: column; align-items: stretch; gap: 8px; font-size: 0.8rem; line-height: 1.45; padding: 9px 12px; }
 .banner.big-export .btn { align-self: stretch; }
 
-/* Library: picking several books, and a place waiting for its file shown as a card */
-.poster-check {
-  position: absolute; top: 8px; left: 8px; z-index: 2; width: 24px; height: 24px; border-radius: 50%;
-  display: inline-flex; align-items: center; justify-content: center; color: transparent;
-  background: rgba(0, 0, 0, 0.55); border: 2px solid rgba(255, 255, 255, 0.85);
-}
-.poster-check.on { background: var(--accent, #fff); color: var(--accent-text, #000); border-color: var(--accent, #fff); }
-.poster.on { border-color: var(--accent, var(--line-strong)); }
-.poster.waiting .poster-art .cover { opacity: 0.55; }
+/* Library: a book waiting for its file is a card like the others, with a faded placeholder. The
+   selection is the app's (the tick on each card, the action bar); on a phone the bar sits above the tabs. */
+.poster.not-installed .poster-art .cover { opacity: 0.55; }
 .poster-place { display: block; margin-top: 2px; }
-/* With the bar up, the page fills the screen so the bar sits at its bottom even for a short list. */
-.content:has(.select-bar) { padding-bottom: 0; }
-.page:has(.select-bar) { display: flex; flex-direction: column; min-height: 100%; }
-.page:has(.select-bar) > * { flex: none; }
-.select-bar {
-  position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin: auto -28px 0; padding: 12px 28px calc(12px + var(--sab)); background: var(--panel); border-top: 1px solid var(--line-strong);
-  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
-}
-.select-count { font-weight: 600; white-space: nowrap; }
-.select-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 800px) {
-  .select-bar { margin: auto -14px 0; padding: 10px 14px 10px; flex-direction: column; align-items: stretch; gap: 8px; }
-  .select-actions { justify-content: stretch; }
-  .select-actions .btn { flex: 1; justify-content: center; }
+  .action-bar { left: 0; bottom: calc(65px + var(--sab)); padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+  .page:has(.action-bar) { padding-bottom: 120px; }
+  .poster-check { opacity: 1; }
 }
 
 /* Settings, App: the desktop app, what it does and where to get it */

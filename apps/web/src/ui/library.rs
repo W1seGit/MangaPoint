@@ -40,8 +40,8 @@ pub fn LibraryPage() -> Element {
     let mut filter = use_signal(String::new);
     let mut import_menu = use_signal(|| false);
     let mut menu = use_signal(|| None::<String>);
-    let mut selecting = use_signal(|| false);
     let mut picked = use_signal(BTreeSet::<String>::new);
+    let mut more = use_signal(|| false);
 
     let lib = ctx.library.read();
     let order = lib.order(view(), sort(), &filter.read());
@@ -61,7 +61,11 @@ pub fn LibraryPage() -> Element {
     let empty = count == 0 && lib.waiting().is_empty();
     let now = bridge::now_ms() / 1000;
     let everything: Vec<String> = order.iter().map(|&i| lib.books[i].id.clone()).chain(waiting.iter().map(|w| w.fingerprint.clone())).collect();
-    let chosen = picked.read().clone();
+    // As in the app: ticking a card starts a selection, and the bar shows while anything is ticked.
+    let chosen: BTreeSet<String> = picked.read().iter().filter(|id| everything.contains(id)).cloned().collect();
+    let selecting = !chosen.is_empty();
+    let all_ticked = selecting && chosen.len() == everything.len();
+    let chosen_bytes: u64 = chosen.iter().filter_map(|id| lib.find(id)).map(|b| b.size).sum();
     let chosen_books: Vec<String> = chosen.iter().filter(|id| lib.find(id).is_some_and(|b| !b.needs_file)).cloned().collect();
 
     rsx! {
@@ -74,13 +78,6 @@ pub fn LibraryPage() -> Element {
                     } else {
                         "{plural(count, \"book\")} \u{b7} {human_bytes(total_bytes)} on this device"
                     }
-                }
-            }
-            if !empty {
-                button {
-                    class: if selecting() { "btn on" } else { "btn" }, id: "select-button", title: "Pick several books at once",
-                    onclick: move |_| { selecting.set(!selecting()); picked.set(BTreeSet::new()); },
-                    Icon { name: "check", size: 16 } if selecting() { "Done" } else { "Select" }
                 }
             }
             div { class: "menu-anchor import-anchor",
@@ -150,7 +147,7 @@ pub fn LibraryPage() -> Element {
                     compact: true,
                 }
             }
-            div { class: "poster-grid",
+            div { class: if selecting { "poster-grid selecting" } else { "poster-grid" },
                 for &i in order.iter() {
                     {
                         let b = lib.books[i].clone();
@@ -166,21 +163,25 @@ pub fn LibraryPage() -> Element {
                         let needs_file = b.needs_file;
                         let is_on = picked.read().contains(&id);
                         let toggle_id = id.clone();
+                        let tick_id = id.clone();
                         let read_pick = id.clone();
                         rsx! {
                             div { class: if is_on { "poster on" } else { "poster" }, key: "{id}", "data-book": "{id}",
                                 div { class: "poster-art", title: "Open {b.title}",
                                     onclick: move |_| {
-                                        if selecting() { toggle(picked, &toggle_id); } else { open_book(ctx, &open_id); }
+                                        if selecting { toggle(picked, &toggle_id); } else { open_book(ctx, &open_id); }
                                     },
                                     Cover { id: id.clone(), has_cover: b.has_cover }
                                     if needs_file {
                                         span { class: "poster-badge saved", title: "The browser did not keep this file", "Needs its file" }
                                     }
-                                    if selecting() {
-                                        span { class: if is_on { "poster-check on" } else { "poster-check" }, Icon { name: "check", size: 15 } }
+                                    button {
+                                        class: if is_on { "poster-check on" } else { "poster-check" },
+                                        title: if is_on { "Deselect" } else { "Select" }, "aria-label": if is_on { "Deselect" } else { "Select" },
+                                        onclick: move |e| { e.stop_propagation(); toggle(picked, &tick_id); },
+                                        if is_on { Icon { name: "check", size: 14 } }
                                     }
-                                    if !selecting() { button {
+                                    button {
                                         class: if menu_open { "poster-more open" } else { "poster-more" },
                                         title: "More actions", "aria-label": "More actions for {b.title}",
                                         onclick: move |e| {
@@ -188,9 +189,9 @@ pub fn LibraryPage() -> Element {
                                             menu.set(if menu_open { None } else { Some(menu_id.clone()) });
                                         },
                                         Icon { name: "ellipsis", size: 16 }
-                                    } }
+                                    }
                                 }
-                                if menu_open && !selecting() {
+                                if menu_open {
                                     div { class: "menu-scrim", onclick: move |_| menu.set(None) }
                                     div { class: "menu down poster-menu",
                                         if !needs_file {
@@ -223,7 +224,7 @@ pub fn LibraryPage() -> Element {
                                     }
                                 }
                                 div { class: "poster-text", title: "Open {b.title}",
-                                    onclick: move |_| { if selecting() { toggle(picked, &text_id); } else { open_book(ctx, &text_id); } },
+                                    onclick: move |_| { if selecting { toggle(picked, &text_id); } else { open_book(ctx, &text_id); } },
                                     strong { class: "poster-title", title: "{b.title}", "{b.title}" }
                                     div { class: "poster-stats",
                                         div { span { class: "poster-stat-label", "Chapters" } strong { "{have}" } }
@@ -239,7 +240,7 @@ pub fn LibraryPage() -> Element {
                                     button {
                                         class: "btn poster-read", id: "read-{id}", "data-book": "{id}",
                                         "aria-label": "{reading.label} {b.title}", title: "Read {b.title}",
-                                        onclick: move |_| { if selecting() { toggle(picked, &read_pick); } else { super::reader::open_reader(ctx, &read_id, None); } },
+                                        onclick: move |_| { if selecting { toggle(picked, &read_pick); } else { super::reader::open_reader(ctx, &read_id, None); } },
                                         Icon { name: "book-open", size: 15 } "{reading.label}"
                                     }
                                     if let Some(done) = reading.fraction {
@@ -265,27 +266,30 @@ pub fn LibraryPage() -> Element {
                         let menu_open = menu().as_deref() == Some(fp.as_str());
                         let is_on = picked.read().contains(&fp);
                         let (toggle_id, text_id, menu_id, import_id, button_id, forget_id) = (fp.clone(), fp.clone(), fp.clone(), fp.clone(), fp.clone(), fp.clone());
+                        let tick_id = fp.clone();
                         let forget_title = title.clone();
                         rsx! {
-                            div { class: if is_on { "poster waiting on" } else { "poster waiting" }, key: "{fp}", "data-fingerprint": "{fp}",
+                            div { class: if is_on { "poster not-installed on" } else { "poster not-installed" }, key: "{fp}", "data-fingerprint": "{fp}",
                                 div { class: "poster-art",
-                                    onclick: move |_| { if selecting() { toggle(picked, &toggle_id); } },
+                                    onclick: move |_| { if selecting { toggle(picked, &toggle_id); } },
                                     NoCover {}
-                                    if selecting() {
-                                        span { class: if is_on { "poster-check on" } else { "poster-check" }, Icon { name: "check", size: 15 } }
-                                    } else {
-                                        button {
-                                            class: if menu_open { "poster-more open" } else { "poster-more" },
-                                            title: "More actions", "aria-label": "More actions for {title}",
-                                            onclick: move |e| {
-                                                e.stop_propagation();
-                                                menu.set(if menu_open { None } else { Some(menu_id.clone()) });
-                                            },
-                                            Icon { name: "ellipsis", size: 16 }
-                                        }
+                                    button {
+                                        class: if is_on { "poster-check on" } else { "poster-check" },
+                                        title: if is_on { "Deselect" } else { "Select" }, "aria-label": if is_on { "Deselect" } else { "Select" },
+                                        onclick: move |e| { e.stop_propagation(); toggle(picked, &tick_id); },
+                                        if is_on { Icon { name: "check", size: 14 } }
+                                    }
+                                    button {
+                                        class: if menu_open { "poster-more open" } else { "poster-more" },
+                                        title: "More actions", "aria-label": "More actions for {title}",
+                                        onclick: move |e| {
+                                            e.stop_propagation();
+                                            menu.set(if menu_open { None } else { Some(menu_id.clone()) });
+                                        },
+                                        Icon { name: "ellipsis", size: 16 }
                                     }
                                 }
-                                if menu_open && !selecting() {
+                                if menu_open {
                                     div { class: "menu-scrim", onclick: move |_| menu.set(None) }
                                     div { class: "menu down poster-menu",
                                         button { class: "menu-item",
@@ -307,7 +311,7 @@ pub fn LibraryPage() -> Element {
                                     }
                                 }
                                 div { class: "poster-text",
-                                    onclick: move |_| { if selecting() { toggle(picked, &text_id); } },
+                                    onclick: move |_| { if selecting { toggle(picked, &text_id); } },
                                     strong { class: "poster-title", title: "{title}", "{title}" }
                                     span { class: "muted small poster-status", "Not installed yet" }
                                     span { class: "muted small poster-place", "{place}" }
@@ -315,7 +319,7 @@ pub fn LibraryPage() -> Element {
                                 button {
                                     class: "btn poster-read", id: "import-{fp}", "data-fingerprint": "{fp}",
                                     "aria-label": "Import {title}", title: "Pick the file for {title}",
-                                    onclick: move |_| { if selecting() { toggle(picked, &button_id); } else { pick_for(&button_id); } },
+                                    onclick: move |_| { if selecting { toggle(picked, &button_id); } else { pick_for(&button_id); } },
                                     Icon { name: "file-up", size: 15 } "Import"
                                 }
                             }
@@ -325,39 +329,52 @@ pub fn LibraryPage() -> Element {
             }
         }
 
-        if selecting() {
-            div { class: "select-bar", id: "select-bar", role: "toolbar", "aria-label": "Actions for the books you picked",
-                span { class: "select-count", id: "select-count", "{chosen.len()} selected" }
-                div { class: "select-actions",
-                    button { class: "btn ghost", id: "select-all",
-                        onclick: move |_| {
-                            let all = everything.clone();
-                            if picked.read().len() == all.len() { picked.set(BTreeSet::new()); } else { picked.set(all.into_iter().collect()); }
+        if selecting {
+            div { class: "action-bar", id: "action-bar",
+                div { class: "bar-count",
+                    strong { id: "bar-count", "{chosen.len()} selected" }
+                    span { class: "muted small", "{human_bytes(chosen_bytes)} on this device" }
+                }
+                button { class: "btn ghost small", id: "bar-select-all",
+                    onclick: move |_| {
+                        if all_ticked { picked.set(BTreeSet::new()); } else { picked.set(everything.iter().cloned().collect()); }
+                    },
+                    if all_ticked { "Select none" } else { "Select all" }
+                }
+                span { class: "grow" }
+                if chosen_books.len() == 1 && chosen.len() == 1 {
+                    button { class: "btn primary", id: "bar-export", title: "Edit and export the book you ticked",
+                        onclick: {
+                            let id = chosen_books[0].clone();
+                            move |_| { picked.set(BTreeSet::new()); super::export::export_book(ctx, &id); }
                         },
-                        if chosen.len() == everything.len() && !everything.is_empty() { "Select none" } else { "Select all" }
+                        Icon { name: "file-down", size: 15 } "Export\u{2026}"
                     }
-                    button { class: "btn", id: "select-export", disabled: chosen_books.len() != 1 || chosen.len() != 1,
-                        title: "Export one book at a time",
-                        onclick: move |_| {
-                            let first = picked.read().iter().next().cloned();
-                            if let Some(id) = first { selecting.set(false); picked.set(BTreeSet::new()); super::export::export_book(ctx, &id); }
-                        },
-                        Icon { name: "file-down", size: 15 } "Export"
+                }
+                div { class: "bar-menu",
+                    button { class: "btn", id: "bar-more", title: "More actions", onclick: move |_| more.set(!more()),
+                        Icon { name: "ellipsis", size: 18 }
                     }
-                    button { class: "btn danger", id: "select-forget", disabled: chosen.is_empty(),
-                        onclick: move |_| {
-                            let ids: Vec<String> = picked.read().iter().cloned().collect();
-                            let n = ids.len();
-                            ctx.ask(Modal {
-                                title: format!("Forget {}?", plural(n, "book")),
-                                body: "The books and your places in them are deleted from this device. This cannot be undone.".into(),
-                                confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                action: ModalAction::ForgetMany(ids),
-                            });
-                            selecting.set(false);
-                            picked.set(BTreeSet::new());
-                        },
-                        Icon { name: "trash", size: 15 } "Forget"
+                    if more() {
+                        div { class: "menu-scrim", onclick: move |_| more.set(false) }
+                        div { class: "menu up",
+                            button { class: "menu-item danger", id: "bar-forget", title: "Take the books you ticked out of your library",
+                                onclick: {
+                                    let ids: Vec<String> = chosen.iter().cloned().collect();
+                                    move |_| {
+                                        more.set(false);
+                                        ctx.ask(Modal {
+                                            title: format!("Forget {}?", plural(ids.len(), "book")),
+                                            body: "The books and your places in them are deleted from this device. This cannot be undone.".into(),
+                                            confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
+                                            action: ModalAction::ForgetMany(ids.clone()),
+                                        });
+                                        picked.set(BTreeSet::new());
+                                    }
+                                },
+                                Icon { name: "trash", size: 15 } "Forget"
+                            }
+                        }
                     }
                 }
             }
