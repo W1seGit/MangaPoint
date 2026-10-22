@@ -131,9 +131,28 @@ pub struct Ctx {
     pub routed: Signal<bool>,
     /// Which part of Settings is open.
     pub settings_section: Signal<ui::settings::Section>,
+    /// Writes the reader form's unsaved changes, while it has any (see [`UnsavedReader`]).
+    pub unsaved_reader: Signal<Option<UnsavedReader>>,
+    /// Going somewhere was held back by unsaved reader settings; the user is asked.
+    pub leave_prompt: Signal<Option<Leave>>,
     pub next_id: Signal<u64>,
     pub state_file: Signal<Option<String>>,
 }
+
+/// Where the user was going when unsaved reader settings stopped them: asked
+/// about, then carried on to. (The desktop app's own, `state/navigation.rs`.)
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Leave {
+    Page(Page),
+    Section(ui::settings::Section),
+    /// Another reader, by id.
+    Reader(String),
+}
+
+/// Writes the reader form's unsaved changes; true if they were saved. Present
+/// only while the form has changes that are not saved.
+#[derive(Clone)]
+pub struct UnsavedReader(pub std::rc::Rc<dyn Fn() -> bool>);
 
 impl Ctx {
     pub fn id(mut self) -> u64 {
@@ -142,8 +161,40 @@ impl Ctx {
         n
     }
 
-    pub fn go(mut self, page: Page) {
-        self.page.set(page);
+    /// Go to a page. Unsaved reader settings are asked about first.
+    pub fn go(self, page: Page) {
+        self.leave(Leave::Page(page));
+    }
+
+    /// Go somewhere that would lose the reader form's unsaved changes, asking
+    /// what to do with them first; anywhere else, just go.
+    pub fn leave(self, to: Leave) {
+        let staying = match &to {
+            Leave::Page(page) => *page == Page::Settings,
+            Leave::Section(section) => *section == ui::settings::Section::Readers,
+            Leave::Reader(_) => false,
+        };
+        if !staying && self.unsaved_reader.peek().is_some() {
+            let mut prompt = self.leave_prompt;
+            prompt.set(Some(to));
+            return;
+        }
+        self.leave_now(to);
+    }
+
+    /// Carry on to where the user was going, the changes dealt with.
+    pub fn leave_now(self, to: Leave) {
+        match to {
+            Leave::Page(page) => {
+                let mut p = self.page;
+                p.set(page);
+            }
+            Leave::Section(section) => {
+                let mut current = self.settings_section;
+                current.set(section);
+            }
+            Leave::Reader(id) => ui::export::use_reader(self, &id),
+        }
     }
 
     pub fn toast(self, kind: ToastKind, text: impl Into<String>) {
@@ -253,6 +304,8 @@ pub fn App() -> Element {
         readers: use_signal(library::Settings::default),
         routed: use_signal(|| false),
         settings_section: use_signal(|| ui::settings::Section::Library),
+        unsaved_reader: use_signal(|| None),
+        leave_prompt: use_signal(|| None),
         next_id: use_signal(|| 0),
         state_file: use_signal(|| None),
     };
@@ -344,6 +397,7 @@ pub fn App() -> Element {
             Boot::Ready => rsx! { Shell {} },
         }}
         ModalHost {}
+        UnsavedHost {}
         ui::import::ImportHost {}
         ToastHost {}
         DropOverlay {}
@@ -490,6 +544,51 @@ fn Shell() -> Element {
                                 "Update and reload"
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Asked when the user leaves the reader form with changes that are not saved.
+#[component]
+fn UnsavedHost() -> Element {
+    let ctx = use_context::<Ctx>();
+    let Some(to) = ctx.leave_prompt.read().clone() else { return rsx! {} };
+    let (save_to, discard_to) = (to.clone(), to);
+    rsx! {
+        div { class: "overlay", id: "unsaved-prompt",
+            div { class: "modal",
+                h2 { "You have unsaved settings" }
+                p { "Would you like to save or discard them?" }
+                div { class: "actions",
+                    button { class: "btn", id: "unsaved-keep",
+                        onclick: move |_| { let mut p = ctx.leave_prompt; p.set(None); },
+                        "Keep editing"
+                    }
+                    button { class: "btn danger", id: "unsaved-discard",
+                        onclick: move |_| {
+                            let mut p = ctx.leave_prompt;
+                            p.set(None);
+                            let mut unsaved = ctx.unsaved_reader;
+                            unsaved.set(None);
+                            ctx.leave_now(discard_to.clone());
+                        },
+                        "Discard"
+                    }
+                    button { class: "btn primary", id: "unsaved-save",
+                        onclick: move |_| {
+                            let saved = ctx.unsaved_reader.peek().clone().is_none_or(|u| (u.0)());
+                            if saved {
+                                let mut p = ctx.leave_prompt;
+                                p.set(None);
+                                let mut unsaved = ctx.unsaved_reader;
+                                unsaved.set(None);
+                                ctx.leave_now(save_to.clone());
+                            }
+                        },
+                        "Save"
                     }
                 }
             }

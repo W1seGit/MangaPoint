@@ -107,7 +107,7 @@ pub fn SettingsPage() -> Element {
     let can_install = *ctx.can_install.read();
     let engine = web_engine::engine_version();
 
-    let mut section = ctx.settings_section;
+    let section = ctx.settings_section;
     let books_label = plural(books, "book");
     let safe_note = if !caps.persist {
         String::new()
@@ -132,7 +132,7 @@ pub fn SettingsPage() -> Element {
                         key: "{label}",
                         id: "settings-nav-{slug}",
                         class: if sec == section() { "nav-item active" } else { "nav-item" },
-                        onclick: move |_| section.set(sec),
+                        onclick: move |_| ctx.leave(crate::app::Leave::Section(sec)),
                         Icon { name: icon, size: 17 }
                         "{label}"
                     }
@@ -390,7 +390,7 @@ fn DeskSlider() -> Element {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Section {
     Library,
     Readers,

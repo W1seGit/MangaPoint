@@ -69,6 +69,9 @@ fn save_reader(state: Ctx, draft: &ReaderDraft, revision: &mut Signal<u32>) -> b
     match result {
         Ok(()) => {
             state.save_readers();
+            // The Export screen makes pages for this reader: it follows what was saved (its size,
+            // its formats, whether its screen has colour).
+            crate::ui::export::reader_changed(state);
             state.notify("Reader saved.");
             let again = *revision.peek() + 1;
             revision.set(again);
@@ -119,6 +122,27 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
     });
     let draft = form_now();
     let dirty = draft != saved;
+    // While there are changes that are not saved, the rest of the app knows, and
+    // asks before the user leaves them behind.
+    {
+        let saved = saved.clone();
+        use_effect(move || {
+            let draft = form_now();
+            let mut unsaved = state.unsaved_reader;
+            if draft != saved {
+                unsaved.set(Some(crate::app::UnsavedReader(std::rc::Rc::new(move || {
+                    let mut revision = revision;
+                    save_reader(state, &draft, &mut revision)
+                }))));
+            } else if unsaved.peek().is_some() {
+                unsaved.set(None);
+            }
+        });
+        use_drop(move || {
+            let mut unsaved = state.unsaved_reader;
+            unsaved.set(None);
+        });
+    }
     let (w0, h0) = (
         f64::from(saved.width) / f64::from(saved.ppi.max(1)),
         f64::from(saved.height) / f64::from(saved.ppi.max(1)),

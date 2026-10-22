@@ -142,6 +142,18 @@ try {
   await page.eval("(() => { const i = document.querySelector('.reader-line .title-input'); i.focus(); i.select(); })()");
   await page.type('Libra Test');
   r.check('Save is enabled after a change', !(await page.eval("document.querySelector('.form-footer .btn.primary').disabled")));
+  // Leaving with the change not saved asks first, as the app does.
+  await nav(page, 'Library');
+  await page.waitFor("!!document.querySelector('#unsaved-prompt')", 5, 'the unsaved-settings question');
+  r.check('leaving with unsaved reader settings asks first', /You have unsaved settings/.test(await page.eval("document.querySelector('#unsaved-prompt').innerText")));
+  await page.click('#unsaved-keep');
+  await sleep(200);
+  r.check('Keep editing stays in the form with the change', (await page.eval("document.querySelector('.reader-line .title-input')?.value")) === 'Libra Test');
+  await page.click('#settings-nav-about');
+  await page.waitFor("!!document.querySelector('#unsaved-prompt')", 5, 'the question for another part of Settings');
+  r.check('another part of Settings asks too', true);
+  await page.click('#unsaved-keep');
+  await sleep(200);
   await page.click('.form-footer .btn.primary');
   await sleep(400);
   r.check('the renamed reader is saved', (await pills()).some((n) => /Libra Test/.test(n)), (await pills()).join(' | '));
@@ -182,6 +194,26 @@ try {
   await pickReader('/Libra Test/');
   await sleep(400);
   r.check('colour reader offers the colour choice', !!(await page.rect('#export-color')));
+  // Its screen marked as gray in Settings: the choice goes; back to colour, it comes back.
+  const setColour = async (yes) => {
+    // (On a phone the settings sheet of Export covers the tabs; the tab is pressed all the same.)
+    if (narrow) await page.eval("document.querySelector('#nav-Settings').click()"); else await nav(page, 'Settings');
+    await page.waitFor("!!document.querySelector('#settings-nav-reader')", 10, 'Settings');
+    await page.click('#settings-nav-reader');
+    await page.waitFor("!!document.querySelector('#reader-color')", 10, 'the reader form');
+    await page.click(yes ? '#reader-color-yes' : '#reader-color-no');
+    await page.click('.form-footer .btn.primary');
+    await sleep(400);
+    await nav(page, 'Export');
+    await page.waitFor(narrow ? "!!document.querySelector('#export-settings-tab')" : "!!document.querySelector('#export-format')", 10, 'export screen');
+    await clearToasts(page);
+    await openPanels();
+    await sleep(300);
+  };
+  await setColour(false);
+  r.check('a reader saved as having no colour screen offers no colour choice', !(await page.eval("!!document.querySelector('#export-color')")));
+  await setColour(true);
+  r.check('saved as a colour screen again, Black & white | Color is back in Send to', !!(await page.rect('#export-color')) && !!(await page.rect('#export-bw')));
   await runExport('EPUB');
   r.check('EPUB export finished', await page.eval("!!document.querySelector('#export-done')"), await page.eval("document.querySelector('#export-error')?.innerText || ''"));
   await page.click('.export-download');
@@ -256,6 +288,7 @@ try {
   await page.waitFor("!!document.querySelector('#export-added, #export-error')", 60, 'the files to reach the library');
   r.check('the files were added to the library', await page.eval("!!document.querySelector('#export-added')"), await page.eval("document.querySelector('#export-error')?.innerText || ''"));
   r.check('no files were offered for download', !(await page.eval("!!document.querySelector('.export-download')")));
+  await clearToasts(page); // a toast can sit over the button on a phone
   await page.click('#export-open-library');
   await sleep(600);
   r.check('Open the library goes to the library', !(await page.eval("!!document.querySelector('#export-screen')")));

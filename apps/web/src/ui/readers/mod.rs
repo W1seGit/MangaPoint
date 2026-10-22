@@ -57,7 +57,7 @@ pub fn DevicesEditor() -> Element {
                             class: if on { "pill on" } else { "pill" },
                             onclick: move |_| {
                                 if !on {
-                                    crate::ui::export::use_reader(state, &id);
+                                    state.leave(crate::app::Leave::Reader(id.clone()));
                                 }
                             },
                             "{d.name}"
