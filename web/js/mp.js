@@ -11,7 +11,6 @@ import * as store from './store.js';
 import * as importer from './importer.js';
 import * as pages from './pages.js';
 import { startEditor } from './preview-editor.js';
-import { startSplit } from './export-split.js';
 import * as router from './router.js';
 import * as fsa from './fsa.js';
 import { installReader, commands, setCoverLoader } from './reader.js';
@@ -461,17 +460,6 @@ const handlers = {
   },
 
   /** Keep the row the adder would take in view when its list is long (only the list scrolls). */
-  adder_scroll() {
-    const o = document.querySelector('.adder-opt.active');
-    const l = o && o.closest('.adder-list');
-    if (l) {
-      const lr = l.getBoundingClientRect();
-      const r = o.getBoundingClientRect();
-      if (r.top < lr.top) l.scrollTop += r.top - lr.top;
-      else if (r.bottom > lr.bottom) l.scrollTop += r.bottom - lr.bottom;
-    }
-    return true;
-  },
 
   /** Size the page list of the Export screen and report the pages in view. */
   editor_start() {
@@ -480,10 +468,6 @@ const handlers = {
   },
 
   /** Make the bars of the Export screen draggable. */
-  export_split() {
-    startSplit();
-    return true;
-  },
 
   /** Scroll the list (and the thumbnails) to page `index`. */
   editor_scroll({ index }) {
@@ -590,7 +574,14 @@ immediate.route_ready = () => {
   const r = router.current();
   emit({ t: 'route', path: r.path, hash: r.hash });
 };
-for (const name of ['apply_update', 'export_split', 'editor_start', 'editor_scroll', 'editor_thumb', 'editor_top', 'adder_scroll']) immediate[name] = handlers[name];
+for (const name of ['apply_update', 'editor_start', 'editor_scroll', 'editor_thumb', 'editor_top']) immediate[name] = handlers[name];
+// One of the scripts shared with the desktop app (crates/ui/js, copied to js/ui/): loaded the first
+// time it is asked for, then started. Each registers window.MP[name].
+immediate.run_script = ({ name, file, args }) => {
+  import(`./ui/${file}`)
+    .then(() => window.MP[name].start(args || {}))
+    .catch((e) => console.error(`script ${name}:`, e));
+};
 
 const mp = {
   async call(name, json) {

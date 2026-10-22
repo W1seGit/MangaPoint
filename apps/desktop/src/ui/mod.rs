@@ -1,7 +1,6 @@
 //! The app's screens.
 
 mod browse;
-mod conversion;
 mod download_dialog;
 mod host;
 mod tasks_page;
@@ -38,8 +37,6 @@ use sources::SourceManager;
 use widgets::{Icon, ProgressBar};
 
 const CSS: &str = include_str!("../style.css");
-/// Floats the explanation of a question mark above everything else.
-const TOOLTIP_SCRIPT: &str = include_str!("../js/tooltip.js");
 /// Keyboard shortcuts.
 const KEYS_SCRIPT: &str = include_str!("../js/keys.js");
 /// Remembers the scroll position of each page.
@@ -138,7 +135,10 @@ pub fn App() -> Element {
 
     use_hook(|| {
         spawn(async move {
-            let _ = document::eval(TOOLTIP_SCRIPT).await;
+            // Floats the explanation of a question mark above everything else.
+            if let Some(tip) = mangapoint_ui::scripts::call("tooltip", "") {
+                let _ = document::eval(&tip).await;
+            }
             let _ = document::eval(KEYS_SCRIPT).await;
             let _ = document::eval(SCROLL_SCRIPT).await;
             let _ = document::eval(SLIDE_SCRIPT).await;
@@ -444,11 +444,13 @@ pub fn ask_enable_browser(state: AppState, then_install: Option<String>) {
 
 #[cfg(test)]
 mod script_tests {
-    const SCRIPTS: [(&str, &str); 7] = [
+    const SCRIPTS: [(&str, &str); 9] = [
         ("crop-drag.js", include_str!("../js/crop-drag.js")),
-        ("export-split.js", include_str!("../js/export-split.js")),
+        ("export-split.js", include_str!("../../../../crates/ui/js/export-split.js")),
         ("preview-editor.js", include_str!("../js/preview-editor.js")),
-        ("tooltip.js", include_str!("../js/tooltip.js")),
+        ("tooltip.js", include_str!("../../../../crates/ui/js/tooltip.js")),
+        ("zoom-scrub.js", include_str!("../../../../crates/ui/js/zoom-scrub.js")),
+        ("adder-scroll.js", include_str!("../../../../crates/ui/js/adder-scroll.js")),
         ("keys.js", include_str!("../js/keys.js")),
         ("scroll.js", include_str!("../js/scroll.js")),
         ("reader.js", include_str!("../js/reader.js")),

@@ -133,11 +133,11 @@ try {
   await closeReader(page);
 
   // ---- remove a book ----
-  await page.click(`.poster[data-book="${id}"] .poster-more`);
+  await page.click(`.poster[data-id="${id}"] .poster-more`);
   await sleep(200);
   await page.click('.poster-menu .menu-item', 'Forget');
   await page.click('#modal-confirm');
-  await page.waitFor(`!document.querySelector('.poster[data-book="${id}"]')`, 10, 'the book to go');
+  await page.waitFor(`!document.querySelector('.poster[data-id="${id}"]')`, 10, 'the book to go');
   await sleep(300);
   r.check('removing a book takes it off the library', (await titles(page)).length === 1, JSON.stringify(await titles(page)));
   await sleep(300);

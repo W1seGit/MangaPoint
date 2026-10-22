@@ -13,11 +13,11 @@ mod send_panel;
 mod series_panel;
 
 use crate::state::AppState;
-use crate::ui::widgets::Icon;
 use crate::ui::work::{activate_export_series, load_saved_cover, open_sample, reconcile_export_plan};
 use crate::ui::workspace::preview::PreviewTab;
 use chapters_panel::ChaptersPanel;
 use dioxus::prelude::*;
+use mangapoint_ui::export::{Panel, Split};
 use edit_panel::EditPanel;
 use footer::ExportFooter;
 use library::DownloadedSeries;
@@ -32,46 +32,6 @@ fn active_series(state: AppState) -> Option<DownloadedSeries> {
     let id = plan.items.get(plan.active)?.series_id.clone();
     drop(plan);
     state.library.read().find(&id).cloned()
-}
-
-/// A panel with a title that folds away.
-#[component]
-fn Panel(
-    title: String,
-    icon: &'static str,
-    /// What the splitters call this panel.
-    id: &'static str,
-    /// A starting height in pixels. Without one the panel takes what is left.
-    height: Option<u32>,
-    /// Buttons for the title bar, which do not fold the panel.
-    actions: Option<Element>,
-    children: Element,
-) -> Element {
-    let mut open = use_signal(|| true);
-    let class = match (open(), height.is_some()) {
-        (true, true) => "px-panel open fixed",
-        (true, false) => "px-panel open",
-        _ => "px-panel collapsed",
-    };
-    let style = height.map(|h| format!("--h: {h}px;")).unwrap_or_default();
-    let chevron = if open() {
-        "chevron-down"
-    } else {
-        "chevron-right"
-    };
-    rsx! {
-        section { class: "{class}", style: "{style}", "data-panel": "{id}",
-            header { class: "px-panel-head", onclick: move |_| open.set(!open()),
-                Icon { name: chevron, size: 15 }
-                Icon { name: icon, size: 15 }
-                span { class: "grow", "{title}" }
-                if let Some(actions) = actions {
-                    div { class: "px-panel-actions", onclick: move |e| e.stop_propagation(), {actions} }
-                }
-            }
-            div { class: "px-panel-body", {children} }
-        }
-    }
 }
 
 #[component]
@@ -162,7 +122,8 @@ pub fn ExportPage() -> Element {
 
     rsx! {
         div { class: "export-screen",
-            onmounted: move |_| { spawn(async move { let _ = document::eval(SPLIT_SCRIPT).await; }); },
+            // The bars between the panels can be dragged (`js/export-split.js`).
+            onmounted: move |_| state.ui.host().run_script("export_split", String::new()),
             div { class: "export-body",
                 aside { class: if original { "export-side left alone" } else { "export-side left" },
                     // The e-ink controls have nothing to do for a phone or tablet:
@@ -198,16 +159,3 @@ pub fn ExportPage() -> Element {
     }
 }
 
-/// The bar between two panels, which can be dragged to resize them. `target`
-/// is the panel that changes size; `dir` is -1 when dragging down shrinks it.
-#[component]
-fn Split(target: &'static str, dir: i32) -> Element {
-    rsx! {
-        div { class: "px-split", "data-split": "panel", "data-target": "{target}", "data-dir": "{dir}",
-            title: "Drag to resize the panels" }
-    }
-}
-
-/// Dragging the bars between the panels and the edges of the side columns.
-/// The sizes are remembered between visits.
-const SPLIT_SCRIPT: &str = include_str!("../../js/export-split.js");

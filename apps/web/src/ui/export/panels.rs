@@ -2,7 +2,7 @@
 //! only makes sense on a computer (USB and Wi-Fi sending, the page editor) left out: here the
 //! files are downloaded.
 
-use super::conversion::ConversionControls;
+use mangapoint_ui::conversion::ConversionControls;
 use super::{
     cancel_export, chosen_size, edit, export_book_quiet, group_of, is_big, is_edited, keep_output, on, set_format,
     start_export, use_preset, Group, Target, LastExport, Panel, Run, LAST,

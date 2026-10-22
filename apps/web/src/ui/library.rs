@@ -7,6 +7,7 @@ use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
 use crate::model::{Book, LibrarySort, LibraryView};
 use dioxus::prelude::*;
+use mangapoint_ui::library::{ActionBar, Poster, PosterButton, PosterFacts};
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -41,7 +42,6 @@ pub fn LibraryPage() -> Element {
     let mut import_menu = use_signal(|| false);
     let mut menu = use_signal(|| None::<String>);
     let mut picked = use_signal(BTreeSet::<String>::new);
-    let mut more = use_signal(|| false);
 
     let lib = ctx.library.read();
     let order = lib.order(view(), sort(), &filter.read());
@@ -157,118 +157,89 @@ pub fn LibraryPage() -> Element {
                         let finished = lib.finished(&b);
                         let have = b.chapters.len().to_string();
                         let stored = human_bytes(b.size);
-                        let (open_id, read_id, text_id, menu_id, export_id, remove_id, again_id) =
-                            (id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone());
+                        let (open_id, read_id, menu_id, export_id, remove_id, again_id) =
+                            (id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone());
                         let remove_title = b.title.clone();
                         let undownload_id = id.clone();
                         let needs_file = b.needs_file;
                         let is_on = picked.read().contains(&id);
-                        let toggle_id = id.clone();
                         let tick_id = id.clone();
                         let read_pick = id.clone();
+                        let mut status = kind_label(&b).to_string();
+                        if finished { status.push_str(" \u{b7} Finished"); }
+                        if needs_file { status.push_str(" \u{b7} Needs its file"); }
+                        let facts = PosterFacts {
+                            id: id.clone(),
+                            title: b.title.clone(),
+                            stats: Some((have.clone(), stored.clone())),
+                            lines: vec![("poster-status", status)],
+                            button: reading.map(|r| PosterButton {
+                                id: format!("read-{id}"),
+                                aria: format!("{} {}", r.label, b.title),
+                                label: r.label,
+                                icon: "book-open",
+                                title: format!("Read {}", b.title),
+                                fraction: r.fraction,
+                            }),
+                            not_installed: false,
+                        };
                         rsx! {
-                            div { class: if is_on { "poster on" } else { "poster" }, key: "{id}", "data-book": "{id}",
-                                div { class: "poster-art", title: "Open {b.title}",
-                                    onclick: move |_| {
-                                        if selecting { toggle(picked, &toggle_id); } else { open_book(ctx, &open_id); }
-                                    },
+                            Poster { key: "{id}", facts, selected: is_on, selecting, menu_open,
+                                art: rsx! {
                                     Cover { id: id.clone(), has_cover: b.has_cover }
                                     if needs_file {
                                         span { class: "poster-badge saved", title: "The browser did not keep this file", "Needs its file" }
                                     }
-                                    button {
-                                        class: if is_on { "poster-check on" } else { "poster-check" },
-                                        title: if is_on { "Deselect" } else { "Select" }, "aria-label": if is_on { "Deselect" } else { "Select" },
-                                        onclick: move |e| { e.stop_propagation(); toggle(picked, &tick_id); },
-                                        if is_on { Icon { name: "check", size: 14 } }
-                                    }
-                                    button {
-                                        class: if menu_open { "poster-more open" } else { "poster-more" },
-                                        title: "More actions", "aria-label": "More actions for {b.title}",
-                                        onclick: move |e| {
-                                            e.stop_propagation();
-                                            menu.set(if menu_open { None } else { Some(menu_id.clone()) });
-                                        },
-                                        Icon { name: "ellipsis", size: 16 }
-                                    }
-                                }
-                                if menu_open {
-                                    div { class: "menu-scrim", onclick: move |_| menu.set(None) }
-                                    div { class: "menu down poster-menu",
-                                        if !needs_file {
-                                            button { class: "menu-item",
-                                                onclick: { let id = read_id.clone(); move |_| { menu.set(None); super::reader::open_reader(ctx, &id, None); } },
-                                                Icon { name: "book-open", size: 15 } "Read"
-                                            }
-                                            button { class: "menu-item",
-                                                onclick: move |_| { menu.set(None); super::export::export_book(ctx, &export_id); },
-                                                Icon { name: "file-down", size: 15 } "Export\u{2026}"
-                                            }
-                                        } else {
-                                            button { class: "menu-item",
-                                                onclick: move |_| { menu.set(None); pick_for(&again_id); },
-                                                Icon { name: "file-up", size: 15 } "Import"
-                                            }
+                                },
+                                menu: rsx! {
+                                    if !needs_file {
+                                        button { class: "menu-item",
+                                            onclick: { let id = read_id.clone(); move |_| super::reader::open_reader(ctx, &id, None) },
+                                            Icon { name: "book-open", size: 15 } "Read"
                                         }
-                                        if !needs_file {
-                                            button { class: "menu-item", id: "remove-download",
-                                                onclick: {
-                                                    let title = remove_title.clone();
-                                                    let id = undownload_id.clone();
-                                                    move |_| {
-                                                        menu.set(None);
-                                                        ctx.ask(Modal {
-                                                            title: format!("Remove the download of {title}?"),
-                                                            body: "Its file is deleted from this device to free the space. The book stays in your library with your place in it: import the file again to carry on.".into(),
-                                                            confirm: "Remove download".into(), cancel: "Keep".into(), danger: true,
-                                                            action: ModalAction::RemoveDownloads(vec![id.clone()]),
-                                                        });
-                                                    }
-                                                },
-                                                Icon { name: "x", size: 15 } "Remove download"
-                                            }
+                                        button { class: "menu-item",
+                                            onclick: move |_| super::export::export_book(ctx, &export_id),
+                                            Icon { name: "file-down", size: 15 } "Export\u{2026}"
                                         }
-                                        button { class: "menu-item danger forget-item",
-                                            onclick: move |_| {
-                                                menu.set(None);
-                                                ctx.ask(Modal {
-                                                    title: format!("Forget {remove_title}?"),
-                                                    body: "The book, its file and your place in it are deleted from this device. Import the file again to read it from the start.".into(),
-                                                    confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                                    action: ModalAction::Forget(vec![remove_id.clone()]),
-                                                });
+                                    } else {
+                                        button { class: "menu-item",
+                                            onclick: move |_| pick_for(&again_id),
+                                            Icon { name: "file-up", size: 15 } "Import"
+                                        }
+                                    }
+                                    if !needs_file {
+                                        button { class: "menu-item", id: "remove-download",
+                                            onclick: {
+                                                let title = remove_title.clone();
+                                                let id = undownload_id.clone();
+                                                move |_| {
+                                                    ctx.ask(Modal {
+                                                        title: format!("Remove the download of {title}?"),
+                                                        body: "Its file is deleted from this device to free the space. The book stays in your library with your place in it: import the file again to carry on.".into(),
+                                                        confirm: "Remove download".into(), cancel: "Keep".into(), danger: true,
+                                                        action: ModalAction::RemoveDownloads(vec![id.clone()]),
+                                                    });
+                                                }
                                             },
-                                            Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
+                                            Icon { name: "x", size: 15 } "Remove download"
                                         }
                                     }
-                                }
-                                div { class: "poster-text", title: "Open {b.title}",
-                                    onclick: move |_| { if selecting { toggle(picked, &text_id); } else { open_book(ctx, &text_id); } },
-                                    strong { class: "poster-title", title: "{b.title}", "{b.title}" }
-                                    div { class: "poster-stats",
-                                        div { span { class: "poster-stat-label", "Chapters" } strong { "{have}" } }
-                                        div { span { class: "poster-stat-label", "Storage" } strong { "{stored}" } }
+                                    button { class: "menu-item danger forget-item",
+                                        onclick: move |_| {
+                                            ctx.ask(Modal {
+                                                title: format!("Forget {remove_title}?"),
+                                                body: "The book, its file and your place in it are deleted from this device. Import the file again to read it from the start.".into(),
+                                                confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
+                                                action: ModalAction::Forget(vec![remove_id.clone()]),
+                                            });
+                                        },
+                                        Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
                                     }
-                                    span { class: "muted small poster-status",
-                                        "{kind_label(&b)}"
-                                        if finished { " · Finished" }
-                                        if needs_file { " · Needs its file" }
-                                    }
-                                }
-                                if let Some(reading) = reading {
-                                    button {
-                                        class: "btn poster-read", id: "read-{id}", "data-book": "{id}",
-                                        "aria-label": "{reading.label} {b.title}", title: "Read {b.title}",
-                                        onclick: move |_| { if selecting { toggle(picked, &read_pick); } else { super::reader::open_reader(ctx, &read_id, None); } },
-                                        Icon { name: "book-open", size: 15 } "{reading.label}"
-                                    }
-                                    if let Some(done) = reading.fraction {
-                                        div { class: "progress poster-read-progress", "aria-label": "Read so far",
-                                            title: "{(done * 100.0).round()}% read",
-                                            div { style: "width: {(done * 100.0).round()}%" }
-                                        }
-                                    }
-                                }
+                                },
+                                on_open: move |_| open_book(ctx, &open_id),
+                                on_toggle: move |_| toggle(picked, &tick_id),
+                                on_menu: move |open: bool| menu.set(open.then(|| menu_id.clone())),
+                                on_button: move |_| super::reader::open_reader(ctx, &read_pick, None),
                             }
                         }
                     }
@@ -284,63 +255,48 @@ pub fn LibraryPage() -> Element {
                         };
                         let menu_open = menu().as_deref() == Some(fp.as_str());
                         let is_on = picked.read().contains(&fp);
-                        let (toggle_id, text_id, menu_id, import_id, button_id, forget_id) = (fp.clone(), fp.clone(), fp.clone(), fp.clone(), fp.clone(), fp.clone());
+                        let (menu_id, import_id, button_id, forget_id) = (fp.clone(), fp.clone(), fp.clone(), fp.clone());
                         let tick_id = fp.clone();
                         let forget_title = title.clone();
+                        let facts = PosterFacts {
+                            id: fp.clone(),
+                            title: title.clone(),
+                            stats: None,
+                            lines: vec![("poster-status", "Not installed yet".to_string()), ("poster-place", place.clone())],
+                            button: Some(PosterButton {
+                                id: format!("import-{fp}"),
+                                label: "Import".into(),
+                                icon: "file-up",
+                                title: format!("Pick the file for {title}"),
+                                aria: format!("Import {title}"),
+                                fraction: None,
+                            }),
+                            not_installed: true,
+                        };
                         rsx! {
-                            div { class: if is_on { "poster not-installed on" } else { "poster not-installed" }, key: "{fp}", "data-fingerprint": "{fp}",
-                                div { class: "poster-art",
-                                    onclick: move |_| { if selecting { toggle(picked, &toggle_id); } },
-                                    NoCover {}
-                                    button {
-                                        class: if is_on { "poster-check on" } else { "poster-check" },
-                                        title: if is_on { "Deselect" } else { "Select" }, "aria-label": if is_on { "Deselect" } else { "Select" },
-                                        onclick: move |e| { e.stop_propagation(); toggle(picked, &tick_id); },
-                                        if is_on { Icon { name: "check", size: 14 } }
+                            Poster { key: "{fp}", facts, selected: is_on, selecting, menu_open,
+                                art: rsx! { NoCover {} },
+                                menu: rsx! {
+                                    button { class: "menu-item",
+                                        onclick: move |_| pick_for(&import_id),
+                                        Icon { name: "file-up", size: 15 } "Import"
                                     }
-                                    button {
-                                        class: if menu_open { "poster-more open" } else { "poster-more" },
-                                        title: "More actions", "aria-label": "More actions for {title}",
-                                        onclick: move |e| {
-                                            e.stop_propagation();
-                                            menu.set(if menu_open { None } else { Some(menu_id.clone()) });
+                                    button { class: "menu-item danger",
+                                        onclick: move |_| {
+                                            ctx.ask(Modal {
+                                                title: format!("Forget {forget_title}?"),
+                                                body: "Your place in it and the chapters you read are deleted from this device. They stay in any reading-state file you saved.".into(),
+                                                confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
+                                                action: ModalAction::Forget(vec![forget_id.clone()]),
+                                            });
                                         },
-                                        Icon { name: "ellipsis", size: 16 }
+                                        Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
                                     }
-                                }
-                                if menu_open {
-                                    div { class: "menu-scrim", onclick: move |_| menu.set(None) }
-                                    div { class: "menu down poster-menu",
-                                        button { class: "menu-item",
-                                            onclick: move |_| { menu.set(None); pick_for(&import_id); },
-                                            Icon { name: "file-up", size: 15 } "Import"
-                                        }
-                                        button { class: "menu-item danger",
-                                            onclick: move |_| {
-                                                menu.set(None);
-                                                ctx.ask(Modal {
-                                                    title: format!("Forget {forget_title}?"),
-                                                    body: "Your place in it and the chapters you read are deleted from this device. They stay in any reading-state file you saved.".into(),
-                                                    confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                                    action: ModalAction::Forget(vec![forget_id.clone()]),
-                                                });
-                                            },
-                                            Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
-                                        }
-                                    }
-                                }
-                                div { class: "poster-text",
-                                    onclick: move |_| { if selecting { toggle(picked, &text_id); } },
-                                    strong { class: "poster-title", title: "{title}", "{title}" }
-                                    span { class: "muted small poster-status", "Not installed yet" }
-                                    span { class: "muted small poster-place", "{place}" }
-                                }
-                                button {
-                                    class: "btn poster-read", id: "import-{fp}", "data-fingerprint": "{fp}",
-                                    "aria-label": "Import {title}", title: "Pick the file for {title}",
-                                    onclick: move |_| { if selecting { toggle(picked, &button_id); } else { pick_for(&button_id); } },
-                                    Icon { name: "file-up", size: 15 } "Import"
-                                }
+                                },
+                                on_open: move |_| {},
+                                on_toggle: move |_| toggle(picked, &tick_id),
+                                on_menu: move |open: bool| menu.set(open.then(|| menu_id.clone())),
+                                on_button: move |_| pick_for(&button_id),
                             }
                         }
                     }
@@ -349,71 +305,58 @@ pub fn LibraryPage() -> Element {
         }
 
         if selecting {
-            div { class: "action-bar", id: "action-bar",
-                div { class: "bar-count",
-                    strong { id: "bar-count", "{chosen.len()} selected" }
-                    span { class: "muted small", "{human_bytes(chosen_bytes)} on this device" }
-                }
-                button { class: "btn ghost small", id: "bar-select-all",
-                    onclick: move |_| {
-                        if all_ticked { picked.set(BTreeSet::new()); } else { picked.set(everything.iter().cloned().collect()); }
-                    },
-                    if all_ticked { "Select none" } else { "Select all" }
-                }
-                span { class: "grow" }
-                if chosen_books.len() == 1 && chosen.len() == 1 {
-                    button { class: "btn primary", id: "bar-export", title: "Edit and export the book you ticked",
-                        onclick: {
-                            let id = chosen_books[0].clone();
-                            move |_| { picked.set(BTreeSet::new()); super::export::export_book(ctx, &id); }
-                        },
-                        Icon { name: "file-down", size: 15 } "Export\u{2026}"
-                    }
-                }
-                div { class: "bar-menu",
-                    button { class: "btn", id: "bar-more", title: "More actions", onclick: move |_| more.set(!more()),
-                        Icon { name: "ellipsis", size: 18 }
-                    }
-                    if more() {
-                        div { class: "menu-scrim", onclick: move |_| more.set(false) }
-                        div { class: "menu up",
-                            if !chosen_books.is_empty() {
-                                button { class: "menu-item", id: "bar-remove-downloads", title: "Delete the files to free the space, and keep the books and your places",
-                                    onclick: {
-                                        let ids = chosen_books.clone();
-                                        move |_| {
-                                            more.set(false);
-                                            ctx.ask(Modal {
-                                                title: format!("Remove the downloads of {}?", plural(ids.len(), "book")),
-                                                body: "Their files are deleted from this device to free the space. The books stay in your library with your places in them: import the files again to carry on.".into(),
-                                                confirm: "Remove downloads".into(), cancel: "Keep".into(), danger: true,
-                                                action: ModalAction::RemoveDownloads(ids.clone()),
-                                            });
-                                            picked.set(BTreeSet::new());
-                                        }
-                                    },
-                                    Icon { name: "x", size: 15 } "Remove downloads"
-                                }
-                            }
-                            button { class: "menu-item danger forget-item", id: "bar-forget", title: "Take the books you ticked out of your library",
-                                onclick: {
-                                    let ids: Vec<String> = chosen.iter().cloned().collect();
-                                    move |_| {
-                                        more.set(false);
-                                        ctx.ask(Modal {
-                                            title: format!("Forget {}?", plural(ids.len(), "book")),
-                                            body: "The books and your places in them are deleted from this device. This cannot be undone.".into(),
-                                            confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
-                                            action: ModalAction::Forget(ids.clone()),
-                                        });
-                                        picked.set(BTreeSet::new());
-                                    }
-                                },
-                                Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
-                            }
+            ActionBar {
+                count: chosen.len(),
+                size: format!("{} on this device", human_bytes(chosen_bytes)),
+                all_ticked,
+                on_all: move |all: bool| {
+                    if all { picked.set(everything.iter().cloned().collect()); } else { picked.set(BTreeSet::new()); }
+                },
+                buttons: rsx! {
+                    if chosen_books.len() == 1 && chosen.len() == 1 {
+                        button { class: "btn primary", id: "bar-export", title: "Edit and export the book you ticked",
+                            onclick: {
+                                let id = chosen_books[0].clone();
+                                move |_| { picked.set(BTreeSet::new()); super::export::export_book(ctx, &id); }
+                            },
+                            Icon { name: "file-down", size: 15 } "Export\u{2026}"
                         }
                     }
-                }
+                },
+                more: rsx! {
+                    if !chosen_books.is_empty() {
+                        button { class: "menu-item", id: "bar-remove-downloads", title: "Delete the files to free the space, and keep the books and your places",
+                            onclick: {
+                                let ids = chosen_books.clone();
+                                move |_| {
+                                    ctx.ask(Modal {
+                                        title: format!("Remove the downloads of {}?", plural(ids.len(), "book")),
+                                        body: "Their files are deleted from this device to free the space. The books stay in your library with your places in them: import the files again to carry on.".into(),
+                                        confirm: "Remove downloads".into(), cancel: "Keep".into(), danger: true,
+                                        action: ModalAction::RemoveDownloads(ids.clone()),
+                                    });
+                                    picked.set(BTreeSet::new());
+                                }
+                            },
+                            Icon { name: "x", size: 15 } "Remove downloads"
+                        }
+                    }
+                    button { class: "menu-item danger forget-item", id: "bar-forget", title: "Take the books you ticked out of your library",
+                        onclick: {
+                            let ids: Vec<String> = chosen.iter().cloned().collect();
+                            move |_| {
+                                ctx.ask(Modal {
+                                    title: format!("Forget {}?", plural(ids.len(), "book")),
+                                    body: "The books and your places in them are deleted from this device. This cannot be undone.".into(),
+                                    confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
+                                    action: ModalAction::Forget(ids.clone()),
+                                });
+                                picked.set(BTreeSet::new());
+                            }
+                        },
+                        Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
+                    }
+                },
             }
         }
     }
@@ -430,7 +373,6 @@ fn toggle(mut picked: Signal<BTreeSet<String>>, id: &str) {
     }
 }
 
-/// Open a book from its poster: read it, or explain what it needs.
 /// A card was clicked: its overview, with the chapters and what can be done with the book.
 fn open_book(ctx: Ctx, id: &str) {
     if ctx.book(id).is_some() {

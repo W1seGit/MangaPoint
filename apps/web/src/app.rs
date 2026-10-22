@@ -235,8 +235,8 @@ impl Host for WebHost {
     }
 
     fn run_script(&self, name: &str, args: String) {
-        let args = serde_json::from_str(&args).unwrap_or(serde_json::Value::Null);
-        bridge::send(name, args);
+        let args = serde_json::from_str(&args).unwrap_or(json!({}));
+        bridge::send("run_script", json!({ "name": name, "file": mangapoint_ui::scripts::file_name(name), "args": args }));
     }
 }
 

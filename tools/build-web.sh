@@ -63,8 +63,9 @@ cp "$root/web/css/web.css" "$dist/css/"
 # The desktop app's own style sheets, unchanged (one source of truth for the look).
 cp "$root/apps/desktop/src/style.css" "$root/apps/desktop/src/import.css" "$root/apps/desktop/src/reader.css" "$root/apps/desktop/src/editor-controls.css" "$root/apps/desktop/src/page-editor.css" "$dist/css/"
 
-# The question-mark tips are the desktop app's own script too.
-cp "$root/apps/desktop/src/js/tooltip.js" "$dist/js/"
+# The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.
+mkdir -p "$dist/js/ui"
+cp "$root"/crates/ui/js/*.js "$dist/js/ui/"
 
 node "$root/tools/web-precache.mjs" "$dist"
 echo "built: $dist"

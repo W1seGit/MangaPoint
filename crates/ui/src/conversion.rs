@@ -1,8 +1,8 @@
-//! The controls for how pages are converted, shared by Settings (your
-//! starting defaults) and the Preview tab (this one series).
+//! The controls for how pages are converted (the Edit panel of the Export screen, in both apps).
+//! The "advanced" switch is kept in the settings, and the groups that are open in `UiState`.
 
-use crate::state::AppState;
-use crate::ui::widgets::{Help, Icon, ZoomDropdown, ZoomPick};
+use crate::host::use_ui;
+use crate::widgets::{Help, Icon, ZoomDropdown, ZoomPick};
 use converter::process::{
     CropMode, Layout, Margins, PageZoom, SpreadMode, StripCut, ZoomMode, ZOOM_FIT, ZOOM_MAX,
 };
@@ -66,8 +66,8 @@ pub fn ConversionControls(
     crop_section: Option<Element>,
 ) -> Element {
     let compact = compact.unwrap_or(false);
-    let state = use_context::<AppState>();
-    let advanced = state.ui.settings.read().advanced_conversion;
+    let state = use_ui();
+    let advanced = state.settings.read().advanced_conversion;
     let c = value.clone();
     // Apply one edit to a copy of the settings and report the result.
     let change = Rc::new(move |edit: Edit, raw: String| {
@@ -481,7 +481,7 @@ pub fn ConversionControls(
             }
             button { class: "btn ghost small advanced-toggle",
                 onclick: move |_| {
-                    let mut settings = state.ui.settings;
+                    let mut settings = state.settings;
                     let on = !settings.peek().advanced_conversion;
                     settings.write().advanced_conversion = on;
                     state.save_settings();
@@ -503,8 +503,8 @@ fn ConversionGroup(
     reveal: Option<bool>,
     children: Element,
 ) -> Element {
-    let state = use_context::<AppState>();
-    let mut open_groups = state.ui.open_groups;
+    let state = use_ui();
+    let mut open_groups = state.open_groups;
     let reveal = reveal.unwrap_or(false);
     use_effect(use_reactive!(|reveal| {
         if reveal && !open_groups.peek().contains(&title) {

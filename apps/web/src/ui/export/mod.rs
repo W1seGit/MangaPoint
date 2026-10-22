@@ -7,7 +7,6 @@
 //! Original / Reader switch on top, the panels open as a full-screen sheet from a Settings tab at
 //! the bottom, and the Export button sits right above that tab.
 
-mod conversion;
 mod panels;
 mod preview;
 
@@ -17,6 +16,7 @@ use crate::bridge::{self, Event, ExportFile};
 use crate::format::plural;
 use crate::model::{Book, Chapter};
 use dioxus::prelude::*;
+use mangapoint_ui::export::{Panel, Split};
 use library::ConversionSettings;
 pub use mangapoint_ui::logic::preview::Zoom;
 use mangapoint_ui::logic::preview::{PageSlot, SlotPart};
@@ -160,10 +160,6 @@ pub struct ExportUi {
     pub overview: bool,
     /// The settings sheet is open (phones).
     pub sheet: bool,
-    /// Show the controls most people never need.
-    pub advanced: bool,
-    /// The folded groups of the edit controls that are open.
-    pub groups: Vec<&'static str>,
     /// Pages held open for the preview, to let go of.
     pub held: Vec<(String, usize)>,
     /// Counts up with every preview asked for, so an old answer can be told from a new one.
@@ -192,8 +188,6 @@ impl Default for ExportUi {
             selected: 0,
             overview: false,
             sheet: false,
-            advanced: false,
-            groups: vec!["Layout"],
             held: Vec::new(),
             stamp: 0,
             pending: None,
@@ -704,43 +698,6 @@ fn request_preview(ctx: Ctx) {
 }
 
 #[component]
-pub fn Panel(
-    title: String,
-    icon: &'static str,
-    /// What the tests call this panel.
-    id: &'static str,
-    /// Is it open to begin with?
-    open: Option<bool>,
-    /// A starting height in pixels. Without one the panel takes what is left.
-    height: Option<u32>,
-    /// Buttons for the title bar, which do not fold the panel.
-    actions: Option<Element>,
-    children: Element,
-) -> Element {
-    let mut open = use_signal(move || open.unwrap_or(true));
-    let class = match (open(), height.is_some()) {
-        (true, true) => "px-panel open fixed",
-        (true, false) => "px-panel open",
-        _ => "px-panel collapsed",
-    };
-    let style = height.map(|h| format!("--h: {h}px;")).unwrap_or_default();
-    let chevron = if open() { "chevron-down" } else { "chevron-right" };
-    rsx! {
-        section { class: "{class}", style: "{style}", "data-panel": "{id}", id: "panel-{id}",
-            header { class: "px-panel-head", onclick: move |_| open.set(!open()),
-                Icon { name: chevron, size: 15 }
-                Icon { name: icon, size: 15 }
-                span { class: "grow", "{title}" }
-                if let Some(actions) = actions {
-                    div { class: "px-panel-actions", onclick: move |e| e.stop_propagation(), {actions} }
-                }
-            }
-            div { class: "px-panel-body", {children} }
-        }
-    }
-}
-
-#[component]
 pub fn ExportPage() -> Element {
     let ctx = use_context::<Ctx>();
     // Open on the first book when none was chosen (done after drawing, never during it).
@@ -771,7 +728,7 @@ pub fn ExportPage() -> Element {
     // again when a book arrives or the window changes shape, so this follows both).
     use_effect(move || {
         let _ = (ctx.export.read().book.is_some(), *ctx.narrow.read());
-        bridge::send("export_split", json!({}));
+        ctx.ui.host().run_script("export_split", String::new());
     });
     use_drop(move || {
         release_held(ctx);
@@ -852,16 +809,6 @@ pub fn ExportPage() -> Element {
                 }
             }
         }
-    }
-}
-
-/// The bar between two panels, which can be dragged to resize them. `target` is the panel that
-/// changes size; `dir` is -1 when dragging down shrinks it.
-#[component]
-fn Split(target: &'static str, dir: i32) -> Element {
-    rsx! {
-        div { class: "px-split", "data-split": "panel", "data-target": "{target}", "data-dir": "{dir}",
-            title: "Drag to resize the panels" }
     }
 }
 

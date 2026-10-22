@@ -3543,6 +3543,7 @@ dependencies = [
 name = "mangapoint-ui"
 version = "1.1.1"
 dependencies = [
+ "converter",
  "device-profiles",
  "dioxus",
  "library",

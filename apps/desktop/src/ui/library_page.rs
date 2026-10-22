@@ -9,6 +9,7 @@ use super::work::{
 use crate::logic::{human_bytes, library_order_read, plural, read_button, LibrarySort, LibraryView};
 use crate::state::{library_files, AppState, Modal, ModalAction, Page};
 use dioxus::prelude::*;
+use mangapoint_ui::library::{ActionBar, Poster, PosterButton, PosterFacts};
 use std::collections::HashSet;
 
 #[component]
@@ -18,7 +19,6 @@ pub fn LibraryPage() -> Element {
     let mut sort = use_signal(LibrarySort::default);
     let mut filter = use_signal(String::new);
     let mut picked = use_signal(HashSet::<String>::new);
-    let mut more = use_signal(|| false);
     // The menu of the Import button.
     let mut import_menu = use_signal(|| false);
     // The poster whose menu is open.
@@ -273,7 +273,6 @@ pub fn LibraryPage() -> Element {
                         let read_id = s.id.clone();
                         let queued = working_series.contains(&s.id);
                         let menu_id = s.id.clone();
-                        let text_id = s.id.clone();
                         let menu_open = menu().as_deref() == Some(s.id.as_str());
                         let (export_id, plan_id, view_id, delete_id, remove_id) = (
                             s.id.clone(),
@@ -304,111 +303,72 @@ pub fn LibraryPage() -> Element {
                             danger: true,
                             action: ModalAction::RemoveSeries { series_ids: vec![remove_id] },
                         };
+                        let mut lines = Vec::new();
+                        if !about.is_empty() {
+                            lines.push(("poster-about", about.clone()));
+                        }
+                        let status = if s.is_imported() { "Imported" } else if chapters > 0 { "Downloaded" } else { "Saved for later" };
+                        lines.push(("poster-status", format!("{status}{}", if is_exported { " · Exported" } else { "" })));
+                        let facts = PosterFacts {
+                            id: s.id.clone(),
+                            title: s.title.clone(),
+                            stats: Some((have.clone(), stored.clone())),
+                            lines,
+                            button: reading.map(|r| PosterButton {
+                                id: format!("read-{}", s.id),
+                                aria: format!("{} {}", r.label, s.title),
+                                label: r.label,
+                                icon: "book-open",
+                                title: format!("Read {} in MangaPoint", s.title),
+                                fraction: r.fraction,
+                            }),
+                            not_installed: false,
+                        };
                         rsx! {
-                            div { class: if on { "poster on" } else { "poster" }, key: "{s.id}",
-                                div { class: "poster-art", title: "Open {s.title}",
-                                    onclick: move |_| {
-                                        if picked.read().is_empty() {
-                                            open_series_from_library(state, &open_id);
-                                        } else {
-                                            let mut p = picked.write();
-                                            if !p.remove(&open_id) { p.insert(open_id.clone()); }
-                                        }
-                                    },
+                            Poster { key: "{s.id}", facts, selected: on, selecting, menu_open,
+                                art: rsx! {
                                     if has_cover { Cover { key_id: cover_key } } else { NoCover {} }
                                     if queued {
                                         span { class: "poster-badge queued", title: "Downloading",
                                             Icon { name: "download", size: 12 }
                                         }
                                     }
-                                    button {
-                                        class: if on { "poster-check on" } else { "poster-check" },
-                                        title: if on { "Deselect" } else { "Select" },
-                                        onclick: move |e| {
-                                            e.stop_propagation();
-                                            let mut p = picked.write();
-                                            if !p.remove(&tick_id) { p.insert(tick_id.clone()); }
-                                        },
-                                        if on { Icon { name: "check", size: 14 } }
+                                },
+                                menu: rsx! {
+                                    button { class: "menu-item",
+                                        onclick: move |_| open_series_from_library(state, &view_id),
+                                        Icon { name: "book-open", size: 15 } "Open"
                                     }
-                                    button {
-                                        class: if menu_open { "poster-more open" } else { "poster-more" },
-                                        title: "More actions",
-                                        onclick: move |e| {
-                                            e.stop_propagation();
-                                            menu.set(if menu_open { None } else { Some(menu_id.clone()) });
-                                        },
-                                        Icon { name: "ellipsis", size: 16 }
-                                    }
-                                }
-                                if menu_open {
-                                    div { class: "menu-scrim", onclick: move |_| menu.set(None) }
-                                    div { class: "menu down",
+                                    if chapters > 0 {
                                         button { class: "menu-item",
-                                            onclick: move |_| { menu.set(None); open_series_from_library(state, &view_id); },
-                                            Icon { name: "book-open", size: 15 } "Open"
+                                            onclick: move |_| open_export(state, vec![export_id.clone()]),
+                                            Icon { name: "file-down", size: 15 } "Export…"
                                         }
-                                        if chapters > 0 {
-                                            button { class: "menu-item",
-                                                onclick: move |_| { menu.set(None); open_export(state, vec![export_id.clone()]); },
-                                                Icon { name: "file-down", size: 15 } "Export…"
-                                            }
+                                    }
+                                    if !s.is_imported() {
+                                        button { class: "menu-item",
+                                            onclick: move |_| open_plan(state, vec![plan_id.clone()]),
+                                            Icon { name: "download", size: 15 } "Download chapters…"
                                         }
-                                        if !s.is_imported() {
-                                            button { class: "menu-item",
-                                                onclick: move |_| { menu.set(None); open_plan(state, vec![plan_id.clone()]); },
-                                                Icon { name: "download", size: 15 } "Download chapters…"
-                                            }
-                                        }
-                                        if chapters > 0 && !s.is_imported() {
-                                            button { class: "menu-item danger",
-                                                onclick: move |_| { menu.set(None); state.ask(delete_modal.clone()); },
-                                                Icon { name: "trash", size: 15 } "Delete downloads"
-                                            }
-                                        }
+                                    }
+                                    if chapters > 0 && !s.is_imported() {
                                         button { class: "menu-item danger",
-                                            onclick: move |_| { menu.set(None); state.ask(remove_modal.clone()); },
-                                            Icon { name: "x", size: 15 } "Remove from library"
+                                            onclick: move |_| state.ask(delete_modal.clone()),
+                                            Icon { name: "trash", size: 15 } "Delete downloads"
                                         }
                                     }
-                                }
-                                // The text opens the series too, and lights up with the cover.
-                                div { class: "poster-text", title: "Open {s.title}",
-                                    onclick: move |_| {
-                                        if picked.read().is_empty() {
-                                            open_series_from_library(state, &text_id);
-                                        } else {
-                                            let mut p = picked.write();
-                                            if !p.remove(&text_id) { p.insert(text_id.clone()); }
-                                        }
-                                    },
-                                    strong { class: "poster-title", title: "{s.title}", "{s.title}" }
-                                    div { class: "poster-stats",
-                                        div { span { class: "poster-stat-label", "Chapters" } strong { "{have}" } }
-                                        div { span { class: "poster-stat-label", "Storage" } strong { "{stored}" } }
+                                    button { class: "menu-item danger",
+                                        onclick: move |_| state.ask(remove_modal.clone()),
+                                        Icon { name: "x", size: 15 } "Remove from library"
                                     }
-                                    if !about.is_empty() {
-                                        span { class: "muted small poster-about", title: "{about}", "{about}" }
-                                    }
-                                    span { class: "muted small poster-status",
-                                        {if s.is_imported() { "Imported" } else if chapters > 0 { "Downloaded" } else { "Saved for later" }}
-                                        if is_exported { " · Exported" }
-                                    }
-                                }
-                                if let Some(reading) = reading {
-                                    button {
-                                        class: "btn poster-read", id: "read-{s.id}", "data-series": "{s.id}",
-                                        "aria-label": "{reading.label} {s.title}", title: "Read {s.title} in MangaPoint",
-                                        onclick: move |_| state.open_reader(&read_id, None),
-                                        Icon { name: "book-open", size: 15 } "{reading.label}"
-                                    }
-                                    if let Some(done) = reading.fraction {
-                                        div { class: "progress poster-read-progress", "aria-label": "Read so far",
-                                            title: "{(done * 100.0).round()}% read",
-                                            div { style: "width: {(done * 100.0).round()}%" }
-                                        }
-                                    }
-                                }
+                                },
+                                on_open: move |_| open_series_from_library(state, &open_id),
+                                on_toggle: move |_| {
+                                    let mut p = picked.write();
+                                    if !p.remove(&tick_id) { p.insert(tick_id.clone()); }
+                                },
+                                on_menu: move |open: bool| menu.set(open.then(|| menu_id.clone())),
+                                on_button: move |_| state.open_reader(&read_id, None),
                             }
                         }
                     }
@@ -417,52 +377,42 @@ pub fn LibraryPage() -> Element {
         }
 
         if selecting {
-            div { class: "action-bar",
-                div { class: "bar-count",
-                    strong { "{chosen.len()} selected" }
-                    span { class: "muted small", "{human_bytes(chosen_bytes)} on this computer" }
-                }
-                button { class: "btn ghost small", onclick: move |_| {
-                        if all_ticked { picked.write().clear(); } else { picked.set(all_shown.iter().cloned().collect()); }
-                    },
-                    if all_ticked { "Select none" } else { "Select all" }
-                }
-                span { class: "grow" }
-                button { class: "btn primary", onclick: {
-                        let ids = chosen_ids.clone();
-                        move |_| { picked.write().clear(); open_plan(state, ids.clone()); }
-                    },
-                    Icon { name: "download", size: 16 } "Download…"
-                }
-                if !chosen_with_downloads.is_empty() {
-                    button { class: "btn", title: "Edit and export the downloaded chapters of the series you ticked",
-                        onclick: {
-                            let ids = chosen_with_downloads.clone();
-                            move |_| { picked.write().clear(); open_export(state, ids.clone()); }
+            ActionBar {
+                count: chosen.len(),
+                size: format!("{} on this computer", human_bytes(chosen_bytes)),
+                all_ticked,
+                on_all: move |all: bool| {
+                    if all { picked.set(all_shown.iter().cloned().collect()); } else { picked.write().clear(); }
+                },
+                buttons: rsx! {
+                    button { class: "btn primary", onclick: {
+                            let ids = chosen_ids.clone();
+                            move |_| { picked.write().clear(); open_plan(state, ids.clone()); }
                         },
-                        Icon { name: "file-down", size: 15 } "Export…"
+                        Icon { name: "download", size: 16 } "Download…"
                     }
-                }
-                div { class: "bar-menu",
-                    button { class: "btn", title: "More actions", onclick: move |_| more.set(!more()),
-                        Icon { name: "ellipsis", size: 18 }
-                    }
-                    if more() {
-                        div { class: "menu-scrim", onclick: move |_| more.set(false) }
-                        div { class: "menu up",
-                            if !chosen_with_downloads.is_empty() {
-                                button { class: "menu-item danger", title: "Delete the downloaded chapters but keep the series",
-                                    onclick: move |_| { more.set(false); state.ask(delete_modal.clone()); picked.write().clear(); },
-                                    Icon { name: "trash", size: 15 } "Delete downloads"
-                                }
-                            }
-                            button { class: "menu-item danger", title: "Take the series out of your library",
-                                onclick: move |_| { more.set(false); state.ask(remove_modal.clone()); picked.write().clear(); },
-                                Icon { name: "x", size: 15 } "Remove from library"
-                            }
+                    if !chosen_with_downloads.is_empty() {
+                        button { class: "btn", title: "Edit and export the downloaded chapters of the series you ticked",
+                            onclick: {
+                                let ids = chosen_with_downloads.clone();
+                                move |_| { picked.write().clear(); open_export(state, ids.clone()); }
+                            },
+                            Icon { name: "file-down", size: 15 } "Export…"
                         }
                     }
-                }
+                },
+                more: rsx! {
+                    if !chosen_with_downloads.is_empty() {
+                        button { class: "menu-item danger", title: "Delete the downloaded chapters but keep the series",
+                            onclick: move |_| { state.ask(delete_modal.clone()); picked.write().clear(); },
+                            Icon { name: "trash", size: 15 } "Delete downloads"
+                        }
+                    }
+                    button { class: "menu-item danger", title: "Take the series out of your library",
+                        onclick: move |_| { state.ask(remove_modal.clone()); picked.write().clear(); },
+                        Icon { name: "x", size: 15 } "Remove from library"
+                    }
+                },
             }
         }
     }

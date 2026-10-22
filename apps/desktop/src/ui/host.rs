@@ -54,23 +54,12 @@ impl Host for DesktopHost {
         });
     }
 
-    fn run_script(&self, name: &str, _args: String) {
-        let script = match name {
-            // Keep the row Enter would take in the reader adder in view.
-            "adder_scroll" => {
-                "const o = document.querySelector('.adder-opt.active'); \
-                 const l = o && o.closest('.adder-list'); \
-                 if (l) { \
-                   const lr = l.getBoundingClientRect(), r = o.getBoundingClientRect(); \
-                   if (r.top < lr.top) l.scrollTop += r.top - lr.top; \
-                   else if (r.bottom > lr.bottom) l.scrollTop += r.bottom - lr.bottom; \
-                 }"
-            }
-            _ => return,
-        };
-        spawn(async move {
-            let _ = document::eval(script).await;
-        });
+    fn run_script(&self, name: &str, args: String) {
+        if let Some(code) = mangapoint_ui::scripts::call(name, &args) {
+            spawn(async move {
+                let _ = document::eval(&code).await;
+            });
+        }
     }
 
     fn check_wifi(&self, url: String) -> LocalFuture<Result<(), String>> {

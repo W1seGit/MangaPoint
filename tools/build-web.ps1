@@ -71,8 +71,9 @@ foreach ($css in 'style.css', 'import.css', 'reader.css', 'editor-controls.css',
     Copy-Item (Join-Path $root "apps\desktop\src\$css") (Join-Path $dist 'css')
 }
 
-# The question-mark tips are the desktop app's own script too.
-Copy-Item (Join-Path $root 'apps\desktop\src\js\tooltip.js') (Join-Path $dist 'js')
+# The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.
+New-Item -ItemType Directory -Force (Join-Path $dist 'js\ui') | Out-Null
+Copy-Item (Join-Path $root 'crates\ui\js\*.js') (Join-Path $dist 'js\ui')
 
 Run node @((Join-Path $root 'tools\web-precache.mjs'), $dist)
 Write-Host "built: $dist"

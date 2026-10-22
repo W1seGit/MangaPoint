@@ -9,4 +9,5 @@ publish = false
 # No renderer: each app turns on its own (desktop or web).
 dioxus = { version = "0.7", default-features = false, features = ["macro", "html", "signals", "hooks"] }
 library = { path = "../library" }
+converter = { path = "../converter", features = ["serde"] }
 device-profiles = { path = "../device-profiles", features = ["serde"] }

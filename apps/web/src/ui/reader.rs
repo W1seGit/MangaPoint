@@ -2,7 +2,8 @@
 //! filled in by the browser's glue (`web/js/reader.js`) only while they are near
 //! the screen.
 
-use super::widgets::{EmptyState, Icon, SettingRow};
+use super::widgets::{EmptyState, Icon};
+use mangapoint_ui::reader::{EndCard, ReadPos, ReaderBar};
 use crate::app::{Ctx, Reading};
 use crate::bridge::{self, Event};
 use crate::model::Book;
@@ -10,6 +11,9 @@ use mangapoint_ui::logic::reader::{self as logic, Action, ReaderLook, ZoomChoice
 use dioxus::prelude::*;
 use serde_json::json;
 use web_engine::state::Prefs;
+
+/// How the zoom of the reader is changed, besides the menu.
+const ZOOM_HELP: &str = "Pinching, or Ctrl and the mouse wheel, also zoom.";
 
 // ---- opening and closing ----------------------------------------------------------------------
 
@@ -209,13 +213,15 @@ pub fn ReaderHost() -> Element {
     rsx! { ReaderScreen { key: "{r.opened}", opened: r.opened } }
 }
 
-fn on(yes: bool) -> &'static str {
-    if yes { "on" } else { "" }
-}
-
 #[component]
 fn ReaderScreen(opened: u64) -> Element {
     let ctx = use_context::<Ctx>();
+    // Where the reader is, for the caption at the bottom.
+    let pos = use_memo(move || {
+        let Some(r) = ctx.reading.read().clone() else { return ReadPos::default() };
+        let pages = ctx.library.read().find(&r.book_id).and_then(|b| b.chapters.get(r.chapter).map(|c| c.count)).unwrap_or(0);
+        ReadPos { page: r.page, pages, frac: r.scroll }
+    });
     let Some(r) = ctx.reading.read().clone() else { return rsx! {} };
     let book = ctx.library.read().find(&r.book_id).cloned();
     // Put the strip where the reader was, once it is drawn.
@@ -291,8 +297,16 @@ fn ReaderScreen(opened: u64) -> Element {
             style: "--zoom: {zoom};",
             ReaderBar {
                 title: book.title.clone(), chapter_label: label.clone(), items, current, look,
-                percent: logic::percent_finished(r.scroll),
-                page: (r.page + 1, chapter.count),
+                pos, always, zoom_help: ZOOM_HELP,
+                on_back: move |_| close_reader(ctx),
+                on_prev: move |_| { apply_action(ctx, Action::PrevChapter); set_reading(ctx, |r| r.bar = true); },
+                on_next: move |_| { apply_action(ctx, Action::NextChapter); set_reading(ctx, |r| r.bar = true); },
+                on_chapter: move |i: usize| open_chapter(ctx, i),
+                on_zoom: move |choice: ZoomChoice| {
+                    let zoom = logic::apply_zoom_choice(choice);
+                    set_prefs(ctx, |p| p.zoom = Some(zoom));
+                },
+                on_always: move |yes: bool| set_bars_always(ctx, yes),
             }
             main { class: "reader-stage", id: "reader-stage",
                 {
@@ -332,194 +346,6 @@ fn ReaderScreen(opened: u64) -> Element {
             }
             // Counts only for the compiler: the book's chapter counts drive the logic above.
             span { class: "reader-meta", hidden: true, "data-chapters": "{counts.len()}" }
-        }
-    }
-}
-
-/// The note at the end of a chapter, with the way on.
-#[component]
-fn EndCard(
-    title: String,
-    note: String,
-    prev: Option<String>,
-    next: Option<String>,
-    on_prev: EventHandler<()>,
-    on_next: EventHandler<()>,
-    on_back: EventHandler<()>,
-) -> Element {
-    rsx! {
-        div { class: "reader-end",
-            h2 { "{title}" }
-            if !note.is_empty() { p { class: "muted", "{note}" } }
-            div { class: "reader-end-buttons",
-                if let Some(prev) = prev {
-                    button { class: "btn", id: "reader-prev-chapter", "aria-label": "Previous chapter",
-                        onclick: move |_| on_prev.call(()),
-                        Icon { name: "arrow-left", size: 16 } "Previous \u{b7} {prev}"
-                    }
-                }
-                if let Some(next) = next {
-                    button { class: "btn primary", id: "reader-next-chapter", "aria-label": "Next chapter",
-                        onclick: move |_| on_next.call(()),
-                        "Next \u{b7} {next}" Icon { name: "arrow-right", size: 16 }
-                    }
-                } else {
-                    button { class: "btn", id: "reader-end-back", onclick: move |_| on_back.call(()),
-                        Icon { name: "book-open", size: 16 } "Back to your library"
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Chrome over the page: arrows and the chapter across the top, the way out,
-/// the title and how far along you are at the bottom, and the settings button.
-/// Both bars fade into the page, and slide away while reading.
-#[component]
-fn ReaderBar(
-    title: String,
-    chapter_label: String,
-    items: Vec<(usize, String, bool)>,
-    current: usize,
-    look: ReaderLook,
-    percent: u32,
-    /// The page at the top of the screen, and how many the chapter has.
-    page: (usize, usize),
-) -> Element {
-    let ctx = use_context::<Ctx>();
-    let mut menu = use_signal(|| false);
-    let mut settings = use_signal(|| false);
-    rsx! {
-        header { class: "reader-bar reader-top",
-            button { class: "reader-round", id: "reader-back", "aria-label": "Back to library", title: "Back to library (Esc)",
-                onclick: move |_| close_reader(ctx),
-                Icon { name: "book-open", size: 20 }
-            }
-            div { class: "reader-chapter-nav",
-            button { class: "reader-arrow", id: "reader-arrow-left", "aria-label": "Previous chapter", title: "Previous chapter",
-                onclick: move |_| { apply_action(ctx, Action::PrevChapter); set_reading(ctx, |r| r.bar = true); },
-                Icon { name: "chevron-left", size: 26 }
-            }
-            div { class: "menu-anchor reader-chapter-anchor",
-                button { class: "reader-chapter-link", id: "reader-chapter-picker", "aria-label": "Chapter", title: "Choose a chapter ( [ and ] )",
-                    onclick: move |_| menu.set(!menu()),
-                    span { class: "reader-chapter-text", "{chapter_label}" } Icon { name: "chevron-down", size: 14 }
-                }
-                if menu() {
-                    div { class: "menu-scrim", onclick: move |_| menu.set(false) }
-                    div { class: "menu down reader-menu", id: "reader-chapter-menu", role: "listbox",
-                        for (index, name, read) in items.iter().cloned() {
-                            button {
-                                key: "{index}", class: if index == current { "menu-item reader-chapter-item on" } else { "menu-item reader-chapter-item" },
-                                "data-index": "{index}", role: "option", "aria-selected": "{index == current}",
-                                onclick: move |_| { menu.set(false); open_chapter(ctx, index); },
-                                span { class: "grow", "{name}" }
-                                if read { span { class: "reader-read", title: "Read", Icon { name: "check", size: 14 } } }
-                            }
-                        }
-                    }
-                }
-            }
-            button { class: "reader-arrow", id: "reader-arrow-right", "aria-label": "Next chapter", title: "Next chapter",
-                onclick: move |_| { apply_action(ctx, Action::NextChapter); set_reading(ctx, |r| r.bar = true); },
-                Icon { name: "chevron-right", size: 26 }
-            }
-            }
-            button { class: "reader-round", id: "reader-view-button", "aria-label": "Reading settings", title: "Reading settings",
-                onclick: move |_| settings.set(true),
-                Icon { name: "settings", size: 20 }
-            }
-        }
-        footer { class: "reader-bar reader-bottom",
-            div { class: "reader-caption",
-                strong { id: "reader-title", title: "{title}", "{title}" }
-                span { class: "reader-percent", id: "reader-percent", "{percent}%" }
-                span { class: "sr-only", id: "reader-page-counter", "aria-label": "Page", "aria-live": "polite",
-                    "{page.0} / {page.1}"
-                }
-            }
-        }
-        if settings() {
-            ReaderSettings { look, on_close: move |_| settings.set(false) }
-        }
-    }
-}
-
-/// The reading settings, full screen: how the book is shown and how it is read.
-#[component]
-fn ReaderSettings(look: ReaderLook, on_close: EventHandler<()>) -> Element {
-    let ctx = use_context::<Ctx>();
-    let always = bars_always(ctx);
-    rsx! {
-        div { class: "reader-settings", id: "reader-settings", role: "dialog", "aria-label": "Reading settings",
-          div { class: "reader-settings-inner",
-            header { class: "reader-settings-head",
-                button { class: "reader-round", id: "reader-settings-close", "aria-label": "Back to the book", title: "Back to the book",
-                    onclick: move |_| on_close.call(()), Icon { name: "arrow-left", size: 20 }
-                }
-                h2 { "Reading settings" }
-            }
-            div { class: "reader-settings-body",
-                SettingRow { label: "Zoom", help: "Fit page suits the window: the full width of a phone, a comfortable column on a big screen. Pick a percentage to make it smaller or larger. Pinching, or Ctrl and the mouse wheel, also zoom.",
-                    ZoomMenu { look }
-                }
-                SettingRow { label: "Controls", help: "The bars with the chapter, the settings and your place can hide while you read, or stay on the screen.",
-                    div { class: "seg", role: "group", "aria-label": "Controls",
-                        button { id: "reader-bars-auto", class: on(!always), "aria-pressed": "{!always}",
-                            onclick: move |_| set_bars_always(ctx, false), "Hide while reading" }
-                        button { id: "reader-bars-always", class: on(always), "aria-pressed": "{always}",
-                            onclick: move |_| set_bars_always(ctx, true), "Always show" }
-                    }
-                }
-            }
-          }
-        }
-    }
-}
-
-/// The page zoom: a box showing it (type a percentage in it) and a list of ready-made ones,
-/// the same menu as the page preview in the desktop app.
-#[component]
-fn ZoomMenu(look: ReaderLook) -> Element {
-    let ctx = use_context::<Ctx>();
-    let mut open = use_signal(|| false);
-    let selected = logic::zoom_choice(look.zoom);
-    let mut choose = move |choice: ZoomChoice| {
-        let zoom = logic::apply_zoom_choice(choice);
-        set_prefs(ctx, |p| p.zoom = Some(zoom));
-        open.set(false);
-    };
-    let item = |c: ZoomChoice| if selected == c { "menu-item on" } else { "menu-item" };
-    rsx! {
-        div { class: if open() { "zoom-menu is-open" } else { "zoom-menu" },
-            div { class: "zoom-field",
-                span { class: "zoom-icon", Icon { name: "zoom-in", size: 15 } }
-                input {
-                    id: "reader-zoom-box", r#type: "text", value: "{selected.label()}", "aria-label": "Zoom", spellcheck: "false",
-                    onfocus: move |_| open.set(true),
-                    onchange: move |e| {
-                        if let Some(choice) = ZoomChoice::parse(&e.value()) { choose(choice); }
-                    },
-                }
-                button { class: "zoom-chevron", id: "reader-zoom-toggle", "aria-label": "Zoom choices", title: "Zoom choices", onclick: move |_| open.set(!open()),
-                    Icon { name: "chevron-down", size: 15 }
-                }
-            }
-            if open() {
-                div { class: "menu-scrim", onclick: move |_| open.set(false) }
-                div { class: "menu down zoom-list", id: "reader-zoom-list",
-                    button { class: item(ZoomChoice::Fit), id: "reader-fit-height", onclick: move |_| choose(ZoomChoice::Fit), "Fit page" }
-                    div { class: "menu-sep" }
-                    for percent in [25u16, 50, 75, 90, 125, 150, 200, 300, 400, 500] {
-                        button {
-                            key: "{percent}", class: item(ZoomChoice::Percent(percent)),
-                            onclick: move |_| choose(ZoomChoice::Percent(percent)),
-                            "{percent}%"
-                        }
-                    }
-                }
-            }
         }
     }
 }
