@@ -182,7 +182,7 @@ fn keep_all(ctx: Ctx) {
 }
 
 #[component]
-pub fn ImportHost() -> Element {
+pub fn BrowserImportHost() -> Element {
     let ctx = use_context::<Ctx>();
     let state = ctx.import.read().clone();
     if state.stage == ImportStage::Idle {
@@ -204,7 +204,7 @@ pub fn ImportHost() -> Element {
                     ImportStage::Analyzing(status) => rsx! {
                         div { class: "import-wait", id: "import-wait", Busy { label: "{status}" } }
                     },
-                    ImportStage::Review => rsx! { ReviewStage { state: state.clone() } },
+                    ImportStage::Review => rsx! { BrowserReviewStage { state: state.clone() } },
                     ImportStage::Keeping { title, done, total } => {
                         let fraction = if total > 1 { Some(done as f32 / total as f32) } else { None };
                         rsx! {
@@ -222,7 +222,7 @@ pub fn ImportHost() -> Element {
 }
 
 #[component]
-fn ReviewStage(state: ImportState) -> Element {
+fn BrowserReviewStage(state: ImportState) -> Element {
     let ctx = use_context::<Ctx>();
     let ready: Vec<&Review> = state.reviews.iter().filter(|r| r.problem().is_none()).collect();
     let pages: usize = ready.iter().map(|r| r.included_pages()).sum();
@@ -247,7 +247,7 @@ fn ReviewStage(state: ImportState) -> Element {
                 }
             }
             for (i, review) in state.reviews.iter().enumerate() {
-                BookCard { key: "{review.draft.draft_id}", index: i, review: review.clone() }
+                BrowserBookCard { key: "{review.draft.draft_id}", index: i, review: review.clone() }
             }
             if state.reviews.is_empty() {
                 p { class: "muted", "Nothing could be imported from what you chose." }
@@ -271,7 +271,7 @@ fn ReviewStage(state: ImportState) -> Element {
 }
 
 #[component]
-fn BookCard(index: usize, review: Review) -> Element {
+fn BrowserBookCard(index: usize, review: Review) -> Element {
     let ctx = use_context::<Ctx>();
     let mut leaving = use_signal(|| false);
     let mut filter = use_signal(String::new);

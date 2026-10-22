@@ -1,7 +1,7 @@
 //! The Library: the books kept in this browser, and the places waiting for
 //! their file, as cards in one grid. Cards can be selected for the bar at the bottom.
 
-use super::widgets::{Cover, EmptyState, Help, Icon, NoCover};
+use super::widgets::{BrowserCover, EmptyState, Help, Icon, NoCover};
 use crate::app::{Ctx, Modal, ModalAction};
 use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
@@ -34,7 +34,7 @@ fn kind_label(book: &Book) -> &'static str {
 }
 
 #[component]
-pub fn LibraryPage() -> Element {
+pub fn BrowserLibraryPage() -> Element {
     let ctx = use_context::<Ctx>();
     let mut view = use_signal(LibraryView::default);
     let mut sort = use_signal(LibrarySort::default);
@@ -186,7 +186,7 @@ pub fn LibraryPage() -> Element {
                         rsx! {
                             Poster { key: "{id}", facts, selected: is_on, selecting, menu_open,
                                 art: rsx! {
-                                    Cover { id: id.clone(), has_cover: b.has_cover }
+                                    BrowserCover { id: id.clone(), has_cover: b.has_cover }
                                     if needs_file {
                                         span { class: "poster-badge saved", title: "The browser did not keep this file", "Needs its file" }
                                     }

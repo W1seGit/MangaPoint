@@ -9,7 +9,9 @@
 }
 /* A phone must not enlarge the text by itself, pull the page about or flash what is tapped. */
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+/* Prevent browser overscroll and a sideways document outside the app panes. */
 html, body { overflow-x: hidden; overscroll-behavior: none; }
+/* Suppress the browser's default highlight on touch controls. */
 body { -webkit-tap-highlight-color: transparent; }
 #main { min-height: 100%; }
 
@@ -38,6 +40,7 @@ body.dragging .drop-overlay { display: flex; }
 .import-anchor .menu { right: 0; }
 /* Above the tab bar and the settings sheet of a phone. */
 .menu-scrim { z-index: 70; }
+/* Menus must sit above the browser tab bar and mobile settings sheet too. */
 .menu { z-index: 71; }
 
 @media (prefers-reduced-motion: reduce) {

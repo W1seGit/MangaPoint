@@ -8,8 +8,8 @@ files.
 * Import: CBZ and ZIP (also a ZIP of chapter folders), EPUB with pictures, a
   folder of pictures, loose pictures (choose, or drop on the page).
   **RAR, 7z and PDF are not supported on the web yet** (the page says so).
-* Read: paged or scroll, left to right or right to left, fit, zoom, chapter
-  picker, keyboard, tap zones, swipe, pinch.
+* Read: one continuous strip, fit, zoom, chapter picker, keyboard, taps to
+  show or hide the bars, and pinch.
 * Export: any reader the desktop app knows, plus "Phone or tablet - original
   quality" (CBZ or PDF), in a Web Worker with a progress bar and Cancel.
 * Install as an app (PWA); the library and the reader work offline.
@@ -33,7 +33,7 @@ files.
 |---|---|---|
 | OPFS (`books/<fingerprint>/...`) | the imported file (`book.bin` for an archive, one file per page for pictures) | written as a stream (`Blob.stream().pipeTo(writable)`), read back by `Blob.slice`. A 1.7 GB book is imported in seconds without entering the JS heap. |
 | IndexedDB `mangapoint` | `books` (what the library shows), `pages` (page table: offsets and measured sizes), `state` (reading state by fingerprint), `covers` (320 px thumbnails), `meta` (settings, the saved-file handle), `files` (fallback home of the bytes when there is no OPFS) | writes of reading progress are debounced (800 ms) and flushed on `visibilitychange` / `pagehide`. |
-| memory | blob URLs of pages on or near the screen | created on demand, revoked ~1.5 s after the page leaves; paged mode keeps the next two ready. Memory is O(visible pages). |
+| memory | blob URLs of pages on or near the screen | created on demand, revoked ~1.5 s after the page leaves. Memory is O(visible pages). |
 
 If the browser cannot keep a file (quota, private window) the book is read for
 the current visit only, is marked "Needs its file" afterwards, and importing the
@@ -56,7 +56,7 @@ A small JSON file (a few hundred bytes per book, no pictures). The engine
                "chapters": 3,
                "position": { "chapter": 1, "chapterName": "Ch. 3", "page": 3, "scroll": 0 },
                "chaptersRead": [0],
-               "prefs": { "mode": "Paged", "direction": "LeftToRight", "fit": "Height", "zoom": 100 },
+               "prefs": { "zoom": 100 },
                "lastReadAt": 1781000000000 } ],
   "settings": { "device": "xteink-x4-pro", "preset": "manga" } }
 ```
@@ -103,6 +103,7 @@ A small JSON file (a few hundred bytes per book, no pictures). The engine
 | `crates/ui` (`mangapoint-ui`) | what the website and the desktop app share: the art, the small widgets, the chapter table, and the logic behind the screens (reader keys and zoom, chapter sorting and ranges, the page editor's layout, number and date wording) |
 | `crates/ui/css/*.css` | the look shared with the desktop app, one file per screen, joined in the order of `crates/ui/css/ORDER` into `css/ui.css` at build time |
 | `web/css/*.css` | only what a browser and a phone add (safe areas, 44 px targets, bottom tab bar under 800 px, no sideways scroll), joined in the order of `web/css/ORDER` into `css/web.css` |
+| `crates/formats` | shared CBZ/EPUB/PDF byte writers, original-quality page helpers, ComicInfo and filename readers; desktop streams to files, browser writes to memory |
 | `crates/web-engine` | the engine: chapter guessing, fingerprints, state file, devices, options (`core`, linked into the page) and the converter/writers (`convert`, its own `.wasm`, loaded only by the export worker) |
 | `web/js` | browser glue as plain ES modules: `zip.js` (lazy ZIP reader), `store.js` (IndexedDB/OPFS), `importer.js`, `pages.js` (blob URL lifecycle), `reader.js` (tiles, keys, touch), `fsa.js`, `export-worker.js`, `mp.js` (the bridge) |
 | `web/sw.js`, `web/manifest.webmanifest`, `web/icons` | service worker template, manifest, icons (`tools/web-icons.py` makes them from the desktop icon) |
@@ -125,7 +126,8 @@ the desktop style sheets, then `tools/web-precache.mjs` hashes every file and
 writes `sw.js` with a versioned precache list (the version is a hash of all
 files, so any change is a new cache and the old one is deleted).
 
-Tests: `cargo test -p mangapoint-web -p web-engine`, `node --test web/js/test`,
+Tests: `cargo test -p formats -p mangapoint-ui -p mangapoint-web -p web-engine`,
+`node --test web/js/test`,
 and the real-browser suites in `tools/web-e2e/` (see its README).
 
 ## Hosting

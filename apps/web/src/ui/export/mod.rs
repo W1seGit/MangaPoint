@@ -20,7 +20,7 @@ use mangapoint_ui::export::{Panel, Split};
 use library::ConversionSettings;
 pub use mangapoint_ui::logic::preview::Zoom;
 use mangapoint_ui::logic::preview::{PageSlot, SlotPart};
-use panels::{BookPanel, ChaptersPanel, EditPanel, ExportFooter, PresetsPanel, RunCard, SendPanel};
+use panels::{BookPanel, BrowserChaptersPanel, BrowserEditPanel, BrowserExportFooter, BrowserPresetsPanel, RunCard, BrowserSendPanel};
 use preview::Preview;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -698,7 +698,7 @@ fn request_preview(ctx: Ctx) {
 }
 
 #[component]
-pub fn ExportPage() -> Element {
+pub fn BrowserExportPage() -> Element {
     let ctx = use_context::<Ctx>();
     // Open on the first book when none was chosen (done after drawing, never during it).
     use_effect(move || {
@@ -755,14 +755,14 @@ pub fn ExportPage() -> Element {
 
     let panels_left = rsx! {
         if !original {
-            PresetsPanel { book: book.clone(), open: true }
-            EditPanel { open: !narrow }
+            BrowserPresetsPanel { book: book.clone(), open: true }
+            BrowserEditPanel { open: !narrow }
         }
         BookPanel { books: usable.clone(), book: book.clone(), open: !narrow }
     };
     let panels_right = rsx! {
-        ChaptersPanel { book: book.clone(), open: !narrow }
-        SendPanel { book: book.clone(), open: !narrow }
+        BrowserChaptersPanel { book: book.clone(), open: !narrow }
+        BrowserSendPanel { book: book.clone(), open: !narrow }
     };
 
     if narrow {
@@ -790,9 +790,9 @@ pub fn ExportPage() -> Element {
             div { class: "export-body",
                 aside { class: if original { "export-side left alone" } else { "export-side left" },
                     if !original {
-                        PresetsPanel { book: book.clone(), open: true }
+                        BrowserPresetsPanel { book: book.clone(), open: true }
                         Split { target: "presets", dir: 1 }
-                        EditPanel { open: true }
+                        BrowserEditPanel { open: true }
                         Split { target: "series", dir: -1 }
                     }
                     BookPanel { books: usable.clone(), book: book.clone(), open: true }
@@ -801,11 +801,11 @@ pub fn ExportPage() -> Element {
                 main { class: "export-center", Preview { book: book.clone() } }
                 aside { class: "export-side right",
                     div { class: "px-split-v", "data-split": "right", title: "Drag to make this column wider or narrower" }
-                    ChaptersPanel { book: book.clone(), open: true }
+                    BrowserChaptersPanel { book: book.clone(), open: true }
                     Split { target: "send", dir: -1 }
-                    SendPanel { book: book.clone(), open: true }
+                    BrowserSendPanel { book: book.clone(), open: true }
                     RunCard { book: book.clone() }
-                    ExportFooter { book: book.clone(), compact: false }
+                    BrowserExportFooter { book: book.clone(), compact: false }
                 }
             }
         }
@@ -824,7 +824,7 @@ fn BottomBar(sheet: bool) -> Element {
     rsx! {
         div { class: "xm-bottom",
             RunCard { book: book.clone() }
-            ExportFooter { book, compact: true }
+            BrowserExportFooter { book, compact: true }
             button { class: "xm-settings-tab", id: "export-settings-tab", "aria-expanded": "{sheet}",
                 onclick: move |_| edit(ctx, |e| e.sheet = !e.sheet),
                 Icon { name: chevron, size: 16 }

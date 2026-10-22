@@ -75,7 +75,7 @@ fn save_state(ctx: Ctx, choose: bool) {
 }
 
 #[component]
-pub fn SettingsPage() -> Element {
+pub fn BrowserSettingsPage() -> Element {
     let ctx = use_context::<Ctx>();
     let mut info = use_signal(StorageInfo::default);
     let mut refresh = use_signal(|| 0u32);
@@ -226,7 +226,7 @@ pub fn SettingsPage() -> Element {
                     Section::Readers => rsx! {
                         super::readers::ReadersEditor {}
                     },
-                    Section::App => rsx! {
+                    Section::BrowserApp => rsx! {
                         h2 { class: "sx-group", "App" }
                         div { id: "app-card",
                             SettingRow {
@@ -397,7 +397,7 @@ fn DeskSlider() -> Element {
 pub enum Section {
     Library,
     Readers,
-    App,
+    BrowserApp,
     About,
 }
 
@@ -415,6 +415,6 @@ impl Section {
 const SECTIONS: [(Section, &str, &str, &str); 4] = [
     (Section::Library, "hard-drive", "Your library", "library"),
     (Section::Readers, "hard-drive", "Your reader", "reader"),
-    (Section::App, "download", "App", "app"),
+    (Section::BrowserApp, "download", "App", "app"),
     (Section::About, "info", "About", "about"),
 ];

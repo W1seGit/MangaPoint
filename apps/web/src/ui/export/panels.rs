@@ -12,8 +12,8 @@ use crate::bridge::{self};
 use crate::ui::readers::ReaderPicker;
 use crate::format::{human_bytes, human_duration, plural};
 use crate::model::Book;
-use mangapoint_ui::logic::chapters::select_by_text;
-use crate::ui::widgets::{Chip, Cover, Help, Icon, ProgressBar};
+use mangapoint_ui::export::ChapterRangeBar;
+use crate::ui::widgets::{Chip, BrowserCover, Help, Icon, ProgressBar};
 use dioxus::prelude::*;
 use library::PresetEntry;
 use serde_json::json;
@@ -36,7 +36,7 @@ enum Kind {
 /// One preset in the list. Choosing it uses it, showing what it is for; one of your own shows its
 /// name as a box to rename it by, and a save and a delete button while it is chosen or pointed at.
 #[component]
-fn PresetItem(kind: Kind, id: String, name: String, description: String, settings: library::ConversionSettings, on: bool) -> Element {
+fn BrowserPresetItem(kind: Kind, id: String, name: String, description: String, settings: library::ConversionSettings, on: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let current = ctx.export.read().opts.settings.clone();
     let edited = on && is_edited(&current, &settings);
@@ -108,7 +108,7 @@ fn PresetItem(kind: Kind, id: String, name: String, description: String, setting
 }
 
 #[component]
-pub fn PresetsPanel(book: Book, open: bool) -> Element {
+pub fn BrowserPresetsPanel(book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let entries: Vec<PresetEntry> = ctx.presets.read().all();
     let e = ctx.export.read().clone();
@@ -129,7 +129,7 @@ pub fn PresetsPanel(book: Book, open: bool) -> Element {
         Panel { title: "Presets", icon: "layers", id: "presets", height: 280, open,
             div { class: "px-list", id: "export-preset",
                 if let Some(last) = last {
-                    PresetItem {
+                    BrowserPresetItem {
                         key: "{book.id}-last",
                         kind: Kind::Last, id: LAST.to_string(), name: "Last export",
                         description: format!("The settings this book was last exported with ({}), so the next part matches the first. Only an export changes it.", crate::format::ago(bridge::now_ms() / 1000, last.at / 1000)),
@@ -137,13 +137,13 @@ pub fn PresetsPanel(book: Book, open: bool) -> Element {
                     }
                 }
                 for p in builtins.iter() {
-                    PresetItem {
+                    BrowserPresetItem {
                         key: "{p.preset.id}", kind: Kind::Builtin, id: p.preset.id.clone(), name: p.preset.name.clone(),
                         description: p.preset.description.clone(), settings: p.preset.settings.clone(), on: e.preset == p.preset.id,
                     }
                 }
                 for p in mine.iter() {
-                    PresetItem {
+                    BrowserPresetItem {
                         key: "{p.preset.id}", kind: Kind::Mine, id: p.preset.id.clone(), name: p.preset.name.clone(),
                         description: p.preset.description.clone(), settings: p.preset.settings.clone(), on: e.preset == p.preset.id,
                     }
@@ -168,7 +168,7 @@ pub fn PresetsPanel(book: Book, open: bool) -> Element {
 // ---- edit ------------------------------------------------------------------------------------
 
 #[component]
-pub fn EditPanel(open: bool) -> Element {
+pub fn BrowserEditPanel(open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let value = ctx.export.read().opts.settings.clone();
     rsx! {
@@ -193,7 +193,7 @@ pub fn BookPanel(books: Vec<Book>, book: Book, open: bool) -> Element {
     rsx! {
         Panel { title: "Book", icon: "book-open", id: "series", height: 150, open,
             div { class: "px-layer on",
-                div { class: "px-layer-cover", Cover { id: book.id.clone(), has_cover: book.has_cover } }
+                div { class: "px-layer-cover", BrowserCover { id: book.id.clone(), has_cover: book.has_cover } }
                 div { class: "px-layer-text",
                     strong { "{book.title}" }
                     span { class: "muted small", "{plural(book.chapters.len(), \"chapter\")} \u{b7} {plural(book.page_count, \"page\")}" }
@@ -217,71 +217,24 @@ pub fn BookPanel(books: Vec<Book>, book: Book, open: bool) -> Element {
 
 // ---- chapters --------------------------------------------------------------------------------
 
-/// The bar at the top of the Chapters panel: Every chapter, and a range to export.
 #[component]
-fn ChapterRangeBar(all_on: bool, count: usize, numbers: Vec<Option<f64>>) -> Element {
-    let ctx = use_context::<Ctx>();
-    let mut range_text = use_signal(String::new);
-    let mut range_error = use_signal(|| None::<String>);
-    rsx! {
-        div { class: "px-sticky",
-            div { class: "px-all-row",
-                label { class: "px-all",
-                    input {
-                        r#type: "checkbox", id: "export-all", checked: all_on,
-                        onchange: move |_| {
-                            edit(ctx, |e| e.chosen = if all_on { BTreeSet::new() } else { (0..count).collect() });
-                            range_error.set(None);
-                        },
-                    }
-                    span { "Every chapter" }
-                }
-                form {
-                    class: "px-range",
-                    onsubmit: move |e| {
-                        e.prevent_default();
-                        match select_by_text(&range_text.read(), &numbers) {
-                            Ok(found) if found.is_empty() => {
-                                // Nothing changes: leaving the export empty by accident is worse.
-                                range_error.set(Some("no chapter of this book has a number in that range".into()));
-                            }
-                            Ok(found) => {
-                                range_error.set(None);
-                                edit(ctx, |e| e.chosen = found.into_iter().collect());
-                            }
-                            Err(msg) => range_error.set(Some(msg)),
-                        }
-                    },
-                    input {
-                        r#type: "text", id: "export-range", placeholder: "Range: 1-20, 25, 30-",
-                        title: "Export only these chapters. Press Enter or Select.",
-                        value: "{range_text}",
-                        oninput: move |e| range_text.set(e.value()),
-                    }
-                    button { class: "btn small", r#type: "submit", "Select" }
-                }
-            }
-            if let Some(msg) = range_error() {
-                p { class: "px-range-error", "{msg}" }
-            }
-        }
-    }
-}
-
-#[component]
-pub fn ChaptersPanel(book: Book, open: bool) -> Element {
+pub fn BrowserChaptersPanel(book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
     let done = ctx.last_exports.read().get(&book.id).map(|l| l.done.clone()).unwrap_or_default();
     let included = e.chosen.len();
     let all_on = included == book.chapters.len();
+    let chapter_count = book.chapters.len();
     let numbers: Vec<Option<f64>> = book.chapters.iter().map(|c| c.number).collect();
     let running = matches!(e.run, Run::Running { .. });
     rsx! {
         Panel {
             title: "Chapters", icon: "list-checks", id: "chapters", open,
             actions: rsx! { span { class: "muted small", "{included} of {book.chapters.len()}" } },
-            ChapterRangeBar { all_on, count: book.chapters.len(), numbers }
+            ChapterRangeBar { all_on, numbers, item_name: "book",
+                on_all: move |yes| edit(ctx, |e| e.chosen = if yes { (0..chapter_count).collect() } else { BTreeSet::new() }),
+                on_range: move |found: Vec<usize>| edit(ctx, |e| e.chosen = found.into_iter().collect()),
+            }
             div { class: "px-chapters", id: "export-chapters",
                 for (i, c) in book.chapters.iter().enumerate() {
                     {
@@ -324,7 +277,7 @@ pub fn ChaptersPanel(book: Book, open: bool) -> Element {
 /// format, the colour of the pages and how the files are split. The files are downloaded, so the
 /// app's "Send to" (folder, USB, Wi-Fi) has nothing to choose here.
 #[component]
-pub fn SendPanel(book: Book, open: bool) -> Element {
+pub fn BrowserSendPanel(book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
     let setup = ctx.ui.settings.read().reader_setup();
@@ -459,7 +412,7 @@ fn format_help(t: FileType) -> &'static str {
 
 /// Totals, and the button that starts the export.
 #[component]
-pub fn ExportFooter(book: Book, compact: bool) -> Element {
+pub fn BrowserExportFooter(book: Book, compact: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
     let running = matches!(e.run, Run::Running { .. });

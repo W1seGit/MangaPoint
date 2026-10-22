@@ -210,11 +210,11 @@ pub fn handle_reader_event(ctx: Ctx, ev: Event) {
 pub fn ReaderHost() -> Element {
     let ctx = use_context::<Ctx>();
     let Some(r) = ctx.reading.read().clone() else { return rsx! {} };
-    rsx! { ReaderScreen { key: "{r.opened}", opened: r.opened } }
+    rsx! { BrowserReaderScreen { key: "{r.opened}", opened: r.opened } }
 }
 
 #[component]
-fn ReaderScreen(opened: u64) -> Element {
+fn BrowserReaderScreen(opened: u64) -> Element {
     let ctx = use_context::<Ctx>();
     // Where the reader is, for the caption at the bottom.
     let pos = use_memo(move || {

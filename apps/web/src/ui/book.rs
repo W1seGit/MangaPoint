@@ -2,7 +2,7 @@
 //! from any of them), and the way to add more chapters to it. The app's series overview, for a book
 //! of your own.
 
-use super::widgets::{Cover, EmptyState, Help, Icon};
+use super::widgets::{BrowserCover, EmptyState, Help, Icon};
 use crate::app::{Ctx, Modal, ModalAction, Page};
 use crate::bridge;
 use crate::format::{human_bytes, plural};
@@ -123,7 +123,7 @@ pub fn BookPage() -> Element {
         }
         div { class: "overview", id: "book-overview", "data-book": "{book.id}",
             div { class: "overview-cover",
-                Cover { id: book.id.clone(), has_cover: book.has_cover }
+                BrowserCover { id: book.id.clone(), has_cover: book.has_cover }
             }
             div { class: "overview-body",
                 div { class: "overview-title",

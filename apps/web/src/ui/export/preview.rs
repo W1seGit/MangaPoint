@@ -8,14 +8,14 @@ use super::{edit, Look, PageSource, Zoom};
 use crate::app::Ctx;
 use crate::bridge;
 use crate::model::Book;
-use crate::ui::widgets::{EmptyState, Icon, Loading, ZoomDropdown, ZoomPick};
+use crate::ui::widgets::{EmptyState, Icon, Loading};
 use dioxus::prelude::*;
 use mangapoint_ui::logic::preview::{groups, part_note, reader_style, row_height, seams, PageSlot, Seam};
 use serde_json::json;
 
 /// One page of the chapter in the scrolling list: the page as the reader will show it.
 #[component]
-fn EditorRow(index: usize, selected: bool, url: String, label: String, row_style: String, frame_style: String, seam: Option<Seam>) -> Element {
+fn BrowserEditorRow(index: usize, selected: bool, url: String, label: String, row_style: String, frame_style: String, seam: Option<Seam>) -> Element {
     let ctx = use_context::<Ctx>();
     let mut failed = use_signal(|| false);
     rsx! {
@@ -62,7 +62,7 @@ fn EditorRow(index: usize, selected: bool, url: String, label: String, row_style
 /// The source artwork beside a group of reader pages. It stays in view while any of the group's
 /// pages is. It is the picture as it was imported, never the split.
 #[component]
-fn SourceCell(first: usize, count: usize, original: Option<(String, u32, u32)>) -> Element {
+fn BrowserSourceCell(first: usize, count: usize, original: Option<(String, u32, u32)>) -> Element {
     rsx! {
         div { class: "source-cell source-pane", style: "grid-row: 1 / span {count};",
             div { class: "source-sticky",
@@ -84,28 +84,10 @@ fn SourceCell(first: usize, count: usize, original: Option<(String, u32, u32)>) 
 
 /// The zoom of the page preview, in the shared zoom menu.
 #[component]
-fn ZoomMenu() -> Element {
+fn BrowserZoomMenu() -> Element {
     let ctx = use_context::<Ctx>();
-    let selected = match ctx.export.read().zoom {
-        Zoom::Fit => ZoomPick::Fit,
-        Zoom::Width => ZoomPick::Width,
-        Zoom::Custom(percent) => ZoomPick::Percent(percent),
-    };
-    rsx! {
-        ZoomDropdown {
-            selected,
-            percents: vec![50u16, 75, 90, 100, 125, 150, 200],
-            min: Zoom::MIN_PERCENT,
-            max: Zoom::MAX_PERCENT,
-            onpick: move |pick| {
-                edit(ctx, |e| e.zoom = match pick {
-                    ZoomPick::Fit => Zoom::Fit,
-                    ZoomPick::Width => Zoom::Width,
-                    ZoomPick::Percent(percent) => Zoom::Custom(percent),
-                });
-            },
-        }
-    }
+    let zoom = ctx.export.read().zoom;
+    rsx! { mangapoint_ui::export::PreviewZoom { zoom, on_change: move |zoom| { edit(ctx, |e| e.zoom = zoom); } } }
 }
 
 /// Show page `index`: scroll the list and the thumbnails to it.
@@ -157,7 +139,7 @@ fn OriginalPages(book: Book) -> Element {
                     span { class: "muted", "/ {total}" }
                 }
                 div { class: "editor-toolbar-actions",
-                    ZoomMenu {}
+                    BrowserZoomMenu {}
                 }
             }
             div { class: "editor-body",
@@ -282,7 +264,7 @@ pub fn Preview(book: Book) -> Element {
                     span { class: "muted", "/ {total}" }
                 }
                 div { class: "editor-toolbar-actions",
-                    ZoomMenu {}
+                    BrowserZoomMenu {}
                 }
             }
             if let Look::Failed(message) = &e.look { div { class: "banner bad small", "{message}" } }
@@ -345,7 +327,7 @@ pub fn Preview(book: Book) -> Element {
                                 },
                                 style: "{row_style}",
                                 if compare {
-                                    SourceCell {
+                                    BrowserSourceCell {
                                         first: start,
                                         count: end - start,
                                         original: match sources[start].image {
@@ -364,7 +346,7 @@ pub fn Preview(book: Book) -> Element {
                                     }
                                 }
                                 for i in start..end {
-                                    EditorRow {
+                                    BrowserEditorRow {
                                         key: "{chapter}/{i}",
                                         index: i,
                                         selected: i == selected,

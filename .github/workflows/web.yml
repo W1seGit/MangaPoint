@@ -12,7 +12,10 @@ on:
       - "web/**"
       - "tools/*web*"
       - "tools/web-e2e/**"
+      - "tools/check-architecture.mjs"
+      - "tools/shared-ui.test.mjs"
       - "crates/ui/**"
+      - "crates/formats/**"
       - ".github/workflows/web.yml"
   workflow_dispatch:
     inputs:
@@ -49,13 +52,18 @@ jobs:
       - name: wasm-bindgen CLI
         run: cargo install wasm-bindgen-cli --version "$WASM_BINDGEN_VERSION" --locked
 
+      - name: Shared architecture and page scripts
+        run: |
+          node tools/check-architecture.mjs
+          node --test tools/shared-ui.test.mjs
+
       - name: Clippy (page and engine, native and WebAssembly)
         run: |
           cargo clippy -p mangapoint-web -p mangapoint-ui -p web-engine --all-targets --locked -- -D warnings
           cargo clippy -p mangapoint-web --target wasm32-unknown-unknown --locked -- -D warnings
 
       - name: Native tests
-        run: cargo test -p mangapoint-web -p mangapoint-ui -p web-engine --locked
+        run: cargo test -p formats -p mangapoint-web -p mangapoint-ui -p web-engine --locked
 
       - name: Build the site
         run: bash tools/build-web.sh

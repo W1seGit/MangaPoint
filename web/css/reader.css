@@ -10,4 +10,5 @@
 .reader[data-hpan="no"] .reader-stage { touch-action: pan-y; }
 /* A touch target, and a menu that follows the phone's address bar. */
 .reader-end .btn { min-height: 44px; }
+/* Keep the chapter list within the browser's changing viewport height. */
 .reader-menu { max-height: 60vh; max-height: 60dvh; }

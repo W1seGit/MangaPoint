@@ -6,7 +6,7 @@
 (function () {
   const MP = (window.MP = window.MP || {});
   MP.preview_editor = {
-    start(report) {
+    start(onReport) {
       let tries = 0;
       const start = () => {
        // The editor that is not wired yet: switching between the converted pages and the original ones
@@ -48,7 +48,7 @@
          if (cur < 0 && b.bottom > probe) cur = i;
         }
         const message = lo + ',' + hi + ',' + cur;
-        if (message !== last) { last = message; report([lo, hi, cur]); }
+        if (message !== last) { last = message; onReport([lo, hi, cur]); }
        };
        const run = () => { frame = 0; if (root.isConnected) { fit(); report(); } };
        const later = () => { if (!frame) frame = requestAnimationFrame(run); };

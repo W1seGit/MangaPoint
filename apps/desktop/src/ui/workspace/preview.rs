@@ -1,9 +1,9 @@
 //! The page editor: every page of a chapter in one continuous scroll, like a
 //! PDF viewer, with the original beside each converted page.
 use super::crop_editor::SourceCanvas;
-use crate::state::{AppState, Shot, Zoom};
+use crate::state::{AppState, Shot};
 use crate::ui::cat::CirclingCat;
-use crate::ui::widgets::{EmptyState, Icon, ZoomDropdown, ZoomPick};
+use crate::ui::widgets::{EmptyState, Icon};
 use crate::ui::work::{prepare_preview, schedule_preview, select_preview_page};
 use converter::plan::Source;
 use dioxus::prelude::*;
@@ -270,26 +270,8 @@ fn track_scroll(state: AppState, first: i64, last: i64, current: i64) {
 #[component]
 pub(crate) fn ZoomMenu() -> Element {
     let mut state = use_context::<AppState>();
-    let selected = match state.preview.read().view.zoom {
-        Zoom::Fit => ZoomPick::Fit,
-        Zoom::Width => ZoomPick::Width,
-        Zoom::Custom(percent) => ZoomPick::Percent(percent),
-    };
-    rsx! {
-        ZoomDropdown {
-            selected,
-            percents: vec![50u16, 75, 90, 100, 125, 150, 200],
-            min: Zoom::MIN_PERCENT,
-            max: Zoom::MAX_PERCENT,
-            onpick: move |pick| {
-                state.preview.write().view.zoom = match pick {
-                    ZoomPick::Fit => Zoom::Fit,
-                    ZoomPick::Width => Zoom::Width,
-                    ZoomPick::Percent(percent) => Zoom::Custom(percent),
-                };
-            },
-        }
-    }
+    let zoom = state.preview.read().view.zoom;
+    rsx! { mangapoint_ui::export::PreviewZoom { zoom, on_change: move |zoom| { state.preview.write().view.zoom = zoom; } } }
 }
 
 #[component]

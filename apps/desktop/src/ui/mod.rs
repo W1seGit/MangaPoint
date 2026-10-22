@@ -162,7 +162,7 @@ pub fn App() -> Element {
                 BootState::Starting { message, percent } if !state.engine_installed => rsx! { Splash { message, percent } },
                 _ => rsx! { Shell {} },
             }}
-            ModalHost {}
+            DesktopConfirmation {}
             UnsavedHost {}
             download_dialog::DownloadDialogHost {}
             update_dialog::UpdateDialogHost {}
@@ -323,41 +323,19 @@ fn ShortcutKeys() -> Element {
 
 /// Confirmation dialogs.
 #[component]
-fn ModalHost() -> Element {
+fn DesktopConfirmation() -> Element {
     let state = use_context::<AppState>();
-    let modal = state.modal.read().clone();
-    let Some(modal) = modal else { return rsx! {} };
-    let confirm_class = if modal.danger {
-        "btn danger"
-    } else {
-        "btn primary"
-    };
-    let action = modal.action.clone();
+    let Some(modal) = state.modal.read().clone() else { return rsx! {} };
     rsx! {
-        div { class: "overlay",
-            div { class: "modal",
-                h2 { "{modal.title}" }
-                p { "{modal.body}" }
-                div { class: "actions",
-                    button {
-                        class: "btn",
-                        onclick: move |_| {
-                            let mut m = state.modal;
-                            m.set(None);
-                        },
-                        "{modal.cancel}"
-                    }
-                    button {
-                        class: "{confirm_class}",
-                        onclick: move |_| {
-                            let mut m = state.modal;
-                            m.set(None);
-                            run_action(state, action.clone());
-                        },
-                        "{modal.confirm}"
-                    }
-                }
-            }
+        mangapoint_ui::dialogs::Confirmation {
+            title: modal.title, body: modal.body, confirm: modal.confirm, cancel: modal.cancel,
+            danger: modal.danger, dismiss_outside: false,
+            on_cancel: move |_| { let mut m = state.modal; m.set(None); },
+            on_confirm: move |_| {
+                let mut m = state.modal;
+                m.set(None);
+                run_action(state, modal.action.clone());
+            },
         }
     }
 }

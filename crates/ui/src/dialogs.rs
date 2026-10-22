@@ -91,3 +91,25 @@ pub fn ToastHost() -> Element {
         }
     }
 }
+
+/// Confirmation shell shared by both apps; each host owns its action and visibility.
+#[component]
+pub fn Confirmation(
+    title: String, body: String, confirm: String, cancel: String, danger: bool,
+    #[props(default = false)] dismiss_outside: bool,
+    on_cancel: EventHandler<()>, on_confirm: EventHandler<()>,
+) -> Element {
+    let confirm_class = if danger { "btn danger" } else { "btn primary" };
+    rsx! {
+        div { class: "overlay", onclick: move |_| { if dismiss_outside { on_cancel.call(()); } },
+            div { class: "modal", role: "dialog", "aria-modal": "true", onclick: move |e| e.stop_propagation(),
+                h2 { "{title}" }
+                p { "{body}" }
+                div { class: "actions",
+                    button { class: "btn", id: "modal-cancel", onclick: move |_| on_cancel.call(()), "{cancel}" }
+                    button { class: confirm_class, id: "modal-confirm", onclick: move |_| on_confirm.call(()), "{confirm}" }
+                }
+            }
+        }
+    }
+}

@@ -7,7 +7,7 @@ pub use mangapoint_ui::widgets::*;
 /// The cover of a book: the browser fills the picture from the thumbnail it
 /// kept; a book without one shows the placeholder.
 #[component]
-pub fn Cover(id: String, has_cover: bool) -> Element {
+pub fn BrowserCover(id: String, has_cover: bool) -> Element {
     if !has_cover {
         return rsx! { NoCover {} };
     }

@@ -35,5 +35,5 @@ pub fn mp_guess_chapters(input_json: &str) -> Result<String, wasm_bindgen::JsErr
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen::prelude::wasm_bindgen(start)]
 pub fn start() {
-    dioxus::launch(app::App);
+    dioxus::launch(app::BrowserApp);
 }

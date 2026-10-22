@@ -31,19 +31,24 @@ function TargetDir([string]$Name) {
 $desk = TargetDir 'target-desk'
 $web = TargetDir 'target-web'
 
+Step 'shared architecture boundaries' { node (Join-Path $PSScriptRoot 'check-architecture.mjs') }
+Step 'shared page script behavior' { node --test (Join-Path $PSScriptRoot 'shared-ui.test.mjs') }
 Step 'desktop app builds' { $env:CARGO_TARGET_DIR = $desk; cargo build -p mangapoint }
 Step 'website builds (wasm32)' { $env:CARGO_TARGET_DIR = $web; cargo check -p mangapoint-web --target wasm32-unknown-unknown }
-Step 'clippy, warnings are errors (as in CI)' { $env:CARGO_TARGET_DIR = $desk; cargo clippy --workspace --all-targets --locked -- -D warnings }
+Step 'clippy, warnings are errors (as in CI)' { $env:CARGO_TARGET_DIR = $desk; cargo clippy --workspace --all-targets --features catalog/fake,converter/decode --locked -- -D warnings }
 Step 'clippy for the website (wasm32)' { $env:CARGO_TARGET_DIR = $web; cargo clippy -p mangapoint-web --target wasm32-unknown-unknown --locked -- -D warnings }
+Step 'formats readers without writer codecs' { $env:CARGO_TARGET_DIR = $desk; cargo test -p formats --no-default-features --locked }
+Step 'browser conversion engine (wasm32)' { $env:CARGO_TARGET_DIR = $web; cargo clippy -p web-engine --target wasm32-unknown-unknown --locked -- -D warnings }
 Step 'unit tests' {
     $env:CARGO_TARGET_DIR = $desk
-    cargo test -p library -p converter -p device-profiles -p pipeline -p web-engine -p mangapoint-ui -p mangapoint -p mangapoint-web
+    cargo test --workspace --features catalog/fake,converter/decode --locked
 }
 Step 'web engine parity with the desktop' { $env:CARGO_TARGET_DIR = $desk; cargo test -p web-engine --test parity }
 
 if (-not $Quick) {
     if (-not $SkipWeb) {
         Step 'website build' { $env:CARGO_TARGET_DIR = $web; powershell -NoProfile -File (Join-Path $PSScriptRoot 'build-web.ps1') }
+        Step 'browser JavaScript tests' { node --test (Join-Path $root 'web/js/test/*.test.js') }
         Step 'website browser tests (every suite, three sizes)' { node (Join-Path $PSScriptRoot 'web-e2e/run-all.mjs') }
     }
     if (-not $SkipDesktop) {

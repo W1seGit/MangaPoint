@@ -245,7 +245,7 @@ pub fn current_iso() -> String {
 }
 
 #[component]
-pub fn App() -> Element {
+pub fn BrowserApp() -> Element {
     let ui_state = use_hook(|| UiState::new(library::Settings::default()));
     let ctx = Ctx {
         ui: ui_state,
@@ -349,11 +349,11 @@ pub fn App() -> Element {
                     button { class: "btn primary", onclick: move |_| { let _ = web_sys_reload(); }, "Try again" }
                 }
             },
-            Boot::Ready => rsx! { Shell {} },
+            Boot::Ready => rsx! { BrowserShell {} },
         }}
-        ModalHost {}
+        WebConfirmation {}
         UnsavedHost {}
-        ui::import::ImportHost {}
+        ui::import::BrowserImportHost {}
         ToastHost {}
         DropOverlay {}
     }
@@ -425,7 +425,7 @@ fn handle_event(ctx: Ctx, ev: Event) {
 // ---- the shell ----------------------------------------------------------------------------------
 
 #[component]
-fn NavItem(page: Page, label: &'static str, icon: &'static str) -> Element {
+fn BrowserNavItem(page: Page, label: &'static str, icon: &'static str) -> Element {
     let ctx = use_context::<Ctx>();
     // A book's overview belongs to the Library.
     let current = match *ctx.page.read() {
@@ -446,7 +446,7 @@ fn NavItem(page: Page, label: &'static str, icon: &'static str) -> Element {
 }
 
 #[component]
-fn Shell() -> Element {
+fn BrowserShell() -> Element {
     let ctx = use_context::<Ctx>();
     let page = *ctx.page.read();
     let reading = ctx.reading.read().is_some();
@@ -468,10 +468,10 @@ fn Shell() -> Element {
                     art::cat::Cat {}
                     span { "MangaPoint" }
                 }
-                NavItem { page: Page::Library, label: "Library", icon: "book-open" }
-                NavItem { page: Page::Export, label: "Export", icon: "file-down" }
+                BrowserNavItem { page: Page::Library, label: "Library", icon: "book-open" }
+                BrowserNavItem { page: Page::Export, label: "Export", icon: "file-down" }
                 div { class: "nav-spacer" }
-                NavItem { page: Page::Settings, label: "Settings", icon: "settings" }
+                BrowserNavItem { page: Page::Settings, label: "Settings", icon: "settings" }
             }
             main { class: "content", id: "content",
                 div { class: "page",
@@ -482,10 +482,10 @@ fn Shell() -> Element {
                         }
                     }
                     {match page {
-                        Page::Library => rsx! { ui::library::LibraryPage {} },
+                        Page::Library => rsx! { ui::library::BrowserLibraryPage {} },
                         Page::Book => rsx! { ui::book::BookPage {} },
-                        Page::Export => rsx! { ui::export::ExportPage {} },
-                        Page::Settings => rsx! { ui::settings::SettingsPage {} },
+                        Page::Export => rsx! { ui::export::BrowserExportPage {} },
+                        Page::Settings => rsx! { ui::settings::BrowserSettingsPage {} },
                     }}
                 }
             }
@@ -513,29 +513,19 @@ fn Shell() -> Element {
 }
 
 #[component]
-fn ModalHost() -> Element {
+fn WebConfirmation() -> Element {
     let ctx = use_context::<Ctx>();
-    let modal = ctx.modal.read().clone();
-    let Some(modal) = modal else { return rsx! {} };
-    let confirm_class = if modal.danger { "btn danger" } else { "btn primary" };
-    let action = modal.action.clone();
+    let Some(modal) = ctx.modal.read().clone() else { return rsx! {} };
     rsx! {
-        div { class: "overlay", onclick: move |_| { let mut m = ctx.modal; m.set(None); },
-            div { class: "modal", role: "dialog", "aria-modal": "true", onclick: move |e| e.stop_propagation(),
-                h2 { "{modal.title}" }
-                p { "{modal.body}" }
-                div { class: "actions",
-                    button { class: "btn", id: "modal-cancel", onclick: move |_| { let mut m = ctx.modal; m.set(None); }, "{modal.cancel}" }
-                    button { class: "{confirm_class}", id: "modal-confirm",
-                        onclick: move |_| {
-                            let mut m = ctx.modal;
-                            m.set(None);
-                            run_action(ctx, action.clone());
-                        },
-                        "{modal.confirm}"
-                    }
-                }
-            }
+        mangapoint_ui::dialogs::Confirmation {
+            title: modal.title, body: modal.body, confirm: modal.confirm, cancel: modal.cancel,
+            danger: modal.danger, dismiss_outside: true,
+            on_cancel: move |_| { let mut m = ctx.modal; m.set(None); },
+            on_confirm: move |_| {
+                let mut m = ctx.modal;
+                m.set(None);
+                run_action(ctx, modal.action.clone());
+            },
         }
     }
 }

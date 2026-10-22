@@ -1,11 +1,12 @@
 # Records how every element of the desktop app's screens is styled (the computed style of each), to compare
 # two builds when the style sheets are reorganised. Uses its own empty data folder, never your library.
-#   powershell -File tools/ui-style-dump.ps1 -Exe <path to mangapoint.exe> -Out <file.json> [-Port 9334]
+#   powershell -File tools/ui-style-dump.ps1 -Exe <path to mangapoint.exe> -Out <file.json> [-Port 9334] [-ShotsDir <folder>]
 #   node tools/web-e2e/style-dump.mjs --compare <before.json> <after.json>
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [Parameter(Mandatory = $true)][string]$Out,
-    [int]$Port = 9334
+    [int]$Port = 9334,
+    [string]$ShotsDir = ''
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'cdp.ps1')
@@ -15,8 +16,9 @@ New-Item -ItemType Directory -Path $data | Out-Null
 [IO.File]::WriteAllText((Join-Path $data 'settings.json'), '{"setup_step":"Done","readers_listed":true,"device":"xteink-x4-pro","custom_devices":[{"id":"xteink-x4-pro","name":"Xteink X4 Pro","width":480,"height":800}]}')
 $env:MANGAPOINT_HOME = $data
 $env:MANGAPOINT_DEBUG_PORT = "$Port"
-$app = Start-Process -FilePath $Exe -PassThru
+$app = Start-Process -FilePath $Exe -PassThru -WindowStyle Hidden
 $result = [ordered]@{}
+if ($ShotsDir) { New-Item -ItemType Directory -Path $ShotsDir -Force | Out-Null }
 
 # The same list of properties as tools/web-e2e/style-dump.mjs.
 $props = (Get-Content (Join-Path $PSScriptRoot 'web-e2e\style-dump.mjs') -Raw) -replace '(?s).*?const PROPS = \[(.*?)\];.*', '$1'
@@ -58,6 +60,7 @@ $dumpJs = @"
 function Dump([string]$Name) {
     Start-Sleep -Milliseconds 700
     $result[$Name] = (Eval $dumpJs) | ConvertFrom-Json
+    if ($ShotsDir) { Save-Shot (Join-Path $ShotsDir "$Name.png") }
     Write-Host "$Name"
 }
 function Go([string]$Label) {
@@ -98,6 +101,11 @@ try {
     Write-Host "written $Out"
 } finally {
     try { Stop-Process -Id $app.Id -Force -ErrorAction SilentlyContinue } catch {}
+    # A forced window close bypasses Rust Drop; stop only this test's engine runtime.
+    $testRoot = [IO.Path]::GetFullPath($data).TrimEnd('\') + '\'
+    Get-CimInstance Win32_Process -Filter "name = 'java.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($testRoot, [StringComparison]::OrdinalIgnoreCase) } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep -Milliseconds 500
     if ($data.StartsWith([IO.Path]::GetTempPath())) { Remove-Item -Recurse -Force $data -ErrorAction SilentlyContinue }
 }
