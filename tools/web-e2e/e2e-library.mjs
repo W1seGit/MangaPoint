@@ -101,9 +101,24 @@ try {
   // ---- the App part of Settings ----
   await page.click('#settings-nav-app');
   await sleep(300);
-  const links = await page.eval("JSON.stringify(['macos', 'windows', 'linux'].map((s) => { const a = document.querySelector('#download-' + s); return a && [a.textContent.trim().replace(/\\s+/g, ' '), a.href]; }))");
-  const found = JSON.parse(links);
-  r.check('downloads for macOS, Windows and Linux', found.every((l) => l && /github\.com\/W1seGit\/MangaPoint\/releases/.test(l[1])), links);
+  const href = (slug) => page.eval(`document.querySelector('#download-${slug}-file')?.getAttribute('href') || ''`);
+  const direct = /^https:\/\/github\.com\/W1seGit\/MangaPoint\/releases\/download\/v\d+\.\d+\.\d+\/MangaPoint-\d+\.\d+\.\d+-/;
+  const files = [await href('macos'), await href('windows'), await href('linux')];
+  r.check('each system downloads its file directly (not the releases page)', files.every((f) => direct.test(f)) && /macos-arm64\.dmg$/.test(files[0]) && /setup\.exe$/.test(files[1]) && /\.deb$/.test(files[2]), files.join(' '));
+  r.check('the systems are not inside the slider', !(await page.eval("!!document.querySelector('.desk-slide .desk-download, .desk-heading')")));
+  const tabs = await page.eval("[...document.querySelectorAll('#download-windows .desk-kinds button')].map((b) => b.textContent.trim()).join()");
+  r.check('Windows has Installer and Portable tabs', tabs === 'Installer,Portable', tabs);
+  await page.eval("document.querySelector('#download-windows').scrollIntoView({ block: 'center' })");
+  await press('#download-windows .desk-kinds button', 'Portable');
+  await sleep(200);
+  r.check('Portable switches the file', /windows-x86_64-portable\.exe$/.test(await href('windows')), await href('windows'));
+  await press('#download-linux .desk-kinds button', 'rpm');
+  await sleep(200);
+  r.check('Linux .rpm switches the file', /linux-x86_64\.rpm$/.test(await href('linux')), await href('linux'));
+  const arrows = await page.eval("(() => { const s = document.querySelector('#desk-slide').getBoundingClientRect(); return [...document.querySelectorAll('.desk-arrow')].every((a) => { const r = a.getBoundingClientRect(); return r.left >= s.left && r.right <= s.right; }); })()");
+  r.check('the arrows are inside the slide', arrows);
+  const wide = await page.eval("(() => { const s = document.querySelector('#desk-slide').getBoundingClientRect(); const c = document.querySelector('.settings-content').getBoundingClientRect(); return [Math.round(s.width), Math.round(c.width)]; })()");
+  r.check('the slide takes the whole width it can', wide[0] >= wide[1] - 80, JSON.stringify(wide));
   r.check('the GitHub link is under them', /github\.com\/W1seGit\/MangaPoint$/.test(await page.eval("document.querySelector('#github-link')?.href || ''")));
   const head = await page.eval("(() => { const h = document.querySelector('.desk-title'); return h ? [h.textContent, getComputedStyle(h).textAlign] : null; })()");
   r.check('a centred heading: Get the desktop app', head && /Get the desktop app/i.test(head[0]) && head[1] === 'center', JSON.stringify(head));

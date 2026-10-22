@@ -264,12 +264,11 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 }
 
 /* Settings, App: the desktop app, what it does and where to get it */
-.desk-app { max-width: 860px; margin-top: 34px; }
+.desk-app { margin-top: 34px; }
 .desk-title { text-align: center; font-size: 1.6rem; margin: 0 0 18px; }
-.desk-slider { display: flex; flex-direction: column; align-items: center; gap: 14px; }
-.desk-slide-row { display: flex; align-items: center; gap: 12px; width: 100%; justify-content: center; }
+.desk-slider { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
 .desk-slide {
-  margin: 0; flex: 1; max-width: 560px; display: flex; flex-direction: column; align-items: center; text-align: center;
+  position: relative; margin: 0; width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center;
   border: 1px solid var(--line); border-radius: 16px; background: var(--panel); overflow: hidden; touch-action: pan-y;
   animation: desk-slide-in 0.28s ease;
 }
@@ -280,11 +279,14 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .desk-slide strong { display: block; font-size: 1.1rem; margin-bottom: 6px; }
 .desk-slide p { margin: 0; line-height: 1.5; }
 .desk-arrow {
-  flex: none; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--panel);
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line-strong); background: rgba(20, 20, 20, 0.85);
   color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
 }
+.desk-arrow.prev { left: 14px; }
+.desk-arrow.next { right: 14px; }
 .desk-arrow:hover { background: var(--panel-3); }
-.desk-dots { display: flex; gap: 8px; }
+.desk-dots { display: flex; gap: 8px; justify-content: center; }
 .desk-dot { width: 9px; height: 9px; padding: 0; border: 0; border-radius: 50%; background: var(--line-strong); cursor: pointer; transition: width 0.2s, background 0.2s; }
 .desk-dot.on { width: 22px; border-radius: 5px; background: var(--text); }
 .app[data-motion="snappy"] .desk-slide { animation: none; }
@@ -314,16 +316,18 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 @media (prefers-reduced-motion: reduce) {
   .desk-scene .found, .desk-scene .drop, .desk-scene .fill, .desk-scene .crop, .desk-scene .pick, .desk-scene .wave { animation: none; opacity: 1; }
 }
-.desk-heading { margin: 30px 0 12px; font-size: 1.05rem; text-align: center; }
 .desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.desk-downloads { margin-top: 22px; }
 .desk-download {
-  display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 22px 20px; border: 1px solid var(--line-strong);
-  border-radius: 14px; background: var(--panel); color: var(--text); text-decoration: none; transition: border-color 0.15s, background 0.15s;
+  display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 20px; border: 1px solid var(--line-strong);
+  border-radius: 14px; background: var(--panel); color: var(--text);
 }
-.desk-download:hover { border-color: var(--accent, var(--text)); background: var(--panel-2); }
-.desk-download .pixel-mark { margin-bottom: 8px; }
+.desk-download-head { display: flex; align-items: center; gap: 12px; }
 .desk-os { font-size: 1.35rem; font-weight: 700; }
-.desk-get { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.desk-kinds { display: flex; }
+.desk-kinds button { flex: 1; white-space: nowrap; }
+.desk-detail { min-height: 2.6em; line-height: 1.35; }
+.desk-get { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; margin-top: auto; }
 .desk-github {
   display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 16px 20px; border: 1px solid var(--line-strong);
   border-radius: 14px; background: var(--panel); color: var(--text); text-decoration: none; transition: border-color 0.15s, background 0.15s;
@@ -332,5 +336,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .desk-github > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 @media (max-width: 700px) {
   .desk-downloads { grid-template-columns: minmax(0, 1fr); }
-  .desk-arrow { display: none; }
+  .desk-arrow { width: 36px; height: 36px; top: 34%; }
+  .desk-arrow.prev { left: 8px; }
+  .desk-arrow.next { right: 8px; }
 }

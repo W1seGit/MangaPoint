@@ -247,15 +247,9 @@ pub fn SettingsPage() -> Element {
                         div { class: "desk-app", id: "desktop-app",
                             h2 { class: "desk-title", "Get the desktop app" }
                             DeskSlider {}
-                            h3 { class: "desk-heading", "Download it" }
                             div { class: "desk-downloads",
-                                for (name, detail, slug) in DESKTOP_DOWNLOADS {
-                                    a { class: "desk-download", id: "download-{slug}", key: "{slug}", href: "{RELEASES}", target: "_blank", rel: "noopener",
-                                        PixelMark { name: slug, size: 56 }
-                                        span { class: "desk-os", "{name}" }
-                                        span { class: "desk-detail muted small", "{detail}" }
-                                        span { class: "desk-get", Icon { name: "download", size: 15 } "Download" }
-                                    }
+                                for (slug, name, choices) in DESKTOP_DOWNLOADS {
+                                    DownloadTile { key: "{slug}", slug, name, choices: choices.to_vec() }
                                 }
                             }
                             a { class: "desk-github", href: "{REPO}", target: "_blank", rel: "noopener", id: "github-link",
@@ -286,7 +280,6 @@ pub fn SettingsPage() -> Element {
 }
 
 const REPO: &str = "https://github.com/W1seGit/MangaPoint";
-const RELEASES: &str = "https://github.com/W1seGit/MangaPoint/releases/latest";
 
 /// What the desktop app does that the website does not: (scene, title, text).
 const DESKTOP_FEATURES: [(&str, &str, &str); 6] = [
@@ -298,12 +291,58 @@ const DESKTOP_FEATURES: [(&str, &str, &str); 6] = [
     ("library", "A library and a reader", "Everything you downloaded or imported, with the reader you are using here, and exports for phones and tablets."),
 ];
 
-/// The downloads: (name, what it is, id).
-const DESKTOP_DOWNLOADS: [(&str, &str, &str); 3] = [
-    ("macOS", "Apple silicon and Intel (.dmg)", "macos"),
-    ("Windows", "Installer (.exe)", "windows"),
-    ("Linux", ".deb, .rpm or the plain program", "linux"),
+/// The files of each system's release: (id, name, [(tab, what it is, the end of the file name)]).
+/// The file is `MangaPoint-<version>-<end>` in the release of this version.
+const DESKTOP_DOWNLOADS: [(&str, &str, &[(&str, &str, &str)]); 3] = [
+    ("macos", "macOS", &[
+        ("Apple silicon", "For Macs with an M1 chip or newer (.dmg)", "macos-arm64.dmg"),
+        ("Intel", "For Macs with an Intel chip (.dmg)", "macos-x86_64.dmg"),
+    ]),
+    ("windows", "Windows", &[
+        ("Installer", "Installs it, with a Start menu entry and an uninstaller (.exe)", "windows-x86_64-setup.exe"),
+        ("Portable", "The program on its own: nothing is installed (.exe)", "windows-x86_64-portable.exe"),
+    ]),
+    ("linux", "Linux", &[
+        (".deb", "For Debian, Ubuntu, Mint and the like", "linux-x86_64.deb"),
+        (".rpm", "For Fedora, openSUSE and the like", "linux-x86_64.rpm"),
+        ("Program", "The plain program, for any distribution", "linux-x86_64"),
+    ]),
 ];
+
+/// The address of one file of the release of this version.
+fn download_url(end: &str) -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    format!("{REPO}/releases/download/v{version}/MangaPoint-{version}-{end}")
+}
+
+/// One system: its mark and name, a tab for each kind of file, and the button that downloads it.
+#[component]
+fn DownloadTile(slug: &'static str, name: &'static str, choices: Vec<(&'static str, &'static str, &'static str)>) -> Element {
+    let mut pick = use_signal(|| 0usize);
+    let (_, detail, end) = choices[pick().min(choices.len() - 1)];
+    let url = download_url(end);
+    let file = format!("MangaPoint-{}-{end}", env!("CARGO_PKG_VERSION"));
+    rsx! {
+        div { class: "desk-download", id: "download-{slug}",
+            div { class: "desk-download-head",
+                PixelMark { name: slug, size: 48 }
+                span { class: "desk-os", "{name}" }
+            }
+            div { class: "seg desk-kinds", role: "group", "aria-label": "Kind of download for {name}",
+                for (k, (tab, _, _)) in choices.iter().enumerate() {
+                    button {
+                        key: "{tab}", class: if k == pick() { "on" } else { "" }, "aria-pressed": "{k == pick()}",
+                        onclick: move |_| pick.set(k), "{tab}"
+                    }
+                }
+            }
+            span { class: "desk-detail muted small", "{detail}" }
+            a { class: "btn primary desk-get", id: "download-{slug}-file", href: "{url}", download: "{file}", rel: "noopener",
+                Icon { name: "download", size: 15 } "Download"
+            }
+        }
+    }
+}
 
 /// What the desktop app does, one scene at a time: arrows, dots to jump, and a swipe on a phone.
 #[component]
@@ -316,26 +355,26 @@ fn DeskSlider() -> Element {
     let mut go = move |by: isize| at.set(((at() as isize + by).rem_euclid(n as isize)) as usize);
     rsx! {
         div { class: "desk-slider", id: "desk-slider", role: "region", "aria-roledescription": "carousel", "aria-label": "What the desktop app does",
-            div { class: "desk-slide-row",
-                button { class: "desk-arrow", id: "desk-prev", "aria-label": "Previous", title: "Previous",
+            figure { class: "desk-slide", key: "{i}", id: "desk-slide", "aria-live": "polite",
+                onpointerdown: move |e| swipe_from.set(Some(e.client_coordinates().x)),
+                onpointerup: move |e| {
+                    if let Some(x0) = swipe_from() {
+                        let dx = e.client_coordinates().x - x0;
+                        if dx.abs() > 40.0 { go(if dx < 0.0 { 1 } else { -1 }); }
+                    }
+                    swipe_from.set(None);
+                },
+                button { class: "desk-arrow prev", id: "desk-prev", "aria-label": "Previous", title: "Previous",
+                    onpointerdown: move |e| e.stop_propagation(),
                     onclick: move |_| go(-1), Icon { name: "chevron-left", size: 22 }
                 }
-                figure { class: "desk-slide", key: "{i}", id: "desk-slide", "aria-live": "polite",
-                    onpointerdown: move |e| swipe_from.set(Some(e.client_coordinates().x)),
-                    onpointerup: move |e| {
-                        if let Some(x0) = swipe_from() {
-                            let dx = e.client_coordinates().x - x0;
-                            if dx.abs() > 40.0 { go(if dx < 0.0 { 1 } else { -1 }); }
-                        }
-                        swipe_from.set(None);
-                    },
-                    div { class: "desk-art", FeatureScene { name: scene, label: title } }
-                    figcaption {
-                        strong { id: "desk-slide-title", "{title}" }
-                        p { class: "muted", "{text}" }
-                    }
+                div { class: "desk-art", FeatureScene { name: scene, label: title } }
+                figcaption {
+                    strong { id: "desk-slide-title", "{title}" }
+                    p { class: "muted", "{text}" }
                 }
-                button { class: "desk-arrow", id: "desk-next", "aria-label": "Next", title: "Next",
+                button { class: "desk-arrow next", id: "desk-next", "aria-label": "Next", title: "Next",
+                    onpointerdown: move |e| e.stop_propagation(),
                     onclick: move |_| go(1), Icon { name: "chevron-right", size: 22 }
                 }
             }
