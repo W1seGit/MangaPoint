@@ -21,3 +21,5 @@ pub mod scenes;
 pub mod shelf;
 #[path = "../../desktop/src/ui/walker.rs"]
 pub mod walker;
+#[path = "desk_art.rs"]
+pub mod desk;

@@ -265,11 +265,38 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 /* Settings, App: the desktop app, what it does and where to get it */
 .desk-app { max-width: 860px; }
 .desk-intro { margin: 0 0 18px; line-height: 1.55; color: var(--text); }
-.desk-features { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.desk-feature { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.desk-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.desk-feature { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
+.desk-art { display: flex; align-items: center; justify-content: center; padding: 14px 10px 6px; background: #0b0b0b; border-bottom: 1px solid var(--line); }
+.desk-art .desk-scene { width: 100%; max-width: 224px; height: auto; margin: 0; }
+.desk-feature figcaption { padding: 12px 14px 14px; }
 .desk-feature strong { display: block; margin-bottom: 3px; }
 .desk-feature p { margin: 0; line-height: 1.45; }
-.desk-icon { flex: none; width: 36px; height: 36px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--panel-3); color: var(--text); }
+.pixel-mark { shape-rendering: crispEdges; image-rendering: pixelated; flex: none; }
+/* The scenes move in steps, like the cat. */
+.desk-scene .found { opacity: 0; animation: desk-found 3.6s step-end infinite; }
+.desk-scene .found.f1 { animation-delay: 0.6s; }
+.desk-scene .found.f2 { animation-delay: 1.2s; }
+@keyframes desk-found { 0% { opacity: 0; } 10%, 85% { opacity: 1; } 100% { opacity: 0; } }
+.desk-scene .drop { animation: desk-drop 1.6s steps(4) infinite; }
+@keyframes desk-drop { from { transform: translateY(-2px); } to { transform: translateY(6px); } }
+.desk-scene .fill { opacity: 0; animation: desk-fill 3s step-end infinite; }
+.desk-scene .fill.p0 { animation-name: desk-fill0; }
+.desk-scene .fill.p1 { animation-name: desk-fill1; }
+.desk-scene .fill.p2 { animation-name: desk-fill2; }
+@keyframes desk-fill0 { 0% { opacity: 0; } 20%, 100% { opacity: 1; } }
+@keyframes desk-fill1 { 0%, 45% { opacity: 0; } 46%, 100% { opacity: 1; } }
+@keyframes desk-fill2 { 0%, 72% { opacity: 0; } 73%, 92% { opacity: 1; } 93%, 100% { opacity: 0; } }
+.desk-scene .crop { animation: desk-blink 2.4s step-end infinite; }
+.desk-scene .pick { animation: desk-blink 2.4s step-end infinite; }
+@keyframes desk-blink { 0%, 60% { opacity: 1; } 61%, 80% { opacity: 0; } 81%, 100% { opacity: 1; } }
+.desk-scene .wave { opacity: 0; animation: desk-wave 1.8s step-end infinite; }
+.desk-scene .wave.w1 { animation-delay: 0.3s; }
+.desk-scene .wave.w2 { animation-delay: 0.6s; }
+@keyframes desk-wave { 0% { opacity: 0; } 15%, 60% { opacity: 1; } 61%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .desk-scene .found, .desk-scene .drop, .desk-scene .fill, .desk-scene .crop, .desk-scene .pick, .desk-scene .wave { animation: none; opacity: 1; }
+}
 .desk-heading { margin: 26px 0 12px; font-size: 1.05rem; }
 .desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .desk-download {
@@ -277,10 +304,16 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   border-radius: 14px; background: var(--panel); color: var(--text); text-decoration: none; transition: border-color 0.15s, background 0.15s;
 }
 .desk-download:hover { border-color: var(--accent, var(--text)); background: var(--panel-2); }
+.desk-download .pixel-mark { margin-bottom: 8px; }
 .desk-os { font-size: 1.35rem; font-weight: 700; }
 .desk-get { margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
-.desk-source { margin-top: 18px; }
-.desk-source a { display: inline-flex; align-items: center; gap: 4px; color: var(--text); text-decoration: underline; }
+.desk-github {
+  display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 16px 20px; border: 1px solid var(--line-strong);
+  border-radius: 14px; background: var(--panel); color: var(--text); text-decoration: none; transition: border-color 0.15s, background 0.15s;
+}
+.desk-github:hover { border-color: var(--accent, var(--text)); background: var(--panel-2); }
+.desk-github > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+@media (max-width: 1100px) { .desk-features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) {
   .desk-features, .desk-downloads { grid-template-columns: minmax(0, 1fr); }
 }

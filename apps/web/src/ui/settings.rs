@@ -2,6 +2,7 @@
 //! the privacy promise, installing the app (and the desktop app), and deleting everything.
 
 use super::widgets::{Icon, ProgressBar, SettingRow, Toggle};
+use crate::art::desk::{FeatureScene, PixelMark};
 use crate::app::{current_iso, Ctx, Modal, ModalAction};
 use crate::bridge::{self, StorageInfo};
 use crate::format::{human_bytes, plural};
@@ -249,10 +250,10 @@ pub fn SettingsPage() -> Element {
                                 "This website reads and exports the books you already have. The MangaPoint desktop app is the one that finds them: it searches your sources, downloads the chapters and makes them fit your e-reader."
                             }
                             div { class: "desk-features",
-                                for (icon, title, text) in DESKTOP_FEATURES {
-                                    div { class: "desk-feature", key: "{title}",
-                                        span { class: "desk-icon", Icon { name: icon, size: 19 } }
-                                        div {
+                                for (scene, title, text) in DESKTOP_FEATURES {
+                                    figure { class: "desk-feature", key: "{title}",
+                                        div { class: "desk-art", FeatureScene { name: scene, label: title } }
+                                        figcaption {
                                             strong { "{title}" }
                                             p { class: "muted small", "{text}" }
                                         }
@@ -263,15 +264,20 @@ pub fn SettingsPage() -> Element {
                             div { class: "desk-downloads",
                                 for (name, detail, slug) in DESKTOP_DOWNLOADS {
                                     a { class: "desk-download", id: "download-{slug}", key: "{slug}", href: "{RELEASES}", target: "_blank", rel: "noopener",
+                                        PixelMark { name: slug, size: 56 }
                                         span { class: "desk-os", "{name}" }
                                         span { class: "desk-detail muted small", "{detail}" }
                                         span { class: "desk-get", Icon { name: "download", size: 15 } "Download" }
                                     }
                                 }
                             }
-                            p { class: "desk-source muted small",
-                                "Free and open source, for Windows, macOS and Linux. "
-                                a { href: "{REPO}", target: "_blank", rel: "noopener", id: "github-link", Icon { name: "external-link", size: 13 } "MangaPoint on GitHub" }
+                            a { class: "desk-github", href: "{REPO}", target: "_blank", rel: "noopener", id: "github-link",
+                                PixelMark { name: "github", size: 40 }
+                                span {
+                                    strong { "MangaPoint on GitHub" }
+                                    span { class: "muted small", "Free and open source: the code, the releases and the issues." }
+                                }
+                                Icon { name: "external-link", size: 15 }
                             }
                         }
                     },
@@ -295,14 +301,14 @@ pub fn SettingsPage() -> Element {
 const REPO: &str = "https://github.com/W1seGit/MangaPoint";
 const RELEASES: &str = "https://github.com/W1seGit/MangaPoint/releases/latest";
 
-/// What the desktop app does that the website does not: (icon, title, text).
+/// What the desktop app does that the website does not: (scene, title, text).
 const DESKTOP_FEATURES: [(&str, &str, &str); 6] = [
     ("search", "Search many sources at once", "Type a title and every source you installed is asked together. The same series from several sources becomes one card."),
     ("download", "A download queue that keeps going", "Pick chapters, press download. Pause, resume, retry, and carry on after you close the app."),
-    ("sliders-horizontal", "Made for your reader's screen", "Cropping, spreads, long strips cut into screen-sized pages, contrast and dithering, with a live preview of the result."),
-    ("hard-drive", "Send it straight to the device", "Export to a folder, a USB drive, an SD card or over Wi-Fi, in the formats your e-reader opens."),
-    ("layers", "29 readers ready to go", "Xteink, Kindle, Kobo, Boox, PocketBook and reMarkable, each with its own size, formats and colour."),
-    ("book-open", "A library and a reader", "Everything you downloaded or imported, with the reader you are using here, and exports for phones and tablets."),
+    ("screen", "Made for your reader's screen", "Cropping, spreads, long strips cut into screen-sized pages, contrast and dithering, with a live preview of the result."),
+    ("send", "Send it straight to the device", "Export to a folder, a USB drive, an SD card or over Wi-Fi, in the formats your e-reader opens."),
+    ("readers", "29 readers ready to go", "Xteink, Kindle, Kobo, Boox, PocketBook and reMarkable, each with its own size, formats and colour."),
+    ("library", "A library and a reader", "Everything you downloaded or imported, with the reader you are using here, and exports for phones and tablets."),
 ];
 
 /// The downloads: (name, what it is, id).
