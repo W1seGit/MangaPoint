@@ -29,6 +29,7 @@ export class BookSource {
     this.session = session;
     this.zip = null;
     this.opening = null;
+    this.parts = new Map(); // part number -> Promise<ZipFile>, for chapters added later
   }
 
   get count() {
@@ -54,18 +55,42 @@ export class BookSource {
     return this.zip;
   }
 
+  /** The archive a page added later lives in: `part-<z>.bin`, kept where the page says (`w`). */
+  async #part(z, where) {
+    let opening = this.parts.get(z);
+    if (!opening) {
+      opening = (async () => {
+        const blob = await loadFile(this.book.id, `part-${z}.bin`, where || this.book.stored);
+        if (!blob) throw new Error('A part of this book is not on this device any more.');
+        return new ZipFile(blob, []);
+      })();
+      opening.catch(() => this.parts.delete(z));
+      this.parts.set(z, opening);
+    }
+    return opening;
+  }
+
+  /** Whether page `p` is a picture inside an archive (the book's own, or a part added later). */
+  #inArchive(p) {
+    return p.z !== undefined || (this.table.mode === 'archive' && p.f === undefined);
+  }
+
+  async #zipOf(p) {
+    return p.z !== undefined ? this.#part(p.z, p.w) : this.#archive();
+  }
+
   /** The picture of page `i` as a typed Blob. */
   async blob(i) {
     const p = this.table.pages[i];
     if (!p) throw new Error('No such page.');
-    const type = MIME[extOf(p.n)] || '';
-    if (this.table.mode === 'archive') {
-      const zip = await this.#archive();
+    const type = MIME[extOf(p.n || p.f || '')] || '';
+    if (this.#inArchive(p)) {
+      const zip = await this.#zipOf(p);
       return zip.read({ name: p.n, method: p.m, csize: p.c, usize: p.u, offset: p.o, encrypted: false }, type);
     }
     // Loose pictures: one stored file per page, or the Files of this session.
-    if (Array.isArray(this.session)) return this.session[p.s].slice(0, this.session[p.s].size, type);
-    const f = await loadFile(this.book.id, p.f, this.book.stored);
+    if (Array.isArray(this.session) && p.s !== undefined && !p.w) return this.session[p.s].slice(0, this.session[p.s].size, type);
+    const f = await loadFile(this.book.id, p.f, p.w || this.book.stored);
     if (!f) throw new Error('A page of this book is not on this device any more.');
     return f.slice(0, f.size, type);
   }
@@ -74,8 +99,8 @@ export class BookSource {
   async start(i, n = 131072) {
     const p = this.table.pages[i];
     if (!p) throw new Error('No such page.');
-    if (this.table.mode === 'archive') {
-      const zip = await this.#archive();
+    if (this.#inArchive(p)) {
+      const zip = await this.#zipOf(p);
       return zip.head({ name: p.n, method: p.m, csize: p.c, usize: p.u, offset: p.o, encrypted: false }, n);
     }
     const b = await this.blob(i);

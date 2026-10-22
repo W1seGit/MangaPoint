@@ -431,13 +431,11 @@ fn toggle(mut picked: Signal<BTreeSet<String>>, id: &str) {
 }
 
 /// Open a book from its poster: read it, or explain what it needs.
+/// A card was clicked: its overview, with the chapters and what can be done with the book.
 fn open_book(ctx: Ctx, id: &str) {
-    let Some(book) = ctx.book(id) else { return };
-    if book.needs_file {
-        ctx.warn(format!("The browser did not keep {}. Import the file again to read it.", book.file_name));
-        return;
+    if ctx.book(id).is_some() {
+        super::book::open_overview(ctx, id);
     }
-    super::reader::open_reader(ctx, id, None);
 }
 
 pub fn goto_library(ctx: Ctx) {

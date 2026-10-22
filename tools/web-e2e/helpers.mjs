@@ -105,3 +105,18 @@ export async function readerSetting(page, selector, touch = false) {
   await press('#reader-settings-close');
   await sleep(300);
 }
+
+/** Add a reader from the list of known ones, in Settings (a first visit has none). `pick` matches its name. */
+export async function addReader(page, query, pick = null) {
+  await page.eval("document.querySelector('#nav-Settings').click()");
+  await page.waitFor("!!document.querySelector('#settings-nav-reader')", 10, 'Settings');
+  await page.click('#settings-nav-reader');
+  await page.waitFor("!!document.querySelector('.settings-content .pill.add')", 10, 'Add device');
+  await page.click('.settings-content .pill.add');
+  await sleep(400);
+  await page.click('.adder-box input');
+  await page.type(query);
+  await page.waitFor("!!document.querySelector('.adder-opt')", 10, 'a reader found');
+  await page.click('.adder-opt', pick);
+  await sleep(400);
+}

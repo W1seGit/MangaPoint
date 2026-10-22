@@ -64,6 +64,13 @@ pub enum Event {
         drafts: Vec<crate::review::Draft>,
         failures: Vec<crate::review::Failure>,
     },
+    /// Chapters were added to a book (its overview's Import more chapters).
+    #[serde(rename = "appended")]
+    Appended {
+        book: Option<crate::model::Book>,
+        added: usize,
+        failures: Vec<crate::review::Failure>,
+    },
     #[serde(rename = "commit_progress")]
     CommitProgress { done: usize, total: usize },
     #[serde(rename = "state_file")]

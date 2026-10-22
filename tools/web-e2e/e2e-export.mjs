@@ -1,7 +1,7 @@
 // Export in the worker: EPUB, CBZ, XTC with a progress bar, cancel, and a look at the downloaded bytes.
 //   node tools/web-e2e/e2e-export.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { clearToasts, fx, openApp, nav, importBooks } from './helpers.mjs';
+import { clearToasts, fx, openApp, nav, importBooks, addReader } from './helpers.mjs';
 import { mkdtempSync, readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -57,6 +57,15 @@ const runExport = async (format, { group } = {}) => {
 try {
   await page.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dl });
   await openApp(page, server.url, viewport);
+  // A first visit has no readers of its own: none is chosen for the visitor.
+  await page.eval("document.querySelector('#nav-Settings').click()");
+  await page.click('#settings-nav-reader');
+  await sleep(300);
+  r.check('a first visit has no readers', (await page.eval("document.querySelectorAll('.settings-content .pills .pill:not(.add)').length")) === 0);
+  // The readers this test uses, added as a visitor would.
+  await addReader(page, 'xteink x3', 'Xteink X3');
+  await addReader(page, 'xteink x4', 'Xteink X4(?! Pro)');
+  await addReader(page, 'xteink x4 pro', 'Xteink X4 Pro');
   // Nothing imported yet: the screen still opens, on the sample pages, and cannot export them.
   await nav(page, 'Export');
   await page.waitFor("!!document.querySelector('.editor-row img')", 30, 'the sample pages');

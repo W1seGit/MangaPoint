@@ -45,6 +45,29 @@ async function events() {
 
 let analyzing = Promise.resolve();
 
+/** Add the chapters in what was picked to the book `book` (its overview's "Import more chapters"). */
+function startAppend(items, book) {
+  if (!items.length) return;
+  analyzing = analyzing.then(async () => {
+    emit({ t: 'analyzing', status: 'Looking at what you picked…' });
+    try {
+      const r = await importer.analyze(items, (status) => emit({ t: 'analyzing', status }));
+      const ids = r.drafts.map((d) => d.draft_id);
+      if (!ids.length) {
+        emit({ t: 'appended', book: null, added: 0, failures: r.failures });
+        return;
+      }
+      emit({ t: 'analyzing', status: 'Adding the chapters…' });
+      const done = await importer.appendTo(book, ids);
+      pages.forgetSource(book);
+      emit({ t: 'appended', book: done.record, added: done.added, failures: r.failures });
+    } catch (e) {
+      console.error(e);
+      emit({ t: 'appended', book: null, added: 0, failures: [{ name: items[0].file.name, message: e && e.message ? e.message : String(e) }] });
+    }
+  });
+}
+
 function startAnalyze(items, only = null) {
   if (!items.length) return;
   analyzing = analyzing.then(async () => {
@@ -68,7 +91,7 @@ function startAnalyze(items, only = null) {
   });
 }
 
-function pickFiles(folder, only = null) {
+function pickFiles(folder, only = null, into = null) {
   const input = document.createElement('input');
   input.type = 'file';
   input.style.display = 'none';
@@ -81,7 +104,8 @@ function pickFiles(folder, only = null) {
   input.addEventListener('change', () => {
     const items = importer.filesFromInput(input.files || []);
     input.remove();
-    startAnalyze(items, only);
+    if (into) startAppend(items, into);
+    else startAnalyze(items, only);
   });
   input.addEventListener('cancel', () => input.remove());
   document.body.appendChild(input);
@@ -328,7 +352,8 @@ const handlers = {
     try {
       books = (await store.dbAll('books')).map(([, v]) => v);
       states = (await store.dbAll('state')).map(([, v]) => v);
-      for (const [k, v] of await store.dbAll('meta')) if (k === 'settings') meta[k] = v;
+      // The small records the page keeps: its settings, the readers, the presets and the last exports.
+      for (const [k, v] of await store.dbAll('meta')) if (['settings', 'readers', 'presets', 'last_exports'].includes(k)) meta[k] = v;
     } catch (e) {
       return { error: `This browser would not open its local storage (${e && e.message ? e.message : e}). Books can be read in this visit but will not be kept.`, books, states, meta, caps };
     }
@@ -565,6 +590,7 @@ const immediate = {
   pick_files: () => pickFiles(false),
   pick_folder: () => pickFiles(true),
   pick_for: ({ fingerprint }) => pickFiles(false, fingerprint),
+  pick_more: ({ book }) => pickFiles(false, null, book),
   pick_state: () => {
     fsa.pickStateFile().then((f) => {
       if (f) emit({ t: 'state_file', name: f.name, text: f.text });

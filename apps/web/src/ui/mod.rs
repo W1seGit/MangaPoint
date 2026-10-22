@@ -1,5 +1,6 @@
 //! The screens.
 
+pub mod book;
 pub mod export;
 pub mod import;
 pub mod library;

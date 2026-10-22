@@ -337,3 +337,14 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
   .desk-arrow.prev { left: 8px; }
   .desk-arrow.next { right: 8px; }
 }
+
+/* A book's overview: back to the library, what it is and what can be done, then its chapters */
+.back-link { margin: -6px 0 14px -10px; }
+.book-actions { margin-top: 16px; gap: 8px; }
+.book-chapters-head { display: flex; align-items: baseline; gap: 12px; margin-top: 28px; }
+.book-chapters-head h2 { margin: 0; font-size: 1.15rem; }
+.book-chapter { cursor: pointer; }
+.book-chapter:hover td { background: var(--panel-2); }
+.table-scroll:has(#book-chapters) { min-height: 0; max-height: none; }
+/* A card with its menu open sits above the cards after it, so the menu is never under them. */
+.poster:has(.poster-menu) { z-index: 30; }

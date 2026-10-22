@@ -1,7 +1,7 @@
 // The Library: picking several books (the bar at the bottom), Forget, and the strip source in Export.
 //   node tools/web-e2e/e2e-library.mjs [desktop|tablet|phone]
 import { launch, startServer, killBrowser, sleep, Report } from './lib.mjs';
-import { clearToasts, fx, openApp, nav, importBooks, titles } from './helpers.mjs';
+import { clearToasts, fx, openApp, nav, importBooks, titles, addReader } from './helpers.mjs';
 
 const viewport = process.argv[2] || 'desktop';
 const touch = viewport !== 'desktop';
@@ -141,6 +141,56 @@ try {
   }
   r.check(touch ? 'a swipe goes to the next feature' : 'the arrow goes to the next feature', (await page.eval("document.querySelectorAll('.desk-dot')[4].classList.contains('on')")), await slideTitle());
   await page.shot(`${viewport}-52-app`);
+
+  // ---- a reader added in Settings is still there after a reload ----
+  await addReader(page, 'xteink x4 pro', 'Xteink X4 Pro');
+  await sleep(1200); // the write is gathered with others
+  await page.send('Page.reload');
+  await page.waitFor("!!document.querySelector('.nav')", 30, 'the app after a reload');
+  await page.eval("document.querySelector('#nav-Settings').click()");
+  await page.click('#settings-nav-reader');
+  await sleep(400);
+  const kept = await page.eval("[...document.querySelectorAll('.settings-content .pills .pill:not(.add)')].map((p) => p.innerText.trim())");
+  r.check('a reader added in Settings is still there after a reload, and is the only one', kept.length === 1 && /X4 Pro/.test(kept[0]), kept.join(' | '));
+
+  // ---- a card opens the book's overview ----
+  await nav(page, 'Library');
+  await importBooks(page, [fx('Hero Saga Vol 2.zip')]);
+  await clearToasts(page);
+  await press('.poster-art', null, 0);
+  await page.waitFor("!!document.querySelector('#book-overview')", 10, 'the overview');
+  r.check('a click on a card opens its overview, not the reader', !(await page.eval("!!document.querySelector('#reader')")) && /Hero Saga/.test(await text('#book-title')));
+  r.check('the address names the book', /^\/book\?id=/.test(await page.eval('location.pathname + location.search')), await page.eval('location.pathname + location.search'));
+  const rows = () => page.eval("document.querySelectorAll('#book-chapters .book-chapter').length");
+  const before = await rows();
+  r.check('the overview lists the chapters on this device', before === 3, String(before));
+  r.check('with Read, Export and Import more chapters', !!(await page.eval("document.querySelector('#book-read')")) && !!(await page.eval("document.querySelector('#book-export')")) && !!(await page.eval("document.querySelector('#book-import-more')")));
+  await sleep(900);
+  await page.shot(`${viewport}-53-overview`);
+  await press('.book-chapter', null, 1);
+  await page.waitFor("!!document.querySelector('#reader .reader-tile img')", 20, 'the reader');
+  r.check('a chapter row reads that chapter', /Ch\. 3/.test(await page.eval("document.querySelector('#reader-chapter-picker')?.textContent || ''")), await page.eval("document.querySelector('#reader-chapter-picker')?.textContent || ''"));
+  await page.click('#reader-back');
+  await page.waitFor("!document.querySelector('#reader')", 10, 'the overview again');
+  r.check('closing the reader comes back to the overview', !!(await page.eval("document.querySelector('#book-overview')")));
+  // Import more chapters: the chapters of another file are added after the book's own.
+  page.answerFileChooser([fx('Color Webtoon.cbz')]);
+  await press('#book-import-more');
+  await page.waitFor(`document.querySelectorAll('#book-chapters .book-chapter').length > ${before}`, 60, 'the new chapters');
+  const after = await rows();
+  r.check('Import more chapters adds the chapters of the file to this book', after > before, `${before} -> ${after}`);
+  await press('.book-chapter', null, after - 1);
+  await page.waitFor("(() => { const i = document.querySelector('#reader .reader-tile img'); return i && i.complete && i.naturalWidth > 0; })()", 30, 'a page of the added chapter');
+  r.check('an added chapter opens and its pages load', true);
+  await page.click('#reader-back');
+  await page.waitFor("!document.querySelector('#reader')", 10, 'the overview again');
+  await sleep(1200);
+  await page.send('Page.reload');
+  await page.waitFor("!!document.querySelector('.nav')", 30, 'the app after a reload');
+  await page.waitFor("!!document.querySelector('#book-overview')", 15, 'the overview after a reload');
+  r.check('the added chapters are still there after a reload', (await rows()) === after, String(await rows()));
+  await nav(page, 'Library');
+  r.check('the library still holds one book', (await page.eval("document.querySelectorAll('.poster').length")) === 1);
 
   // ---- the strip source in Export ----
   await nav(page, 'Library');

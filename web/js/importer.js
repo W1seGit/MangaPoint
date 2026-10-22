@@ -517,4 +517,56 @@ export async function commit(draftId, edit, onProgress = () => {}) {
   return record;
 }
 
+/**
+ * Add the chapters of reviewed drafts to a book already in the library, after its own chapters.
+ * An archive is kept beside the book as `part-<n>.bin`; loose pictures as files of their own. The
+ * book keeps its identity (its place, the chapters read). Resolves to the new library record and
+ * how many chapters were added.
+ */
+export async function appendTo(bookId, draftIds, onProgress = () => {}) {
+  const record = await dbGet('books', bookId);
+  const table = await dbGet('pages', bookId);
+  if (!record || !table) throw new Error('This book is not in the library any more.');
+  if (record.stored === 'none') throw new Error('The browser did not keep this book\'s file, so chapters cannot be added to it. Import the book again first.');
+  let parts = record.parts || 0;
+  let size = record.size || 0;
+  const chapters = record.chapters.slice();
+  let added = 0;
+  for (const [k, draftId] of draftIds.entries()) {
+    const d = draftStore.get(draftId);
+    if (!d) continue;
+    parts += 1;
+    const first = table.pages.length;
+    if (d.mode === 'archive') {
+      const where = await saveFile(bookId, `part-${parts}.bin`, d.files[0]);
+      if (!where) throw new Error(`${d.file_name} could not be kept on this device.`);
+      for (const { s, ...rest } of d.pages) table.pages.push({ ...rest, z: parts, w: where });
+    } else {
+      for (const p of d.pages) {
+        const name = `p${parts}-${p.f}`;
+        const where = await saveFile(bookId, name, d.files[p.s]);
+        if (!where) throw new Error(`${d.file_name} could not be kept on this device.`);
+        const { s, ...rest } = p;
+        table.pages.push({ ...rest, f: name, w: where });
+      }
+    }
+    for (const c of d.chapters) {
+      chapters.push({
+        name: String(c.name ?? ''),
+        number: typeof c.number === 'number' && Number.isFinite(c.number) ? c.number : null,
+        first: first + c.first,
+        count: c.count,
+      });
+      added += 1;
+    }
+    size += d.size || 0;
+    draftStore.delete(draftId);
+    onProgress(k + 1, draftIds.length);
+  }
+  const updated = { ...record, chapters, size, parts, page_count: table.pages.length };
+  await dbPut('pages', bookId, table);
+  await dbPut('books', bookId, updated);
+  return { record: updated, added };
+}
+
 export const coverUrls = new Map(); // book id -> object URL

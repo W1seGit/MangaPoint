@@ -14,6 +14,8 @@ use web_engine::state::{BookState, Settings};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Library,
+    /// A book's overview (the book is `Ctx::book_page`).
+    Book,
     Export,
     Settings,
 }
@@ -131,6 +133,8 @@ pub struct Ctx {
     pub routed: Signal<bool>,
     /// Which part of Settings is open.
     pub settings_section: Signal<ui::settings::Section>,
+    /// The book whose overview is open (`Page::Book`).
+    pub book_page: Signal<String>,
     /// Writes the reader form's unsaved changes, while it has any (see [`UnsavedReader`]).
     pub unsaved_reader: Signal<Option<UnsavedReader>>,
     /// Going somewhere was held back by unsaved reader settings; the user is asked.
@@ -304,6 +308,7 @@ pub fn App() -> Element {
         readers: use_signal(library::Settings::default),
         routed: use_signal(|| false),
         settings_section: use_signal(|| ui::settings::Section::Library),
+        book_page: use_signal(String::new),
         unsaved_reader: use_signal(|| None),
         leave_prompt: use_signal(|| None),
         next_id: use_signal(|| 0),
@@ -333,16 +338,7 @@ pub fn App() -> Element {
                 {
                     let mut readers = ctx.readers;
                     let saved = b.meta.get("readers").and_then(|v| serde_json::from_value::<library::Settings>(v.clone()).ok());
-                    let r = saved.unwrap_or_else(|| {
-                        // A first visit starts with the three Xteink readers, as the app does.
-                        let mut r = library::Settings { readers_listed: false, ..Default::default() };
-                        r.list_old_readers();
-                        let chosen = settings.peek().device.clone();
-                        if r.devices().iter().any(|d| d.id == chosen) {
-                            r.device = chosen;
-                        }
-                        r
-                    });
+                    let r = saved.unwrap_or_else(first_visit_readers);
                     readers.set(r);
                 }
                 if let Some(p) = b.meta.get("presets") {
@@ -419,6 +415,20 @@ fn handle_event(ctx: Ctx, ev: Event) {
             }
         }
         Event::Import { drafts, failures } => ui::import::analysis_done(ctx, drafts, failures),
+        Event::Appended { book, added, failures } => {
+            // Chapters added to a book from its overview: the dialog that showed the work closes.
+            let mut imp = ctx.import;
+            imp.write().stage = ImportStage::Idle;
+            if let Some(book) = book {
+                let title = book.title.clone();
+                let mut lib = ctx.library;
+                lib.write().add_book(book);
+                ctx.notify(format!("Added {} to {title}.", plural(added, "chapter")));
+            }
+            for f in failures {
+                ctx.error(format!("{}: {}", f.name, f.message));
+            }
+        }
         Event::CommitProgress { done, total } => {
             let mut imp = ctx.import;
             let mut guard = imp.write();
@@ -472,7 +482,12 @@ fn handle_event(ctx: Ctx, ev: Event) {
 #[component]
 fn NavItem(page: Page, label: &'static str, icon: &'static str) -> Element {
     let ctx = use_context::<Ctx>();
-    let on = *ctx.page.read() == page;
+    // A book's overview belongs to the Library.
+    let current = match *ctx.page.read() {
+        Page::Book => Page::Library,
+        p => p,
+    };
+    let on = current == page;
     rsx! {
         button {
             class: if on { "nav-item active" } else { "nav-item" },
@@ -523,6 +538,7 @@ fn Shell() -> Element {
                     }
                     {match page {
                         Page::Library => rsx! { ui::library::LibraryPage {} },
+                        Page::Book => rsx! { ui::book::BookPage {} },
                         Page::Export => rsx! { ui::export::ExportPage {} },
                         Page::Settings => rsx! { ui::settings::SettingsPage {} },
                     }}
@@ -732,9 +748,7 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                         let mut settings = ctx.settings;
                         settings.set(Settings::default());
                         let mut readers = ctx.readers;
-                        let mut fresh = library::Settings { readers_listed: false, ..Default::default() };
-                        fresh.list_old_readers();
-                        readers.set(fresh);
+                        readers.set(first_visit_readers());
                         let mut sf = ctx.state_file;
                         sf.set(None);
                         ctx.notify("Everything MangaPoint kept on this device was deleted.");
@@ -802,6 +816,12 @@ pub fn books(n: usize) -> String {
 }
 
 /// A book's state as the file would hold it, for the Settings counts.
+/// A first visit has no readers: the visitor adds their own. Until then pages are made for a
+/// phone or tablet, as they are.
+fn first_visit_readers() -> library::Settings {
+    library::Settings { device: device_profiles::PHONE_ORIGINAL_ID.to_string(), ..Default::default() }
+}
+
 pub fn state_count(lib: &Library) -> usize {
     lib.states.len()
 }
@@ -816,6 +836,7 @@ fn route_of(ctx: Ctx) -> (String, String) {
     }
     match *ctx.page.read() {
         Page::Library => (String::new(), String::new()),
+        Page::Book => (format!("book?id={}", ctx.book_page.read()), String::new()),
         Page::Export => ("export".into(), String::new()),
         Page::Settings => ("settings".into(), ctx.settings_section.read().slug().into()),
     }
@@ -837,6 +858,16 @@ fn apply_route(ctx: Ctx, path: &str, hash: &str) {
             let mut section = ctx.settings_section;
             section.set(ui::settings::Section::from_slug(hash).unwrap_or(ui::settings::Section::Library));
             ctx.go(Page::Settings);
+        }
+        "book" => {
+            ui::reader::close_reader(ctx);
+            let id = param("id");
+            if ctx.book(id).is_some() {
+                ui::book::open_overview(ctx, id);
+            } else {
+                ctx.go(Page::Library);
+                bridge::send("route_fix", json!({ "path": "", "hash": "" }));
+            }
         }
         "read" => {
             let id = param("book");
