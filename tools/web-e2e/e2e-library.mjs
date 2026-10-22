@@ -60,6 +60,31 @@ try {
   r.check('and left no waiting card behind', !(await page.eval("!!document.querySelector('.poster.not-installed')")));
   r.check('the bar is gone', !(await page.eval("!!document.querySelector('.action-bar')")));
 
+  // ---- Remove download keeps the book, Forget takes it away ----
+  await importBooks(page, [fx('Hero Saga Vol 2.zip')]);
+  await clearToasts(page);
+  await press('.poster-more');
+  r.check('the card menu has Remove download and Forget, with a question mark by Forget',
+    !!(await page.eval("document.querySelector('#remove-download')")) && !!(await page.eval("document.querySelector('.poster-menu .forget-item .help')")));
+  const helpText = await page.eval("document.querySelector('.poster-menu .forget-item .help')?.dataset.tip || ''");
+  r.check('the question mark says what Forget does', /takes the book out of your library/i.test(helpText) && /remove the download/i.test(helpText), helpText);
+  await page.click('.poster-menu .forget-item .help');
+  await sleep(200);
+  r.check('the question mark does not forget the book', !(await page.eval("!!document.querySelector('#modal-confirm')")) && !!(await page.eval("document.querySelector('.poster-menu')")));
+  await press('#remove-download');
+  await page.waitFor("!!document.querySelector('#modal-confirm')", 5, 'the confirmation');
+  await press('#modal-confirm');
+  await page.waitFor("!!document.querySelector('.poster.not-installed')", 15, 'the card to wait for its file');
+  r.check('Remove download leaves the book in the library, not installed, even though it was never read',
+    (await page.eval("document.querySelectorAll('.poster').length")) === 1 && /Not installed yet/.test(await page.eval("document.querySelector('.poster').innerText")));
+  r.check('its file is gone from storage', (await page.eval("(async () => { const root = await navigator.storage.getDirectory(); try { const d = await root.getDirectoryHandle('books'); let n = 0; for await (const _ of d.keys()) n++; return n; } catch (_) { return 0; } })()")) === 0);
+  await page.click('.poster-more');
+  await page.click('.poster-menu .menu-item', 'Forget');
+  await page.waitFor("!!document.querySelector('#modal-confirm')", 5, 'the confirmation');
+  await page.click('#modal-confirm');
+  await page.waitFor("!document.querySelector('.poster')", 15, 'the card to go');
+  r.check('Forget on that card takes it away', !(await page.eval("!!document.querySelector('.poster')")));
+
   // ---- Forget from one card ----
   await importBooks(page, [fx('Hero Saga Vol 2.zip')]);
   await clearToasts(page);
@@ -80,7 +105,26 @@ try {
   const found = JSON.parse(links);
   r.check('downloads for macOS, Windows and Linux', found.every((l) => l && /github\.com\/W1seGit\/MangaPoint\/releases/.test(l[1])), links);
   r.check('the GitHub link is under them', /github\.com\/W1seGit\/MangaPoint$/.test(await page.eval("document.querySelector('#github-link')?.href || ''")));
-  r.check('the desktop app is explained', (await page.eval("document.querySelectorAll('.desk-feature').length")) >= 4);
+  const head = await page.eval("(() => { const h = document.querySelector('.desk-title'); return h ? [h.textContent, getComputedStyle(h).textAlign] : null; })()");
+  r.check('a centred heading: Get the desktop app', head && /Get the desktop app/i.test(head[0]) && head[1] === 'center', JSON.stringify(head));
+  r.check('no paragraph of explanation above it', !(await page.eval("!!document.querySelector('.desk-intro')")));
+  r.check('the features are a slider with a dot each', (await page.eval("document.querySelectorAll('.desk-slide').length")) === 1 && (await page.eval("document.querySelectorAll('.desk-dot').length")) === 6);
+  const slideTitle = () => page.eval("document.querySelector('#desk-slide-title')?.textContent");
+  const t0 = await slideTitle();
+  await page.eval("document.querySelectorAll('.desk-dot')[3].scrollIntoView({ block: 'center' })");
+  await press('.desk-dot', null, 3);
+  await sleep(300);
+  const t3 = await slideTitle();
+  r.check('a dot shows its feature', t3 && t3 !== t0 && (await page.eval("document.querySelectorAll('.desk-dot')[3].classList.contains('on')")), `${t0} -> ${t3}`);
+  if (touch) {
+    const sr = await page.rect('#desk-slide');
+    await page.swipe(sr[0] + sr[2] * 0.8, sr[1] + sr[3] * 0.4, sr[0] + sr[2] * 0.2, sr[1] + sr[3] * 0.4);
+    await sleep(300);
+  } else {
+    await page.click('#desk-next');
+    await sleep(300);
+  }
+  r.check(touch ? 'a swipe goes to the next feature' : 'the arrow goes to the next feature', (await page.eval("document.querySelectorAll('.desk-dot')[4].classList.contains('on')")), await slideTitle());
   await page.shot(`${viewport}-52-app`);
 
   // ---- the strip source in Export ----

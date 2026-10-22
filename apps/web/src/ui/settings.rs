@@ -244,22 +244,9 @@ pub fn SettingsPage() -> Element {
                                 }
                             }
                         }
-                        h2 { class: "sx-group", "The desktop app" }
                         div { class: "desk-app", id: "desktop-app",
-                            p { class: "desk-intro",
-                                "This website reads and exports the books you already have. The MangaPoint desktop app is the one that finds them: it searches your sources, downloads the chapters and makes them fit your e-reader."
-                            }
-                            div { class: "desk-features",
-                                for (scene, title, text) in DESKTOP_FEATURES {
-                                    figure { class: "desk-feature", key: "{title}",
-                                        div { class: "desk-art", FeatureScene { name: scene, label: title } }
-                                        figcaption {
-                                            strong { "{title}" }
-                                            p { class: "muted small", "{text}" }
-                                        }
-                                    }
-                                }
-                            }
+                            h2 { class: "desk-title", "Get the desktop app" }
+                            DeskSlider {}
                             h3 { class: "desk-heading", "Download it" }
                             div { class: "desk-downloads",
                                 for (name, detail, slug) in DESKTOP_DOWNLOADS {
@@ -317,6 +304,53 @@ const DESKTOP_DOWNLOADS: [(&str, &str, &str); 3] = [
     ("Windows", "Installer (.exe)", "windows"),
     ("Linux", ".deb, .rpm or the plain program", "linux"),
 ];
+
+/// What the desktop app does, one scene at a time: arrows, dots to jump, and a swipe on a phone.
+#[component]
+fn DeskSlider() -> Element {
+    let mut at = use_signal(|| 0usize);
+    let mut swipe_from = use_signal(|| None::<f64>);
+    let n = DESKTOP_FEATURES.len();
+    let i = at() % n;
+    let (scene, title, text) = DESKTOP_FEATURES[i];
+    let mut go = move |by: isize| at.set(((at() as isize + by).rem_euclid(n as isize)) as usize);
+    rsx! {
+        div { class: "desk-slider", id: "desk-slider", role: "region", "aria-roledescription": "carousel", "aria-label": "What the desktop app does",
+            div { class: "desk-slide-row",
+                button { class: "desk-arrow", id: "desk-prev", "aria-label": "Previous", title: "Previous",
+                    onclick: move |_| go(-1), Icon { name: "chevron-left", size: 22 }
+                }
+                figure { class: "desk-slide", key: "{i}", id: "desk-slide", "aria-live": "polite",
+                    onpointerdown: move |e| swipe_from.set(Some(e.client_coordinates().x)),
+                    onpointerup: move |e| {
+                        if let Some(x0) = swipe_from() {
+                            let dx = e.client_coordinates().x - x0;
+                            if dx.abs() > 40.0 { go(if dx < 0.0 { 1 } else { -1 }); }
+                        }
+                        swipe_from.set(None);
+                    },
+                    div { class: "desk-art", FeatureScene { name: scene, label: title } }
+                    figcaption {
+                        strong { id: "desk-slide-title", "{title}" }
+                        p { class: "muted", "{text}" }
+                    }
+                }
+                button { class: "desk-arrow", id: "desk-next", "aria-label": "Next", title: "Next",
+                    onclick: move |_| go(1), Icon { name: "chevron-right", size: 22 }
+                }
+            }
+            div { class: "desk-dots",
+                for (k, (_, name, _)) in DESKTOP_FEATURES.iter().enumerate() {
+                    button {
+                        key: "{k}", class: if k == i { "desk-dot on" } else { "desk-dot" },
+                        "aria-label": "{name}", "aria-current": if k == i { "true" } else { "false" }, title: "{name}",
+                        onclick: move |_| at.set(k),
+                    }
+                }
+            }
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Section {

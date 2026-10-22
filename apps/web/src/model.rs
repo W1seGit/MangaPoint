@@ -267,6 +267,12 @@ impl Library {
         s
     }
 
+    /// Make sure the book has a reading state, so it stays in the library (waiting for its
+    /// file) once its file is removed.
+    pub fn keep_place(&mut self, book: &Book) {
+        self.state_for(book);
+    }
+
     /// Remember where the reader is. `page` counts in the chapter.
     pub fn record_position(&mut self, book: &Book, chapter: usize, page: usize, scroll: f32, now_ms: u64) {
         let name = book

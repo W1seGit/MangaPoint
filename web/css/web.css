@@ -252,6 +252,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .banner.big-export { flex-direction: column; align-items: stretch; gap: 8px; font-size: 0.8rem; line-height: 1.45; padding: 9px 12px; }
 .banner.big-export .btn { align-self: stretch; }
 
+.menu-help { margin-left: auto; display: inline-flex; color: var(--muted); }
 /* Library: a book waiting for its file is a card like the others, with a faded placeholder. The
    selection is the app's (the tick on each card, the action bar); on a phone the bar sits above the tabs. */
 .poster.not-installed .poster-art .cover { opacity: 0.55; }
@@ -263,15 +264,31 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 }
 
 /* Settings, App: the desktop app, what it does and where to get it */
-.desk-app { max-width: 860px; }
-.desk-intro { margin: 0 0 18px; line-height: 1.55; color: var(--text); }
-.desk-features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-.desk-feature { margin: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; }
-.desk-art { display: flex; align-items: center; justify-content: center; padding: 14px 10px 6px; background: #0b0b0b; border-bottom: 1px solid var(--line); }
-.desk-art .desk-scene { width: 100%; max-width: 224px; height: auto; margin: 0; }
-.desk-feature figcaption { padding: 12px 14px 14px; }
-.desk-feature strong { display: block; margin-bottom: 3px; }
-.desk-feature p { margin: 0; line-height: 1.45; }
+.desk-app { max-width: 860px; margin-top: 34px; }
+.desk-title { text-align: center; font-size: 1.6rem; margin: 0 0 18px; }
+.desk-slider { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+.desk-slide-row { display: flex; align-items: center; gap: 12px; width: 100%; justify-content: center; }
+.desk-slide {
+  margin: 0; flex: 1; max-width: 560px; display: flex; flex-direction: column; align-items: center; text-align: center;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--panel); overflow: hidden; touch-action: pan-y;
+  animation: desk-slide-in 0.28s ease;
+}
+@keyframes desk-slide-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+.desk-art { width: 100%; display: flex; align-items: center; justify-content: center; padding: 22px 10px 12px; background: #0b0b0b; border-bottom: 1px solid var(--line); }
+.desk-art .desk-scene { width: 100%; max-width: 336px; height: auto; margin: 0; }
+.desk-slide figcaption { padding: 16px 22px 20px; }
+.desk-slide strong { display: block; font-size: 1.1rem; margin-bottom: 6px; }
+.desk-slide p { margin: 0; line-height: 1.5; }
+.desk-arrow {
+  flex: none; width: 42px; height: 42px; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--panel);
+  color: var(--text); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.desk-arrow:hover { background: var(--panel-3); }
+.desk-dots { display: flex; gap: 8px; }
+.desk-dot { width: 9px; height: 9px; padding: 0; border: 0; border-radius: 50%; background: var(--line-strong); cursor: pointer; transition: width 0.2s, background 0.2s; }
+.desk-dot.on { width: 22px; border-radius: 5px; background: var(--text); }
+.app[data-motion="snappy"] .desk-slide { animation: none; }
+@media (prefers-reduced-motion: reduce) { .desk-slide { animation: none; } }
 .pixel-mark { shape-rendering: crispEdges; image-rendering: pixelated; flex: none; }
 /* The scenes move in steps, like the cat. */
 .desk-scene .found { opacity: 0; animation: desk-found 3.6s step-end infinite; }
@@ -297,7 +314,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 @media (prefers-reduced-motion: reduce) {
   .desk-scene .found, .desk-scene .drop, .desk-scene .fill, .desk-scene .crop, .desk-scene .pick, .desk-scene .wave { animation: none; opacity: 1; }
 }
-.desk-heading { margin: 26px 0 12px; font-size: 1.05rem; }
+.desk-heading { margin: 30px 0 12px; font-size: 1.05rem; text-align: center; }
 .desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .desk-download {
   display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 22px 20px; border: 1px solid var(--line-strong);
@@ -313,7 +330,7 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 }
 .desk-github:hover { border-color: var(--accent, var(--text)); background: var(--panel-2); }
 .desk-github > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-@media (max-width: 1100px) { .desk-features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) {
-  .desk-features, .desk-downloads { grid-template-columns: minmax(0, 1fr); }
+  .desk-downloads { grid-template-columns: minmax(0, 1fr); }
+  .desk-arrow { display: none; }
 }

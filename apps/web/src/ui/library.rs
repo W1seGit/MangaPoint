@@ -1,7 +1,7 @@
 //! The Library: the books kept in this browser, and the places waiting for
 //! their file, as cards in one grid. Cards can be selected for the bar at the bottom.
 
-use super::widgets::{Cover, EmptyState, Icon, NoCover};
+use super::widgets::{Cover, EmptyState, Help, Icon, NoCover};
 use crate::app::{Ctx, Modal, ModalAction, Page};
 use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
@@ -160,6 +160,7 @@ pub fn LibraryPage() -> Element {
                         let (open_id, read_id, text_id, menu_id, export_id, remove_id, again_id) =
                             (id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone(), id.clone());
                         let remove_title = b.title.clone();
+                        let undownload_id = id.clone();
                         let needs_file = b.needs_file;
                         let is_on = picked.read().contains(&id);
                         let toggle_id = id.clone();
@@ -209,17 +210,35 @@ pub fn LibraryPage() -> Element {
                                                 Icon { name: "file-up", size: 15 } "Import"
                                             }
                                         }
-                                        button { class: "menu-item danger",
+                                        if !needs_file {
+                                            button { class: "menu-item", id: "remove-download",
+                                                onclick: {
+                                                    let title = remove_title.clone();
+                                                    let id = undownload_id.clone();
+                                                    move |_| {
+                                                        menu.set(None);
+                                                        ctx.ask(Modal {
+                                                            title: format!("Remove the download of {title}?"),
+                                                            body: "Its file is deleted from this device to free the space. The book stays in your library with your place in it: import the file again to carry on.".into(),
+                                                            confirm: "Remove download".into(), cancel: "Keep".into(), danger: true,
+                                                            action: ModalAction::RemoveBook { id: id.clone(), forget: false },
+                                                        });
+                                                    }
+                                                },
+                                                Icon { name: "x", size: 15 } "Remove download"
+                                            }
+                                        }
+                                        button { class: "menu-item danger forget-item",
                                             onclick: move |_| {
                                                 menu.set(None);
                                                 ctx.ask(Modal {
                                                     title: format!("Forget {remove_title}?"),
-                                                    body: "The book and your place in it are deleted from this device. Import the file again to read it from the start.".into(),
+                                                    body: "The book, its file and your place in it are deleted from this device. Import the file again to read it from the start.".into(),
                                                     confirm: "Forget".into(), cancel: "Keep".into(), danger: true,
                                                     action: ModalAction::RemoveBook { id: remove_id.clone(), forget: true },
                                                 });
                                             },
-                                            Icon { name: "trash", size: 15 } "Forget"
+                                            Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
                                         }
                                     }
                                 }
@@ -306,7 +325,7 @@ pub fn LibraryPage() -> Element {
                                                     action: ModalAction::ForgetWaiting(forget_id.clone()),
                                                 });
                                             },
-                                            Icon { name: "trash", size: 15 } "Forget"
+                                            Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
                                         }
                                     }
                                 }
@@ -358,7 +377,25 @@ pub fn LibraryPage() -> Element {
                     if more() {
                         div { class: "menu-scrim", onclick: move |_| more.set(false) }
                         div { class: "menu up",
-                            button { class: "menu-item danger", id: "bar-forget", title: "Take the books you ticked out of your library",
+                            if !chosen_books.is_empty() {
+                                button { class: "menu-item", id: "bar-remove-downloads", title: "Delete the files to free the space, and keep the books and your places",
+                                    onclick: {
+                                        let ids = chosen_books.clone();
+                                        move |_| {
+                                            more.set(false);
+                                            ctx.ask(Modal {
+                                                title: format!("Remove the downloads of {}?", plural(ids.len(), "book")),
+                                                body: "Their files are deleted from this device to free the space. The books stay in your library with your places in them: import the files again to carry on.".into(),
+                                                confirm: "Remove downloads".into(), cancel: "Keep".into(), danger: true,
+                                                action: ModalAction::RemoveDownloads(ids.clone()),
+                                            });
+                                            picked.set(BTreeSet::new());
+                                        }
+                                    },
+                                    Icon { name: "x", size: 15 } "Remove downloads"
+                                }
+                            }
+                            button { class: "menu-item danger forget-item", id: "bar-forget", title: "Take the books you ticked out of your library",
                                 onclick: {
                                     let ids: Vec<String> = chosen.iter().cloned().collect();
                                     move |_| {
@@ -372,7 +409,7 @@ pub fn LibraryPage() -> Element {
                                         picked.set(BTreeSet::new());
                                     }
                                 },
-                                Icon { name: "trash", size: 15 } "Forget"
+                                Icon { name: "trash", size: 15 } span { class: "grow", "Forget" } span { class: "menu-help", onclick: move |e| e.stop_propagation(), Help { text: FORGET_HELP } }
                             }
                         }
                     }
@@ -381,6 +418,9 @@ pub fn LibraryPage() -> Element {
         }
     }
 }
+
+/// What Forget does, behind its question mark.
+const FORGET_HELP: &str = "Forget takes the book out of your library: its file, your place in it and the chapters you read are deleted from this device. To free the space but keep your place, remove the download instead.";
 
 /// Add the card to the pick, or take it off.
 fn toggle(mut picked: Signal<BTreeSet<String>>, id: &str) {

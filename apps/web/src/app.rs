@@ -67,6 +67,8 @@ pub enum ModalAction {
     ForgetWaiting(String),
     /// Books and places, by id, taken out of the library together, with their reading state.
     ForgetMany(Vec<String>),
+    /// The files of these books deleted; the books stay in the library, waiting for their file.
+    RemoveDownloads(Vec<String>),
     ClearAll,
     DeletePreset(String),
     RemoveReader(String),
@@ -532,13 +534,20 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                 }
                 match bridge::call_ok("remove_book", json!({ "id": id })).await {
                     Ok(()) => {
-                        let title = ctx.book(&id).map(|b| b.title).unwrap_or_default();
+                        let title = ctx.book(&id).map(|b| b.title.clone()).unwrap_or_default();
                         let mut lib = ctx.library;
+                        // Only the download goes: the book stays, waiting for its file.
+                        if !forget {
+                            if let Some(book) = ctx.book(&id) {
+                                lib.write().keep_place(&book);
+                                ctx.save_state_of(&id);
+                            }
+                        }
                         lib.write().remove_book(&id, forget);
                         if forget {
                             let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
                         }
-                        ctx.notify(if forget { format!("Forgot {title}.") } else { format!("Removed {title}.") });
+                        ctx.notify(if forget { format!("Forgot {title}.") } else { format!("Removed the download of {title}.") });
                     }
                     Err(e) => ctx.error(format!("Could not remove it: {e}")),
                 }
@@ -547,6 +556,24 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                 let mut lib = ctx.library;
                 lib.write().forget_state(&id);
                 let _ = bridge::call_ok("db_delete", json!({ "store": "state", "key": id })).await;
+            }
+            ModalAction::RemoveDownloads(ids) => {
+                let mut removed = 0usize;
+                for id in ids {
+                    let Some(book) = ctx.book(&id) else { continue };
+                    if ctx.reading.peek().as_ref().is_some_and(|r| r.book_id == id) {
+                        ui::reader::close_reader(ctx);
+                    }
+                    if bridge::call_ok("remove_book", json!({ "id": id })).await.is_err() {
+                        continue;
+                    }
+                    let mut lib = ctx.library;
+                    lib.write().keep_place(&book);
+                    ctx.save_state_of(&id);
+                    lib.write().remove_book(&id, false);
+                    removed += 1;
+                }
+                ctx.notify(format!("Removed the downloads of {}. They stay in your library.", plural(removed, "book")));
             }
             ModalAction::ForgetMany(ids) => {
                 let mut forgotten = 0usize;
