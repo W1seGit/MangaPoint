@@ -12,8 +12,8 @@ pub(super) fn ExportFooter() -> Element {
     let plan = state.export_plan.read().clone();
     let library = state.library.read();
     let opts = state.export_opts.read().clone();
-    let device = state.settings.read().device_profile();
-    let original = device_profiles::is_original(&state.settings.read().device);
+    let device = state.ui.settings.read().device_profile();
+    let original = device_profiles::is_original(&state.ui.settings.read().device);
     // Whether something runs, not how far it has got: the footer is not drawn
     // again for every page.
     let (busy, exporting) = use_memo(move || {

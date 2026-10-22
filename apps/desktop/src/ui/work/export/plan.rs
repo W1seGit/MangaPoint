@@ -263,7 +263,7 @@ pub fn start_export_plan(state: AppState) {
     crate::ui::presets::fit_output_to_reader(state);
     let plan = state.export_plan.peek().clone();
     let opts = state.export_opts.peek().clone();
-    let settings = state.settings.peek().clone();
+    let settings = state.ui.settings.peek().clone();
     // A phone or tablet gets the pages as they are, as a CBZ or a PDF.
     let original_format = device_profiles::is_original(&settings.device).then_some(opts.original_format);
     let list: Vec<(library::DownloadedSeries, Vec<String>)> = plan

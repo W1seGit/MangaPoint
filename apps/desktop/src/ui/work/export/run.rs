@@ -48,7 +48,7 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
     let first = entries.next();
     waiting.set(entries.collect());
     spawn_forever(async move {
-        let settings = state.settings.peek().clone();
+        let settings = state.ui.settings.peek().clone();
         let Some(target) = saved.target.clone() else {
             forget_export_plan();
             return;

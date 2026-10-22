@@ -291,7 +291,7 @@ fn preview_signature(state: AppState) -> u64 {
     let Some(series) = library.find(&ws.series_id) else {
         return 0;
     };
-    let device = state.settings.peek().device_profile();
+    let device = state.ui.settings.peek().device_profile();
     let opts = pipeline::process_options_for(&device, &series.settings);
     // Only the crops that apply to this chapter matter to how it looks.
     let crops = series.crops.chapter_configuration(&key);
@@ -331,7 +331,7 @@ pub(super) fn signature_of(
 
 pub fn schedule_preview(state: AppState, delay_ms: u64) {
     // For a phone or tablet the pages are shown as they are, not converted.
-    if device_profiles::is_original(&state.settings.peek().device) {
+    if device_profiles::is_original(&state.ui.settings.peek().device) {
         return;
     }
     let mut preview = state.preview;
@@ -376,7 +376,7 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
         let Some(series) = state.library.peek().find(&ws.series_id).cloned() else {
             return fail("This series is not in your library.".into());
         };
-        let device = state.settings.peek().device_profile();
+        let device = state.ui.settings.peek().device_profile();
         let files = {
             let (id, k) = (ws.series_id.clone(), key.clone());
             tokio::task::spawn_blocking(move || library_files().page_files(&id, &k))

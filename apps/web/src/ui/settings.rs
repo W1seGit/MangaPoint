@@ -22,10 +22,10 @@ pub fn state_file_loaded(ctx: Ctx, name: String, text: String) {
         }
     };
     let now = current_iso();
-    let settings = ctx.settings.peek().clone();
+    let settings = ctx.choices.peek().clone();
     let mut lib = ctx.library;
     let (loaded, merged_settings) = lib.write().apply_loaded(&parsed, settings, &now);
-    let mut s = ctx.settings;
+    let mut s = ctx.choices;
     s.set(merged_settings);
     ctx.save_settings();
     // Keep every record, so a reload finds them.
@@ -50,7 +50,7 @@ pub fn state_file_loaded(ctx: Ctx, name: String, text: String) {
 }
 
 fn save_state(ctx: Ctx, choose: bool) {
-    let settings = ctx.settings.peek().clone();
+    let settings = ctx.choices.peek().clone();
     let file = ctx.library.peek().to_state(settings, &current_iso());
     let text = state::to_json_pretty(&file);
     dioxus::core::spawn_forever(async move {
@@ -132,7 +132,7 @@ pub fn SettingsPage() -> Element {
                         key: "{label}",
                         id: "settings-nav-{slug}",
                         class: if sec == section() { "nav-item active" } else { "nav-item" },
-                        onclick: move |_| ctx.leave(crate::app::Leave::Section(sec)),
+                        onclick: move |_| ctx.open_section(sec),
                         Icon { name: icon, size: 17 }
                         "{label}"
                     }
@@ -224,7 +224,7 @@ pub fn SettingsPage() -> Element {
                         }
                     },
                     Section::Readers => rsx! {
-                        super::readers::DevicesEditor {}
+                        super::readers::ReadersEditor {}
                     },
                     Section::App => rsx! {
                         h2 { class: "sx-group", "App" }

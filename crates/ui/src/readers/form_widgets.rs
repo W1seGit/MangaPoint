@@ -1,6 +1,6 @@
 //! Small controls for the reader form: the file types as pills, and rows of ticked options.
 
-use crate::ui::widgets::Icon;
+use crate::widgets::Icon;
 use dioxus::prelude::*;
 
 /// The file types a reader can be said to open.

@@ -298,9 +298,9 @@ fn export_book_quiet(ctx: Ctx, id: &str) {
 }
 
 fn start_book(ctx: Ctx, book: &Book, fresh: bool) {
-    let settings = ctx.settings.peek().clone();
+    let settings = ctx.choices.peek().clone();
     let (profile, formats) = {
-        let r = ctx.readers.peek();
+        let r = ctx.ui.settings.peek();
         (r.device_profile(), r.reader_setup().formats)
     };
     let wanted = if settings.preset.is_empty() { "manga".to_string() } else { settings.preset };
@@ -337,8 +337,8 @@ pub fn edit(ctx: Ctx, f: impl FnOnce(&mut ExportUi)) {
 }
 
 fn remember_choices(ctx: Ctx) {
-    let (device, preset) = (ctx.readers.peek().device_profile().id, ctx.export.peek().preset.clone());
-    let mut settings = ctx.settings;
+    let (device, preset) = (ctx.ui.settings.peek().device_profile().id, ctx.export.peek().preset.clone());
+    let mut settings = ctx.choices;
     {
         let mut s = settings.write();
         s.device = device;
@@ -371,7 +371,7 @@ pub fn reader_options(profile: &device_profiles::DeviceProfile, formats: &[Strin
 /// does: how pages are made, the grouping and the file type carry over when the new reader opens it.
 pub fn use_reader(ctx: Ctx, id: &str) {
     {
-        let mut readers = ctx.readers;
+        let mut readers = ctx.ui.settings;
         readers.write().device = id.to_string();
     }
     ctx.save_readers();
@@ -381,7 +381,7 @@ pub fn use_reader(ctx: Ctx, id: &str) {
 /// The reader in use changed (picked, edited, removed): the screen follows it.
 pub fn reader_changed(ctx: Ctx) {
     let (profile, formats) = {
-        let r = ctx.readers.peek();
+        let r = ctx.ui.settings.peek();
         (r.device_profile(), r.reader_setup().formats)
     };
     if !ctx.export.peek().started {

@@ -470,7 +470,7 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
     let chapter = d.chapters[current].clone();
     let loaded = ctx.pages.read().get(&current).cloned();
     let zoom = f32::from(look.zoom) / 100.0;
-    let always = state.settings.read().reader_bars_always;
+    let always = state.ui.settings.read().reader_bars_always;
     let items: Vec<(usize, String, bool)> = d
         .chapters
         .iter()
@@ -498,7 +498,7 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
                     ctx.set_prefs(|p| p.zoom = Some(zoom));
                 },
                 on_always: move |yes: bool| {
-                    let mut settings = state.settings;
+                    let mut settings = state.ui.settings;
                     settings.write().reader_bars_always = yes;
                     state.save_settings();
                 },

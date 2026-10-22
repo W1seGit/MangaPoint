@@ -67,7 +67,7 @@ pub fn ConversionControls(
 ) -> Element {
     let compact = compact.unwrap_or(false);
     let state = use_context::<AppState>();
-    let advanced = state.settings.read().advanced_conversion;
+    let advanced = state.ui.settings.read().advanced_conversion;
     let c = value.clone();
     // Apply one edit to a copy of the settings and report the result.
     let change = Rc::new(move |edit: Edit, raw: String| {
@@ -481,7 +481,7 @@ pub fn ConversionControls(
             }
             button { class: "btn ghost small advanced-toggle",
                 onclick: move |_| {
-                    let mut settings = state.settings;
+                    let mut settings = state.ui.settings;
                     let on = !settings.peek().advanced_conversion;
                     settings.write().advanced_conversion = on;
                     state.save_settings();
@@ -504,7 +504,7 @@ fn ConversionGroup(
     children: Element,
 ) -> Element {
     let state = use_context::<AppState>();
-    let mut open_groups = state.open_groups;
+    let mut open_groups = state.ui.open_groups;
     let reveal = reveal.unwrap_or(false);
     use_effect(use_reactive!(|reveal| {
         if reveal && !open_groups.peek().contains(&title) {

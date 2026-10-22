@@ -333,7 +333,7 @@ pub fn PreviewTab() -> Element {
     let total = p.pages.len();
     let selected = p.selected.min(total.saturating_sub(1));
     let number = if total == 0 { 0 } else { selected + 1 };
-    let device = state.settings.read().device_profile();
+    let device = state.ui.settings.read().device_profile();
     let frame_style = reader_style(view.zoom, device.width, device.height);
     let row_style = format!(
         "--row-h:{};",

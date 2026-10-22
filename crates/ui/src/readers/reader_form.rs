@@ -1,7 +1,8 @@
-//! Editing the chosen reader: its name, screen, file types and firmware.
+//! Editing the chosen reader: its name, screen, file types and firmware, and where the app can
+//! send files to it (`Caps::send_to_reader`), how they get there.
 
-use crate::ui::widgets::{Help, Icon};
-use crate::state::AppState;
+use crate::widgets::{Help, Icon};
+use crate::host::{use_ui, UiState};
 use device_profiles::{DeviceError, Firmware};
 use dioxus::prelude::*;
 use library::ReaderSetup;
@@ -63,12 +64,15 @@ fn apply_reader(settings: &mut library::Settings, draft: &ReaderDraft) -> Result
 
 /// Write a reader draft over the chosen reader and start the form again from
 /// it. False, with the reason shown, if it is not allowed.
-fn save_reader(state: AppState, draft: &ReaderDraft, revision: &mut Signal<u32>) -> bool {
+fn save_reader(state: UiState, draft: &ReaderDraft, revision: &mut Signal<u32>) -> bool {
     let mut settings = state.settings;
     let result = apply_reader(&mut settings.write(), draft);
     match result {
         Ok(()) => {
             state.save_settings();
+            // The screens that make pages for this reader follow what was saved (its size, its
+            // formats, whether its screen has colour).
+            state.host().reader_saved();
             state.notify("Reader saved.");
             let again = *revision.peek() + 1;
             revision.set(again);
@@ -84,7 +88,7 @@ fn save_reader(state: AppState, draft: &ReaderDraft, revision: &mut Signal<u32>)
 /// The chosen reader, edited as a draft and written when Save is pressed.
 #[component]
 pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
-    let state = use_context::<AppState>();
+    let state = use_ui();
     let s = state.settings.read().clone();
     let current = s.device_profile();
     let saved = ReaderDraft {
@@ -128,7 +132,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
             let draft = form_now();
             let mut unsaved = state.unsaved_reader;
             if draft != saved {
-                unsaved.set(Some(crate::state::UnsavedReader(std::rc::Rc::new(move || {
+                unsaved.set(Some(crate::host::UnsavedReader(std::rc::Rc::new(move || {
                     let mut revision = revision;
                     save_reader(state, &draft, &mut revision)
                 }))));
@@ -141,6 +145,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
             unsaved.set(None);
         });
     }
+    let send_to_reader = state.host().caps().send_to_reader;
     let wifi_url_now = setup().wifi_url.clone().unwrap_or_default();
     let wifi_url_to_test = wifi_url_now.clone();
     let (w0, h0) = (
@@ -272,6 +277,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
             }
         }
 
+        if send_to_reader {
         div { class: "sx-row",
             div { class: "sx-text",
                 div { class: "sx-label", "Export method"
@@ -318,7 +324,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
                             let url = wifi_url_to_test.clone();
                             spawn(async move {
                                 testing.set(true);
-                                match pipeline::export::check_webdav(&url).await {
+                                match state.host().check_wifi(url).await {
                                     Ok(()) => state.notify("The reader answered."),
                                     Err(message) => state.error(message),
                                 }
@@ -343,19 +349,20 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
                 }
             }
         }
+        }
 
         div { class: "form-footer",
             button { class: "btn danger",
                 title: "Series made for it keep their settings.",
                 onclick: {
                     let remove_name = current.name.clone();
-                    move |_| state.ask(crate::state::Modal {
+                    move |_| state.ask(crate::host::Ask {
                         title: format!("Remove {remove_name}?"),
                         body: "The reader and its settings are taken off your list. Series made for it keep their settings.".into(),
                         confirm: "Remove".into(),
                         cancel: "Keep".into(),
                         danger: true,
-                        action: crate::state::ModalAction::RemoveReader { id: remove_id.clone() },
+                        action: crate::host::SharedAction::RemoveReader { id: remove_id.clone() },
                     })
                 },
                 Icon { name: "trash", size: 15 }
@@ -394,7 +401,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::devices::adder::add_known;
+    use crate::readers::adder::add_known;
 
     fn draft(name: &str, width: u32, height: u32) -> ReaderDraft {
         ReaderDraft {

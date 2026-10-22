@@ -100,7 +100,7 @@ pub(super) fn enqueue_picked(
 /// Start a download, after asking where its files should go (unless the user
 /// asked not to be asked).
 pub fn ask_download(state: AppState, pending: PendingDownload, summary: String) {
-    if !state.settings.peek().ask_download_folder {
+    if !state.ui.settings.peek().ask_download_folder {
         start_pending(state, pending, None);
         return;
     }
@@ -125,7 +125,7 @@ pub fn set_download_folder(state: AppState, dir: std::path::PathBuf) {
         state.error(format!("Could not use that folder: {e}"));
         return;
     }
-    let mut settings = state.settings;
+    let mut settings = state.ui.settings;
     {
         let mut st = settings.write();
         let app_folder = paths().library_dir();
@@ -361,9 +361,9 @@ pub(super) async fn run_batch(state: AppState, id: u64) {
     let (defaults, default_preset) = state.new_series_defaults();
     // A download can carry a quality of its own (the original, for one asked
     // for in the dialog or to replace small pages); otherwise the setting rules.
-    let quality = batch.quality.unwrap_or(state.settings.peek().page_quality);
+    let quality = batch.quality.unwrap_or(state.ui.settings.peek().page_quality);
     let policy = RetryPolicy::default();
-    let limits = state.settings.peek().download_limits();
+    let limits = state.ui.settings.peek().download_limits();
     info!(
         "Download started: \"{}\", {}{}{}",
         batch.title,

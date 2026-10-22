@@ -36,19 +36,22 @@ use crate::queue::DownloadQueue;
 use catalog::SuwayomiClient;
 use dioxus::prelude::*;
 use library::{ExportsDb, HealthDb, JsonFile, LibraryDb, PresetsDb, Settings, SourceState, SpeedDb};
+use mangapoint_ui::host::UiState;
 use pipeline::SourceChoice;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
 pub struct AppState {
+    /// What the desktop app shares with the website: the settings, the toasts, the reader
+    /// form's unsaved changes (see `mangapoint_ui::host`).
+    pub ui: UiState,
     pub boot: Signal<BootState>,
     /// The catalog engine was already installed when the app started, so the
     /// app can be used (offline) while it starts. False on the very first run,
     /// which has to download it.
     pub engine_installed: bool,
     pub services: Signal<Option<Services>>,
-    pub settings: Signal<Settings>,
     pub sources: Signal<SourceState>,
     pub health: Signal<HealthDb>,
     pub page: Signal<Page>,
@@ -62,15 +65,8 @@ pub struct AppState {
     pub settings_section: Signal<SettingsSection>,
     /// Details of the series opened from a search, once the sources have answered.
     pub open_details: Signal<Option<OpenDetails>>,
-    /// The reader form has changes that are not saved yet.
-    pub unsaved_reader: Signal<Option<UnsavedReader>>,
-    /// Going somewhere was held back by unsaved reader settings; the user is asked.
-    pub leave_prompt: Signal<Option<Leave>>,
     /// Cover images as data URLs, keyed by `source:manga`.
     pub covers: Signal<HashMap<String, std::rc::Rc<str>>>,
-    pub toasts: Signal<Vec<Toast>>,
-    /// The pointer is over the toasts: they stay while it is.
-    pub toasts_hovered: Signal<bool>,
     pub modal: Signal<Option<Modal>>,
     /// Downloaded chapters (their pages are on disk).
     pub library: Signal<LibraryDb>,
@@ -112,9 +108,6 @@ pub struct AppState {
     pub crop_draft: Signal<library::CropRect>,
     /// The import dialog, when one is open.
     pub import: Signal<Option<ImportSession>>,
-    /// The groups of the Edit controls that are open. They all start folded,
-    /// and stay as they were left when the screen is visited again.
-    pub open_groups: Signal<Vec<&'static str>>,
     /// The running (or just finished) download or export.
     pub job: Signal<Option<JobView>>,
     /// The exports lined up behind the running one, in the order they go.
@@ -146,7 +139,21 @@ impl AppState {
         let sources: SourceState = JsonFile::new(paths().sources_file()).load();
         // The first run is walked through before the app shows; see `onboarding`.
         let first_page = Page::Search;
+        let settings = {
+            let mut settings = JsonFile::<Settings>::new(paths().settings_file()).load();
+            settings.list_old_readers();
+            // Dev flag: `cargo run -p mangapoint -- --onboarding` (or
+            // MANGAPOINT_ONBOARDING=1) walks through the first-run setup again.
+            if std::env::args().any(|a| a == "--onboarding")
+                || std::env::var_os("MANGAPOINT_ONBOARDING").is_some()
+            {
+                settings.setup_step = library::SetupStep::Engine;
+            }
+            apply_library_dirs(&settings);
+            settings
+        };
         Self {
+            ui: UiState::new(settings),
             engine_installed: catalog::provision::locate_install(
                 &paths()
                     .suwayomi_dir()
@@ -158,19 +165,6 @@ impl AppState {
                 percent: None,
             }),
             services: sig(None),
-            settings: sig({
-                let mut settings = JsonFile::<Settings>::new(paths().settings_file()).load();
-                settings.list_old_readers();
-                // Dev flag: `cargo run -p mangapoint -- --onboarding` (or
-                // MANGAPOINT_ONBOARDING=1) walks through the first-run setup again.
-                if std::env::args().any(|a| a == "--onboarding")
-                    || std::env::var_os("MANGAPOINT_ONBOARDING").is_some()
-                {
-                    settings.setup_step = library::SetupStep::Engine;
-                }
-                apply_library_dirs(&settings);
-                settings
-            }),
             sources: sig(sources),
             health: sig(JsonFile::<HealthDb>::new(paths().health_file()).load()),
             page: sig(first_page),
@@ -180,11 +174,7 @@ impl AppState {
             search_tags: sig(HashMap::new()),
             settings_section: sig(SettingsSection::default()),
             open_details: sig(None),
-            unsaved_reader: sig(None),
-            leave_prompt: sig(None),
             covers: sig(HashMap::new()),
-            toasts: sig(Vec::new()),
-            toasts_hovered: sig(false),
             modal: sig(None),
             library: sig(JsonFile::<LibraryDb>::new(paths().library_file()).load()),
             exports: sig(JsonFile::<ExportsDb>::new(paths().exports_file()).load()),
@@ -210,7 +200,6 @@ impl AppState {
             export_plan: sig(ExportPlan::default()),
             crop_draft: sig(library::CropRect::default()),
             import: sig(None),
-            open_groups: sig(Vec::new()),
             job: sig(None),
             export_waiting: sig(Vec::new()),
             sources_version: sig(0),

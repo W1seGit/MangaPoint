@@ -8,7 +8,10 @@ use crate::model::{Book, Library};
 use crate::review::{Failure, Review};
 use crate::ui::{self, widgets::Icon};
 use dioxus::prelude::*;
+use mangapoint_ui::dialogs::{ToastHost, UnsavedHost};
+use mangapoint_ui::host::{Ask, Host, Leave, LocalFuture, SharedAction, UiState};
 use serde_json::json;
+use std::rc::Rc;
 use web_engine::state::Settings;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,21 +53,6 @@ impl Default for ImportState {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ToastKind {
-    Success,
-    Warning,
-    Error,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Toast {
-    pub id: u64,
-    pub text: String,
-    pub kind: ToastKind,
-    pub leaving: bool,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub enum ModalAction {
     /// Books and places waiting for their file, by id, taken out of the library with their reading state.
@@ -73,7 +61,8 @@ pub enum ModalAction {
     RemoveDownloads(Vec<String>),
     ClearAll,
     DeletePreset(String),
-    RemoveReader(String),
+    /// Take a reader off the list.
+    RemoveReader { id: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -104,14 +93,17 @@ pub struct Reading {
 /// Everything the screens share.
 #[derive(Clone, Copy)]
 pub struct Ctx {
+    /// What the website shares with the desktop app: the settings with the user's readers (kept
+    /// in this browser), the toasts, the reader form's unsaved changes (see `mangapoint_ui::host`).
+    pub ui: UiState,
+    /// The visitor's choices for exports and the page, as the reading-state file keeps them.
+    pub choices: Signal<Settings>,
     pub boot: Signal<Boot>,
     pub library: Signal<Library>,
-    pub settings: Signal<Settings>,
     pub caps: Signal<Caps>,
     pub page: Signal<Page>,
     pub reading: Signal<Option<Reading>>,
     pub import: Signal<ImportState>,
-    pub toasts: Signal<Vec<Toast>>,
     pub modal: Signal<Option<Modal>>,
     pub online: Signal<bool>,
     pub update_ready: Signal<bool>,
@@ -124,37 +116,15 @@ pub struct Ctx {
     pub last_exports: Signal<std::collections::BTreeMap<String, ui::export::LastExport>>,
     /// The window is as narrow as a phone's.
     pub narrow: Signal<bool>,
-    /// The user's readers (and the one in use), as the app keeps them in its settings: the
-    /// list, each one's size, colour and file types. Kept in this browser.
-    pub readers: Signal<library::Settings>,
     /// The address bar has been read: from now on it follows the screen.
     pub routed: Signal<bool>,
     /// Which part of Settings is open.
     pub settings_section: Signal<ui::settings::Section>,
     /// The book whose overview is open (`Page::Book`).
     pub book_page: Signal<String>,
-    /// Writes the reader form's unsaved changes, while it has any (see [`UnsavedReader`]).
-    pub unsaved_reader: Signal<Option<UnsavedReader>>,
-    /// Going somewhere was held back by unsaved reader settings; the user is asked.
-    pub leave_prompt: Signal<Option<Leave>>,
     pub next_id: Signal<u64>,
     pub state_file: Signal<Option<String>>,
 }
-
-/// Where the user was going when unsaved reader settings stopped them: asked
-/// about, then carried on to. (The desktop app's own, `state/navigation.rs`.)
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Leave {
-    Page(Page),
-    Section(ui::settings::Section),
-    /// Another reader, by id.
-    Reader(String),
-}
-
-/// Writes the reader form's unsaved changes; true if they were saved. Present
-/// only while the form has changes that are not saved.
-#[derive(Clone)]
-pub struct UnsavedReader(pub std::rc::Rc<dyn Fn() -> bool>);
 
 impl Ctx {
     pub fn id(mut self) -> u64 {
@@ -165,73 +135,32 @@ impl Ctx {
 
     /// Go to a page. Unsaved reader settings are asked about first.
     pub fn go(self, page: Page) {
-        self.leave(Leave::Page(page));
-    }
-
-    /// Go somewhere that would lose the reader form's unsaved changes, asking
-    /// what to do with them first; anywhere else, just go.
-    pub fn leave(self, to: Leave) {
-        let staying = match &to {
-            Leave::Page(page) => *page == Page::Settings,
-            Leave::Section(section) => *section == ui::settings::Section::Readers,
-            Leave::Reader(_) => false,
+        let go = move || {
+            let mut p = self.page;
+            p.set(page);
         };
-        if !staying && self.unsaved_reader.peek().is_some() {
-            let mut prompt = self.leave_prompt;
-            prompt.set(Some(to));
-            return;
-        }
-        self.leave_now(to);
+        self.ui.leave(Leave::Elsewhere(Rc::new(go)), page == Page::Settings);
     }
 
-    /// Carry on to where the user was going, the changes dealt with.
-    pub fn leave_now(self, to: Leave) {
-        match to {
-            Leave::Page(page) => {
-                let mut p = self.page;
-                p.set(page);
-            }
-            Leave::Section(section) => {
-                let mut current = self.settings_section;
-                current.set(section);
-            }
-            Leave::Reader(id) => ui::export::use_reader(self, &id),
-        }
-    }
-
-    pub fn toast(self, kind: ToastKind, text: impl Into<String>) {
-        let id = self.id();
-        let mut toasts = self.toasts;
-        toasts.write().push(Toast { id, text: text.into(), kind, leaving: false });
-        let secs = if kind == ToastKind::Error { 9000 } else { 5000 };
-        dioxus::core::spawn_forever(async move {
-            bridge::sleep(secs).await;
-            self.dismiss_toast(id);
-        });
+    /// Open a part of Settings. Unsaved reader settings are asked about first.
+    pub fn open_section(self, section: ui::settings::Section) {
+        let go = move || {
+            let mut current = self.settings_section;
+            current.set(section);
+        };
+        self.ui.leave(Leave::Elsewhere(Rc::new(go)), section == ui::settings::Section::Readers);
     }
 
     pub fn notify(self, text: impl Into<String>) {
-        self.toast(ToastKind::Success, text);
+        self.ui.notify(text);
     }
 
     pub fn warn(self, text: impl Into<String>) {
-        self.toast(ToastKind::Warning, text);
+        self.ui.warn(text);
     }
 
     pub fn error(self, text: impl Into<String>) {
-        self.toast(ToastKind::Error, text);
-    }
-
-    pub fn dismiss_toast(self, id: u64) {
-        let mut toasts = self.toasts;
-        if let Some(t) = toasts.write().iter_mut().find(|t| t.id == id) {
-            t.leaving = true;
-        }
-        dioxus::core::spawn_forever(async move {
-            bridge::sleep(360).await;
-            let mut toasts = self.toasts;
-            toasts.write().retain(|t| t.id != id);
-        });
+        self.ui.error(text);
     }
 
     pub fn ask(mut self, modal: Modal) {
@@ -247,8 +176,9 @@ impl Ctx {
         }
     }
 
+    /// Keep the settings with the readers in this browser.
     pub fn save_readers(self) {
-        bridge::put_soon("meta", "readers", &*self.readers.peek());
+        bridge::put_soon("meta", "readers", &*self.ui.settings.peek());
     }
 
     pub fn save_presets(self) {
@@ -260,7 +190,7 @@ impl Ctx {
     }
 
     pub fn save_settings(self) {
-        bridge::put_soon("meta", "settings", &*self.settings.peek());
+        bridge::put_soon("meta", "settings", &*self.choices.peek());
     }
 
     pub fn book(self, id: &str) -> Option<Book> {
@@ -271,21 +201,61 @@ impl Ctx {
     }
 }
 
+/// The website's side of the shared screens (`mangapoint_ui::host::Host`).
+struct WebHost(Ctx);
+
+impl Host for WebHost {
+    fn sleep(&self, ms: u64) -> LocalFuture<()> {
+        Box::pin(bridge::sleep(ms.min(u64::from(u32::MAX)) as u32))
+    }
+
+    fn save_settings(&self) {
+        self.0.save_readers();
+    }
+
+    fn use_reader(&self, id: &str) {
+        ui::export::use_reader(self.0, id);
+    }
+
+    fn reader_saved(&self) {
+        ui::export::reader_changed(self.0);
+    }
+
+    fn open_readers(&self) {
+        let mut section = self.0.settings_section;
+        section.set(ui::settings::Section::Readers);
+        self.0.go(Page::Settings);
+    }
+
+    fn ask(&self, ask: Ask) {
+        let action = match ask.action {
+            SharedAction::RemoveReader { id } => ModalAction::RemoveReader { id },
+        };
+        self.0.ask(Modal { title: ask.title, body: ask.body, confirm: ask.confirm, cancel: ask.cancel, danger: ask.danger, action });
+    }
+
+    fn run_script(&self, name: &str, args: String) {
+        let args = serde_json::from_str(&args).unwrap_or(serde_json::Value::Null);
+        bridge::send(name, args);
+    }
+}
+
 pub fn current_iso() -> String {
     crate::model::iso_of_ms(bridge::now_ms())
 }
 
 #[component]
 pub fn App() -> Element {
+    let ui_state = use_hook(|| UiState::new(library::Settings::default()));
     let ctx = Ctx {
+        ui: ui_state,
         boot: use_signal(|| Boot::Starting),
         library: use_signal(Library::default),
-        settings: use_signal(Settings::default),
+        choices: use_signal(Settings::default),
         caps: use_signal(Caps::default),
         page: use_signal(|| Page::Library),
         reading: use_signal(|| None),
         import: use_signal(ImportState::default),
-        toasts: use_signal(Vec::new),
         modal: use_signal(|| None),
         online: use_signal(|| true),
         update_ready: use_signal(|| false),
@@ -295,16 +265,15 @@ pub fn App() -> Element {
         presets: use_signal(library::PresetsDb::default),
         last_exports: use_signal(Default::default),
         narrow: use_signal(|| false),
-        readers: use_signal(library::Settings::default),
         routed: use_signal(|| false),
         settings_section: use_signal(|| ui::settings::Section::Library),
         book_page: use_signal(String::new),
-        unsaved_reader: use_signal(|| None),
-        leave_prompt: use_signal(|| None),
         next_id: use_signal(|| 0),
         state_file: use_signal(|| None),
     };
     use_context_provider(|| ctx);
+    use_context_provider(|| ctx.ui);
+    use_hook(|| ctx.ui.set_host(Rc::new(WebHost(ctx))));
 
     // Start: read what this browser keeps, then listen for what it says.
     use_future(move || async move {
@@ -313,7 +282,7 @@ pub fn App() -> Element {
             Ok(b) => {
                 let mut library = ctx.library;
                 let mut caps = ctx.caps;
-                let mut settings = ctx.settings;
+                let mut settings = ctx.choices;
                 let mut boot_state = ctx.boot;
                 {
                     let mut lib = library.write();
@@ -326,7 +295,7 @@ pub fn App() -> Element {
                     }
                 }
                 {
-                    let mut readers = ctx.readers;
+                    let mut readers = ctx.ui.settings;
                     let saved = b.meta.get("readers").and_then(|v| serde_json::from_value::<library::Settings>(v.clone()).ok());
                     let r = saved.unwrap_or_else(first_visit_readers);
                     readers.set(r);
@@ -543,51 +512,6 @@ fn Shell() -> Element {
     }
 }
 
-/// Asked when the user leaves the reader form with changes that are not saved.
-#[component]
-fn UnsavedHost() -> Element {
-    let ctx = use_context::<Ctx>();
-    let Some(to) = ctx.leave_prompt.read().clone() else { return rsx! {} };
-    let (save_to, discard_to) = (to.clone(), to);
-    rsx! {
-        div { class: "overlay", id: "unsaved-prompt",
-            div { class: "modal",
-                h2 { "You have unsaved settings" }
-                p { "Would you like to save or discard them?" }
-                div { class: "actions",
-                    button { class: "btn", id: "unsaved-keep",
-                        onclick: move |_| { let mut p = ctx.leave_prompt; p.set(None); },
-                        "Keep editing"
-                    }
-                    button { class: "btn danger", id: "unsaved-discard",
-                        onclick: move |_| {
-                            let mut p = ctx.leave_prompt;
-                            p.set(None);
-                            let mut unsaved = ctx.unsaved_reader;
-                            unsaved.set(None);
-                            ctx.leave_now(discard_to.clone());
-                        },
-                        "Discard"
-                    }
-                    button { class: "btn primary", id: "unsaved-save",
-                        onclick: move |_| {
-                            let saved = ctx.unsaved_reader.peek().clone().is_none_or(|u| (u.0)());
-                            if saved {
-                                let mut p = ctx.leave_prompt;
-                                p.set(None);
-                                let mut unsaved = ctx.unsaved_reader;
-                                unsaved.set(None);
-                                ctx.leave_now(save_to.clone());
-                            }
-                        },
-                        "Save"
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[component]
 fn ModalHost() -> Element {
     let ctx = use_context::<Ctx>();
@@ -687,8 +611,8 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                 }
                 ui::export::forget_preset(ctx, &id);
             }
-            ModalAction::RemoveReader(id) => {
-                let mut readers = ctx.readers;
+            ModalAction::RemoveReader { id } => {
+                let mut readers = ctx.ui.settings;
                 {
                     let mut st = readers.write();
                     st.custom_devices.retain(|d| d.id != id);
@@ -705,9 +629,9 @@ fn run_action(ctx: Ctx, action: ModalAction) {
                     Ok(()) => {
                         let mut lib = ctx.library;
                         *lib.write() = Library::default();
-                        let mut settings = ctx.settings;
+                        let mut settings = ctx.choices;
                         settings.set(Settings::default());
-                        let mut readers = ctx.readers;
+                        let mut readers = ctx.ui.settings;
                         readers.set(first_visit_readers());
                         let mut sf = ctx.state_file;
                         sf.set(None);
@@ -718,42 +642,6 @@ fn run_action(ctx: Ctx, action: ModalAction) {
             }
         }
     });
-}
-
-#[component]
-fn ToastHost() -> Element {
-    let ctx = use_context::<Ctx>();
-    let toasts = ctx.toasts.read().clone();
-    if toasts.is_empty() {
-        return rsx! {};
-    }
-    rsx! {
-        div { class: "toasts",
-            for (i, toast) in toasts.iter().rev().enumerate() {
-                {
-                    let id = toast.id;
-                    let look = match toast.kind {
-                        ToastKind::Success => "success",
-                        ToastKind::Warning => "warning",
-                        ToastKind::Error => "error",
-                    };
-                    rsx! {
-                        div {
-                            key: "{toast.id}",
-                            class: if toast.leaving { "toast {look} leaving" } else { "toast {look}" },
-                            style: "--i: {i}",
-                            role: "status",
-                            art::cat::ToastCat { look: look.to_string() }
-                            div { class: "toast-text", "{toast.text}" }
-                            button { class: "toast-x", title: "Dismiss", "aria-label": "Dismiss", onclick: move |_| ctx.dismiss_toast(id),
-                                Icon { name: "x", size: 14 }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 /// Shown while files are dragged over the page.

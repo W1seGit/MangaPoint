@@ -129,7 +129,7 @@ pub fn DownloadsTab() -> Element {
         .flat_map(|b| b.skipped.iter().cloned())
         .take(3)
         .collect();
-    let quality = state.settings.read().page_quality;
+    let quality = state.ui.settings.read().page_quality;
 
     let imported = state
         .library

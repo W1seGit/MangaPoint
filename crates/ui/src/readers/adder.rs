@@ -1,7 +1,7 @@
 //! Adding a reader: the known ones, or one of your own.
 
-use crate::ui::widgets::Icon;
-use crate::state::AppState;
+use crate::widgets::Icon;
+use crate::host::use_ui;
 use device_profiles::{DeviceError, DeviceProfile};
 use dioxus::prelude::*;
 use super::default_setup_for;
@@ -53,7 +53,7 @@ fn known_matches(query: &str, have: &[DeviceProfile]) -> Vec<DeviceProfile> {
 /// answers it makes a reader of your own with the typed name (shown in the
 /// list as a row with a plus).
 #[component]
-pub fn DeviceAdder(
+pub fn ReaderAdder(
     on_added: EventHandler<String>,
     /// Called when the box is left empty, so the caller can put its button back.
     #[props(default)]
@@ -67,7 +67,7 @@ pub fn DeviceAdder(
     #[props(default = 0)]
     focus_after_ms: u64,
 ) -> Element {
-    let state = use_context::<AppState>();
+    let state = use_ui();
     let mut text = use_signal(String::new);
     let mut focused = use_signal(|| false);
     // The row that Enter would take: moved with the arrows or Tab, and back to
@@ -78,18 +78,7 @@ pub fn DeviceAdder(
     // the first-run page that is still sliding in sits far off to the side.
     use_effect(move || {
         let _ = active();
-        spawn(async move {
-            let _ = document::eval(
-                "const o = document.querySelector('.adder-opt.active'); \
-                 const l = o && o.closest('.adder-list'); \
-                 if (l) { \
-                   const lr = l.getBoundingClientRect(), r = o.getBoundingClientRect(); \
-                   if (r.top < lr.top) l.scrollTop += r.top - lr.top; \
-                   else if (r.bottom > lr.bottom) l.scrollTop += r.bottom - lr.bottom; \
-                 }",
-            )
-            .await;
-        });
+        state.host().run_script("adder_scroll", "{}".into());
     });
     let have = state.settings.read().devices();
     let query = text().trim().to_string();
@@ -137,7 +126,7 @@ pub fn DeviceAdder(
                         if !always_open {
                             spawn(async move {
                                 if focus_after_ms > 0 {
-                                    tokio::time::sleep(std::time::Duration::from_millis(focus_after_ms)).await;
+                                    state.host().sleep(focus_after_ms).await;
                                 }
                                 let _ = e.set_focus(true).await;
                             });

@@ -525,12 +525,12 @@ fn ZoomMenu(look: ReaderLook) -> Element {
 }
 
 fn set_bars_always(ctx: Ctx, yes: bool) {
-    let mut settings = ctx.settings;
+    let mut settings = ctx.choices;
     settings.write().extra.insert("reader_bars_always".to_string(), serde_json::Value::Bool(yes));
     ctx.save_settings();
 }
 
 /// Whether the bars stay on the screen while reading (a setting of the visitor, not of the book).
 fn bars_always(ctx: Ctx) -> bool {
-    ctx.settings.read().extra.get("reader_bars_always").and_then(|v| v.as_bool()).unwrap_or(false)
+    ctx.choices.read().extra.get("reader_bars_always").and_then(|v| v.as_bool()).unwrap_or(false)
 }

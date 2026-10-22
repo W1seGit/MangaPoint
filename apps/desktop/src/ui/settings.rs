@@ -2,7 +2,7 @@
 
 use super::ask_enable_browser;
 
-use super::devices::DevicesEditor;
+use super::readers::ReadersEditor;
 use super::widgets::{Icon, SettingRow, Toggle};
 use crate::logic::{human_bytes, plural};
 use crate::state::{paths, AppState, BootState, Modal, ModalAction, Page, SettingsSection};
@@ -13,7 +13,7 @@ use library::{DownloadLimits, DownloadSpeed, PageQuality};
 
 /// The sections, in the order the sidebar lists them.
 const SECTIONS: [(SettingsSection, &str, &str); 5] = [
-    (SettingsSection::Reader, "hard-drive", "Your reader"),
+    (SettingsSection::Readers, "hard-drive", "Your reader"),
     (SettingsSection::Downloads, "download", "Downloads"),
     (SettingsSection::Files, "folder-open", "Files"),
     (SettingsSection::Preferences, "sliders-horizontal", "Preferences"),
@@ -23,7 +23,7 @@ const SECTIONS: [(SettingsSection, &str, &str); 5] = [
 #[component]
 pub fn SettingsPage() -> Element {
     let state = use_context::<AppState>();
-    let s = state.settings.read().clone();
+    let s = state.ui.settings.read().clone();
     let limits = s.download.limits();
     let services = state.services.read().clone();
     // Walking the runtime folder takes a while, so it is done once in the
@@ -33,7 +33,7 @@ pub fn SettingsPage() -> Element {
     // server starting changes, so unrelated settings changes do not walk the
     // folder again.
     let browser_dir = use_memo(move || {
-        let enabled = state.settings.read().browser_support;
+        let enabled = state.ui.settings.read().browser_support;
         let starting = matches!(*state.boot.read(), BootState::Starting { .. });
         let dir = state.services.read().as_ref().map(|sv| sv.data_dir.clone());
         dir.filter(|_| enabled && !starting)
@@ -60,7 +60,7 @@ pub fn SettingsPage() -> Element {
     };
 
     let update = move |change: fn(&mut library::Settings, String), value: String| {
-        let mut settings = state.settings;
+        let mut settings = state.ui.settings;
         change(&mut settings.write(), value);
         state.save_settings();
     };
@@ -81,7 +81,7 @@ pub fn SettingsPage() -> Element {
                     button {
                         key: "{label}",
                         class: if sec == section { "nav-item active" } else { "nav-item" },
-                        onclick: move |_| state.leave(crate::state::Leave::Section(sec)),
+                        onclick: move |_| state.open_section(sec),
                         Icon { name: icon, size: 17 }
                         "{label}"
                     }
@@ -89,8 +89,8 @@ pub fn SettingsPage() -> Element {
             }
             div { class: "settings-content",
                 {match section {
-                    SettingsSection::Reader => rsx! {
-                        DevicesEditor {}
+                    SettingsSection::Readers => rsx! {
+                        ReadersEditor {}
                     },
                     SettingsSection::Downloads => rsx! {
                         Group { title: "Speed" }
@@ -119,7 +119,7 @@ pub fn SettingsPage() -> Element {
                                     button {
                                         key: "{label}",
                                         class: if s.download.speed == speed { "on" } else { "" },
-                                        onclick: move |_| { let mut st = state.settings; st.write().download.speed = speed; state.save_settings(); },
+                                        onclick: move |_| { let mut st = state.ui.settings; st.write().download.speed = speed; state.save_settings(); },
                                         "{label}"
                                     }
                                 }
@@ -162,7 +162,7 @@ pub fn SettingsPage() -> Element {
                         SettingRow { label: "Tell me when something finishes", help: "A notification from your system when a download or an export is done, or could not be finished.",
                             Toggle {
                                 on: s.notifications,
-                                onchange: move |on: bool| { let mut st = state.settings; st.write().notifications = on; state.save_settings(); },
+                                onchange: move |on: bool| { let mut st = state.ui.settings; st.write().notifications = on; state.save_settings(); },
                             }
                         }
 
@@ -179,7 +179,7 @@ pub fn SettingsPage() -> Element {
                                     button {
                                         key: "{name}",
                                         class: if s.page_quality == quality { "on" } else { "" },
-                                        onclick: move |_| { let mut st = state.settings; st.write().page_quality = quality; state.save_settings(); },
+                                        onclick: move |_| { let mut st = state.ui.settings; st.write().page_quality = quality; state.save_settings(); },
                                         "{name}"
                                     }
                                 }
@@ -244,11 +244,11 @@ pub fn SettingsPage() -> Element {
                                 button { class: "btn", title: "Choose where exported files are made",
                                     onclick: move |_| {
                                         let start = Some(
-                                            state.settings.peek().export.output_dir.clone().unwrap_or_else(|| paths().default_export_dir()),
+                                            state.ui.settings.peek().export.output_dir.clone().unwrap_or_else(|| paths().default_export_dir()),
                                         );
                                         spawn(async move {
                                             if let Some(dir) = super::widgets::pick_folder("Where should the files go?", start).await {
-                                                let mut st = state.settings;
+                                                let mut st = state.ui.settings;
                                                 st.write().export.output_dir = Some(dir);
                                                 state.save_settings();
                                             }
@@ -261,7 +261,7 @@ pub fn SettingsPage() -> Element {
                         }
                         SettingRow { label: "Save to reader", help: "This is managed in the Your reader section: how files get to each reader, and the folder they go into.",
                             button { class: "btn",
-                                onclick: move |_| { let mut current = state.settings_section; current.set(SettingsSection::Reader); },
+                                onclick: move |_| { let mut current = state.settings_section; current.set(SettingsSection::Readers); },
                                 Icon { name: "hard-drive", size: 15 }
                                 "Your reader"
                             }
@@ -287,7 +287,7 @@ pub fn SettingsPage() -> Element {
                         SettingRow { label: "Ask each time", help: "Show where files go whenever you start a download.",
                             Toggle {
                                 on: s.ask_download_folder,
-                                onchange: move |on: bool| { let mut st = state.settings; st.write().ask_download_folder = on; state.save_settings(); },
+                                onchange: move |on: bool| { let mut st = state.ui.settings; st.write().ask_download_folder = on; state.save_settings(); },
                             }
                         }
                         SettingRow { label: "Open the downloads folder", help: "Where the pages you download are kept.",
@@ -307,12 +307,12 @@ pub fn SettingsPage() -> Element {
                             div { class: "seg",
                                 button {
                                     class: if s.animations == library::Animations::Clean { "on" } else { "" },
-                                    onclick: move |_| { let mut st = state.settings; st.write().animations = library::Animations::Clean; state.save_settings(); },
+                                    onclick: move |_| { let mut st = state.ui.settings; st.write().animations = library::Animations::Clean; state.save_settings(); },
                                     "Clean"
                                 }
                                 button {
                                     class: if s.animations == library::Animations::Snappy { "on" } else { "" },
-                                    onclick: move |_| { let mut st = state.settings; st.write().animations = library::Animations::Snappy; state.save_settings(); },
+                                    onclick: move |_| { let mut st = state.ui.settings; st.write().animations = library::Animations::Snappy; state.save_settings(); },
                                     "Snappy"
                                 }
                             }
@@ -351,7 +351,7 @@ pub fn SettingsPage() -> Element {
 fn UpdateRow() -> Element {
     let state = use_context::<AppState>();
     let mut update = use_signal(|| UpdateState::Idle);
-    let checks = state.settings.read().update_check;
+    let checks = state.ui.settings.read().update_check;
     let note = match update() {
         UpdateState::Idle => format!("MangaPoint {VERSION}"),
         UpdateState::Checking => format!("MangaPoint {VERSION}. Looking for a newer version\u{2026}"),
@@ -383,7 +383,7 @@ fn UpdateRow() -> Element {
             help: "Once a day, MangaPoint asks GitHub whether a newer version is out, and offers it. Nothing else is sent. You can always check by hand above.",
             Toggle {
                 on: checks,
-                onchange: move |on: bool| { let mut st = state.settings; st.write().update_check = on; state.save_settings(); },
+                onchange: move |on: bool| { let mut st = state.ui.settings; st.write().update_check = on; state.save_settings(); },
             }
         }
     }

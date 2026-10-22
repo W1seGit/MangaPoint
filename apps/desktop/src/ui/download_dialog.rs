@@ -72,7 +72,7 @@ pub fn DownloadDialogHost() -> Element {
                     button { class: "btn primary",
                         onclick: move |_| {
                             if dont_ask() {
-                                let mut settings = state.settings;
+                                let mut settings = state.ui.settings;
                                 settings.write().ask_download_folder = false;
                                 state.save_settings();
                             }

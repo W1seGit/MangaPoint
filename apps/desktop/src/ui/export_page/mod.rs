@@ -80,7 +80,7 @@ pub fn ExportPage() -> Element {
     let mut adding = use_signal(|| false);
     let mut closing = use_signal(|| false);
     let plan = state.export_plan.read().clone();
-    let original = device_profiles::is_original(&state.settings.read().device);
+    let original = device_profiles::is_original(&state.ui.settings.read().device);
 
     // Nothing chosen to export: show the sample pages.
     use_effect(move || {

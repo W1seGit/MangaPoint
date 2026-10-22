@@ -59,7 +59,7 @@ fn start_update(state: AppState, update: Update) {
 /// Close the offer. With `skip`, this version is not offered again.
 fn close(state: AppState, version: &str, skip: bool) {
     if skip {
-        let mut settings = state.settings;
+        let mut settings = state.ui.settings;
         settings.write().update_skipped = version.to_string();
         state.save_settings();
         info!("Update {version} skipped");
@@ -195,7 +195,7 @@ pub fn UpdateDialogHost() -> Element {
 pub async fn check_at_startup(state: AppState) {
     tokio::time::sleep(Duration::from_secs(8)).await;
     {
-        let s = state.settings.peek();
+        let s = state.ui.settings.peek();
         if s.setup_step != library::SetupStep::Done
             || !updates::check_due(s.update_check, s.update_last_check, now_secs())
         {
@@ -204,14 +204,14 @@ pub async fn check_at_startup(state: AppState) {
     }
     match updates::check().await {
         Ok(found) => {
-            let mut settings = state.settings;
+            let mut settings = state.ui.settings;
             settings.write().update_last_check = now_secs();
             state.save_settings();
             let Some(update) = found else {
                 info!("Update check: this is the newest version");
                 return;
             };
-            if !updates::offer_unasked(&update.version, &state.settings.peek().update_skipped) {
+            if !updates::offer_unasked(&update.version, &state.ui.settings.peek().update_skipped) {
                 info!("Update check: {} is out, and was skipped", update.version);
                 return;
             }
@@ -220,7 +220,7 @@ pub async fn check_at_startup(state: AppState) {
             for _ in 0..40 {
                 let busy = state.queue.peek().running().is_some()
                     || state.job.peek().as_ref().is_some_and(|j| j.result.is_none())
-                    || state.settings.peek().setup_step != library::SetupStep::Done;
+                    || state.ui.settings.peek().setup_step != library::SetupStep::Done;
                 if !busy {
                     offer(state, update);
                     return;

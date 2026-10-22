@@ -2,8 +2,8 @@
 
 mod browse;
 mod conversion;
-mod devices;
 mod download_dialog;
+mod host;
 mod tasks_page;
 mod update_dialog;
 mod export_page;
@@ -25,10 +25,12 @@ mod workspace;
 // The art and the chapter table are shared with the website.
 pub use mangapoint_ui::art::{cat, ocean, pixels, walker};
 use mangapoint_ui::chapter_table;
+use mangapoint_ui::readers;
+use mangapoint_ui::dialogs::{ToastHost, UnsavedHost};
 
 use crate::backend;
 use crate::state::spawn_forever;
-use crate::state::{AppState, BootState, Modal, ModalAction, Page, ToastKind};
+use crate::state::{AppState, BootState, Modal, ModalAction, Page};
 use dioxus::desktop::tao::event::{Event, WindowEvent};
 use dioxus::desktop::use_wry_event_handler;
 use dioxus::prelude::*;
@@ -49,6 +51,8 @@ const SLIDE_SCRIPT: &str = include_str!("../js/slide.js");
 pub fn App() -> Element {
     let state = AppState::init();
     use_context_provider(|| state);
+    use_context_provider(|| state.ui);
+    use_hook(|| state.ui.set_host(std::rc::Rc::new(host::DesktopHost(state))));
 
     // Dev flag: `-- --toast-demo` shows one of each kind of toast.
     use_hook(|| {
@@ -141,9 +145,9 @@ pub fn App() -> Element {
         });
     });
 
-    let snappy = state.settings.read().animations == library::Animations::Snappy;
+    let snappy = state.ui.settings.read().animations == library::Animations::Snappy;
     let boot = state.boot.read().clone();
-    let setup_step = state.settings.read().setup_step;
+    let setup_step = state.ui.settings.read().setup_step;
     rsx! {
         style { "{CSS}" }
         style { {include_str!("../page-editor.css")} }
@@ -319,51 +323,6 @@ fn ShortcutKeys() -> Element {
     }
 }
 
-/// Asked when the user leaves the reader form with changes that are not saved.
-#[component]
-fn UnsavedHost() -> Element {
-    let state = use_context::<AppState>();
-    let Some(to) = state.leave_prompt.read().clone() else { return rsx! {} };
-    let (save_to, discard_to) = (to.clone(), to);
-    rsx! {
-        div { class: "overlay",
-            div { class: "modal",
-                h2 { "You have unsaved settings" }
-                p { "Would you like to save or discard them?" }
-                div { class: "actions",
-                    button { class: "btn",
-                        onclick: move |_| { let mut p = state.leave_prompt; p.set(None); },
-                        "Keep editing"
-                    }
-                    button { class: "btn danger",
-                        onclick: move |_| {
-                            let mut p = state.leave_prompt;
-                            p.set(None);
-                            let mut unsaved = state.unsaved_reader;
-                            unsaved.set(None);
-                            state.leave_now(discard_to.clone());
-                        },
-                        "Discard"
-                    }
-                    button { class: "btn primary",
-                        onclick: move |_| {
-                            let saved = state.unsaved_reader.peek().clone().is_none_or(|u| (u.0)());
-                            if saved {
-                                let mut p = state.leave_prompt;
-                                p.set(None);
-                                let mut unsaved = state.unsaved_reader;
-                                unsaved.set(None);
-                                state.leave_now(save_to.clone());
-                            }
-                        },
-                        "Save"
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// Confirmation dialogs.
 #[component]
 fn ModalHost() -> Element {
@@ -426,7 +385,7 @@ fn run_action(state: AppState, action: ModalAction) {
             }
             ModalAction::DeletePreset { id } => presets::delete_preset(state, id),
             ModalAction::RemoveReader { id } => {
-                let mut settings = state.settings;
+                let mut settings = state.ui.settings;
                 {
                     let mut st = settings.write();
                     st.custom_devices.retain(|d| d.id != id);
@@ -481,47 +440,6 @@ pub fn ask_enable_browser(state: AppState, then_install: Option<String>) {
         danger: false,
         action: ModalAction::EnableBrowser { then_install },
     });
-}
-
-#[component]
-fn ToastHost() -> Element {
-    let state = use_context::<AppState>();
-    let toasts = state.toasts.read().clone();
-    if toasts.is_empty() {
-        return rsx! {};
-    }
-    rsx! {
-        // The newest sits at the bottom with the older ones stacked behind it;
-        // pointing at the stack spreads them out to read.
-        div {
-            class: "toasts",
-            onmouseenter: move |_| { let mut h = state.toasts_hovered; h.set(true); },
-            onmouseleave: move |_| { let mut h = state.toasts_hovered; h.set(false); },
-            for (i, toast) in toasts.iter().rev().enumerate() {
-                {
-                    let id = toast.id;
-                    let look = match toast.kind {
-                        ToastKind::Success => "success",
-                        ToastKind::Warning => "warning",
-                        ToastKind::Error => "error",
-                    };
-                    rsx! {
-                        div {
-                            key: "{toast.id}",
-                            class: if toast.leaving { "toast {look} leaving" } else { "toast {look}" },
-                            style: "--i: {i}",
-                            role: "status",
-                            cat::ToastCat { look: look.to_string() }
-                            div { class: "toast-text", "{toast.text}" }
-                            button { class: "toast-x", title: "Dismiss", onclick: move |_| state.dismiss_toast(id),
-                                Icon { name: "x", size: 14 }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 #[cfg(test)]

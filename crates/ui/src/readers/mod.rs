@@ -1,18 +1,18 @@
-//! Choosing the reader pages are made for, and adding your own.
+//! Choosing the reader pages are made for, and adding your own: the list of readers in Settings
+//! with the form for the chosen one, and the short list on the Export screen.
 
 mod adder;
 mod form_widgets;
 mod reader_form;
 
-pub use adder::DeviceAdder;
+pub use adder::ReaderAdder;
 
 use reader_form::ReaderForm;
 
-use crate::ui::widgets::Icon;
-use crate::state::AppState;
+use crate::widgets::Icon;
+use crate::host::use_ui;
 use device_profiles::Firmware;
 use dioxus::prelude::*;
-use crate::state::{Page, SettingsSection};
 use library::ReaderSetup;
 
 /// How a reader starts out: the file types it opens and the firmware it runs,
@@ -33,8 +33,8 @@ pub(super) fn default_setup_for(id: &str) -> ReaderSetup {
 }
 
 #[component]
-pub fn DevicesEditor() -> Element {
-    let state = use_context::<AppState>();
+pub fn ReadersEditor() -> Element {
+    let state = use_ui();
     // Bumped after a save, so the form starts again from what was saved.
     let revision = use_signal(|| 0u32);
     let s = state.settings.read().clone();
@@ -58,7 +58,7 @@ pub fn DevicesEditor() -> Element {
                             class: if on { "pill on" } else { "pill" },
                             onclick: move |_| {
                                 if !on {
-                                    state.leave(crate::state::Leave::Reader(id.clone()));
+                                    state.leave(crate::host::Leave::Reader(id.clone()), false);
                                 }
                             },
                             "{d.name}"
@@ -67,7 +67,7 @@ pub fn DevicesEditor() -> Element {
                 }
             }
             if adding() {
-                DeviceAdder {
+                ReaderAdder {
                     on_added: move |_| adding.set(false),
                     on_close: move |_| adding.set(false),
                 }
@@ -94,19 +94,12 @@ pub fn DevicesEditor() -> Element {
     }
 }
 
-/// Open Settings on the page to add or change a reader.
-fn open_readers_settings(state: AppState) {
-    let mut section = state.settings_section;
-    section.set(SettingsSection::Reader);
-    state.go(Page::Settings);
-}
-
 /// One reader in the list on the Export screen: its name, and its screen size
 /// on the same row. Choosing it makes pages for it. Its name and size are
 /// changed in Settings.
 #[component]
 fn ReaderItem(id: String, on: bool) -> Element {
-    let state = use_context::<AppState>();
+    let state = use_ui();
     let s = state.settings.read().clone();
     let Some(device) = s.devices().into_iter().find(|d| d.id == id) else {
         return rsx! {};
@@ -115,11 +108,7 @@ fn ReaderItem(id: String, on: bool) -> Element {
         div { class: if on { "px-preset on" } else { "px-preset" },
             onclick: move |_| {
                 if !on {
-                    let mut settings = state.settings;
-                    settings.write().device = id.clone();
-                    state.save_settings();
-                    crate::ui::presets::fit_output_to_reader(state);
-                    crate::ui::work::schedule_preview(state, 0);
+                    state.host().use_reader(&id);
                 }
             },
             div { class: "px-preset-head",
@@ -135,16 +124,14 @@ fn ReaderItem(id: String, on: bool) -> Element {
 /// pages go out as they were saved, in color.
 #[component]
 fn PhoneItem(on: bool) -> Element {
-    let state = use_context::<AppState>();
+    let state = use_ui();
     rsx! {
         div {
             id: "reader-phone-original", class: if on { "px-preset on" } else { "px-preset" },
             role: "button", "aria-pressed": "{on}",
             onclick: move |_| {
                 if !on {
-                    let mut settings = state.settings;
-                    settings.write().device = device_profiles::PHONE_ORIGINAL_ID.to_string();
-                    state.save_settings();
+                    state.host().use_reader(device_profiles::PHONE_ORIGINAL_ID);
                 }
             },
             div { class: "px-preset-head",
@@ -159,7 +146,7 @@ fn PhoneItem(on: bool) -> Element {
 /// The readers as a short scrollable list, and a way to Settings to add one.
 #[component]
 pub fn ReaderPicker() -> Element {
-    let state = use_context::<AppState>();
+    let state = use_ui();
     let s = state.settings.read().clone();
     let chosen = s.device_profile().id;
     rsx! {
@@ -170,7 +157,7 @@ pub fn ReaderPicker() -> Element {
             }
         }
         button { class: "px-new", style: "margin-top: 6px; width: 100%", title: "Readers are added in Settings",
-            onclick: move |_| open_readers_settings(state),
+            onclick: move |_| state.host().open_readers(),
             Icon { name: "plus", size: 14 } "New device"
         }
     }

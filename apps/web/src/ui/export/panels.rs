@@ -191,7 +191,7 @@ pub fn BookPanel(books: Vec<Book>, book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let running = matches!(ctx.export.read().run, Run::Running { .. });
     rsx! {
-        Panel { title: "Series", icon: "book-open", id: "series", height: 150, open,
+        Panel { title: "Book", icon: "book-open", id: "series", height: 150, open,
             div { class: "px-layer on",
                 div { class: "px-layer-cover", Cover { id: book.id.clone(), has_cover: book.has_cover } }
                 div { class: "px-layer-text",
@@ -327,7 +327,7 @@ pub fn ChaptersPanel(book: Book, open: bool) -> Element {
 pub fn SendPanel(book: Book, open: bool) -> Element {
     let ctx = use_context::<Ctx>();
     let e = ctx.export.read().clone();
-    let setup = ctx.readers.read().reader_setup();
+    let setup = ctx.ui.settings.read().reader_setup();
     let profile = super::device_of(&e.opts);
     let ftype = e.opts.file_type();
     let phone = device_profiles::is_original(&e.opts.device);

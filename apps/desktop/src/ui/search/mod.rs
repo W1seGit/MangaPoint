@@ -41,11 +41,11 @@ pub fn SearchPage() -> Element {
 
     let installed = use_resource(move || async move {
         let _ = state.sources_version.read();
-        let lang = state.settings.read().language.clone();
+        let lang = state.ui.settings.read().language.clone();
         let client = state.client()?;
         SourceManager::new(&*client).installed(&lang).await.ok()
     });
-    let excluded = state.settings.read().search_excluded_sources.clone();
+    let excluded = state.ui.settings.read().search_excluded_sources.clone();
     let mut sources: Vec<SourceInfo> = match &*installed.read() {
         Some(Some(items)) => items
             .iter()
@@ -140,7 +140,7 @@ pub fn SearchPage() -> Element {
     };
     // Change which sources are searched.
     let set_excluded = move |list: Vec<String>| {
-        let mut settings = state.settings;
+        let mut settings = state.ui.settings;
         settings.write().search_excluded_sources = list;
         state.save_settings();
     };
