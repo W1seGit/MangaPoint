@@ -269,13 +269,13 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .desk-slider { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
 .desk-slide {
   position: relative; margin: 0; width: 100%; display: flex; flex-direction: column; align-items: center; text-align: center;
-  border: 1px solid var(--line); border-radius: 16px; background: var(--panel); overflow: hidden; touch-action: pan-y;
+  overflow: hidden; touch-action: pan-y;
   animation: desk-slide-in 0.28s ease;
 }
 @keyframes desk-slide-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
-.desk-art { width: 100%; display: flex; align-items: center; justify-content: center; padding: 22px 10px 12px; background: #0b0b0b; border-bottom: 1px solid var(--line); }
+.desk-art { width: 100%; display: flex; align-items: center; justify-content: center; padding: 10px 10px 4px; }
 .desk-art .desk-scene { width: 100%; max-width: 336px; height: auto; margin: 0; }
-.desk-slide figcaption { padding: 16px 22px 20px; }
+.desk-slide figcaption { padding: 6px 22px 4px; }
 .desk-slide strong { display: block; font-size: 1.1rem; margin-bottom: 6px; }
 .desk-slide p { margin: 0; line-height: 1.5; }
 .desk-arrow {
@@ -319,20 +319,17 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .desk-downloads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .desk-downloads { margin-top: 22px; }
 .desk-download {
-  display: flex; flex-direction: column; align-items: stretch; gap: 10px; padding: 20px; border: 1px solid var(--line-strong);
-  border-radius: 14px; background: var(--panel); color: var(--text);
+  display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 4px 0; color: var(--text);
 }
 .desk-download-head { display: flex; align-items: center; gap: 12px; }
 .desk-os { font-size: 1.35rem; font-weight: 700; }
 .desk-kinds { display: flex; }
 .desk-kinds button { flex: 1; white-space: nowrap; }
-.desk-detail { min-height: 2.6em; line-height: 1.35; }
 .desk-get { display: inline-flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; margin-top: auto; }
 .desk-github {
-  display: flex; align-items: center; gap: 16px; margin-top: 14px; padding: 16px 20px; border: 1px solid var(--line-strong);
-  border-radius: 14px; background: var(--panel); color: var(--text); text-decoration: none; transition: border-color 0.15s, background 0.15s;
+  display: flex; align-items: center; gap: 16px; margin-top: 26px; padding: 4px 0; color: var(--text); text-decoration: none;
 }
-.desk-github:hover { border-color: var(--accent, var(--text)); background: var(--panel-2); }
+.desk-github:hover strong { text-decoration: underline; }
 .desk-github > span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 @media (max-width: 700px) {
   .desk-downloads { grid-template-columns: minmax(0, 1fr); }

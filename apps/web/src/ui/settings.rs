@@ -319,7 +319,7 @@ fn download_url(end: &str) -> String {
 #[component]
 fn DownloadTile(slug: &'static str, name: &'static str, choices: Vec<(&'static str, &'static str, &'static str)>) -> Element {
     let mut pick = use_signal(|| 0usize);
-    let (_, detail, end) = choices[pick().min(choices.len() - 1)];
+    let (_, _, end) = choices[pick().min(choices.len() - 1)];
     let url = download_url(end);
     let file = format!("MangaPoint-{}-{end}", env!("CARGO_PKG_VERSION"));
     rsx! {
@@ -336,7 +336,6 @@ fn DownloadTile(slug: &'static str, name: &'static str, choices: Vec<(&'static s
                     }
                 }
             }
-            span { class: "desk-detail muted small", "{detail}" }
             a { class: "btn primary desk-get", id: "download-{slug}-file", href: "{url}", download: "{file}", rel: "noopener",
                 Icon { name: "download", size: 15 } "Download"
             }
