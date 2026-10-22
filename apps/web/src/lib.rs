@@ -10,6 +10,7 @@ pub mod art;
 /// The desktop app's number and text helpers (one source of truth).
 #[path = "../../desktop/src/logic/format.rs"]
 pub mod format;
+pub mod logic;
 pub mod model;
 pub mod ranges;
 #[cfg(target_arch = "wasm32")]

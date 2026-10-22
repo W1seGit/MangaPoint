@@ -78,6 +78,10 @@ pub fn ChapterGrid(
     empty_message: String,
     /// Tallest the table gets before it scrolls, for example "360px".
     max_height: Option<String>,
+    /// Only the number, the title and whether it is read (the website's books, which have no
+    /// sources, sizes or dates).
+    #[props(default)]
+    compact: bool,
 ) -> Element {
     // A long list is not drawn whole: only the rows in view (and a few more
     // each way) are, with empty space where the others would be, so the page
@@ -135,14 +139,16 @@ pub fn ChapterGrid(
                             {header(SortKey::Number, "num", "No.")}
                             {header(SortKey::Name, "", "Title")}
                             th { class: "status", "Status" }
-                            th { class: "size", "Size" }
-                            {header(SortKey::Sources, "src", "Sources")}
-                            {header(SortKey::Date, "date", "Updated")}
+                            if !compact {
+                                th { class: "size", "Size" }
+                                {header(SortKey::Sources, "src", "Sources")}
+                                {header(SortKey::Date, "date", "Updated")}
+                            }
                         }
                     }
                     tbody {
                         if first > 0 {
-                            tr { class: "spacer", style: "height: {first * ROW_HEIGHT}px", td { colspan: "7" } }
+                            tr { class: "spacer", style: "height: {first * ROW_HEIGHT}px", td { colspan: if compact { "4" } else { "7" } } }
                         }
                         for r in rows[first..last].iter().cloned() {
                             ChapterRow {
@@ -152,10 +158,11 @@ pub fn ChapterGrid(
                                 row: r,
                                 on_toggle,
                                 on_read,
+                                compact,
                             }
                         }
                         if last < total {
-                            tr { class: "spacer", style: "height: {(total - last) * ROW_HEIGHT}px", td { colspan: "7" } }
+                            tr { class: "spacer", style: "height: {(total - last) * ROW_HEIGHT}px", td { colspan: if compact { "4" } else { "7" } } }
                         }
                     }
                 }
@@ -176,6 +183,7 @@ fn ChapterRow(
     locked: bool,
     on_toggle: EventHandler<usize>,
     on_read: Option<EventHandler<String>>,
+    compact: bool,
 ) -> Element {
     let index = row.index;
     let class = match (on, locked) {
@@ -198,7 +206,9 @@ fn ChapterRow(
             td { class: "name", title: "{row.name}", "{row.name}" }
             td { class: "status",
                 if row.saved {
-                    span { class: "tip", "data-tip": "{from_tip}", Chip { text: "Downloaded", kind: Some("ok".to_string()) } }
+                    if !compact {
+                        span { class: "tip", "data-tip": "{from_tip}", Chip { text: "Downloaded", kind: Some("ok".to_string()) } }
+                    }
                     if row.read {
                         span { class: "tip", "data-tip": "You have read this chapter", Chip { text: "Read" } }
                     }
@@ -221,16 +231,18 @@ fn ChapterRow(
                     span { class: "tip", "data-tip": "In the download queue", Chip { text: "Queued" } }
                 }
             }
-            td { class: "size", "{row.size}" }
-            td { class: "src", title: "{sources_tip}",
-                for name in row.source_names.iter().take(3) {
-                    span { key: "{name}", class: if *name == row.from { "src-tag used" } else { "src-tag" }, "{name}" }
+            if !compact {
+                td { class: "size", "{row.size}" }
+                td { class: "src", title: "{sources_tip}",
+                    for name in row.source_names.iter().take(3) {
+                        span { key: "{name}", class: if *name == row.from { "src-tag used" } else { "src-tag" }, "{name}" }
+                    }
+                    if row.source_names.len() > 3 {
+                        span { class: "src-tag", "+{row.source_names.len() - 3}" }
+                    }
                 }
-                if row.source_names.len() > 3 {
-                    span { class: "src-tag", "+{row.source_names.len() - 3}" }
-                }
+                td { class: "date", "{row.date}" }
             }
-            td { class: "date", "{row.date}" }
         }
     }
 }

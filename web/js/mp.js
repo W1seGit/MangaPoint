@@ -45,30 +45,7 @@ async function events() {
 
 let analyzing = Promise.resolve();
 
-/** Add the chapters in what was picked to the book `book` (its overview's "Import more chapters"). */
-function startAppend(items, book) {
-  if (!items.length) return;
-  analyzing = analyzing.then(async () => {
-    emit({ t: 'analyzing', status: 'Looking at what you picked…' });
-    try {
-      const r = await importer.analyze(items, (status) => emit({ t: 'analyzing', status }));
-      const ids = r.drafts.map((d) => d.draft_id);
-      if (!ids.length) {
-        emit({ t: 'appended', book: null, added: 0, failures: r.failures });
-        return;
-      }
-      emit({ t: 'analyzing', status: 'Adding the chapters…' });
-      const done = await importer.appendTo(book, ids);
-      pages.forgetSource(book);
-      emit({ t: 'appended', book: done.record, added: done.added, failures: r.failures });
-    } catch (e) {
-      console.error(e);
-      emit({ t: 'appended', book: null, added: 0, failures: [{ name: items[0].file.name, message: e && e.message ? e.message : String(e) }] });
-    }
-  });
-}
-
-function startAnalyze(items, only = null) {
+function startAnalyze(items, only = null, into = null) {
   if (!items.length) return;
   analyzing = analyzing.then(async () => {
     emit({ t: 'analyzing', status: 'Looking at what you picked…' });
@@ -83,7 +60,7 @@ function startAnalyze(items, only = null) {
           r.failures.push({ name: items[0].file.name, message: 'This is not the file for that book. Pick the same file you imported before.' });
         }
       }
-      emit({ t: 'import', drafts: r.drafts, failures: r.failures });
+      emit({ t: 'import', drafts: r.drafts, failures: r.failures, into });
     } catch (e) {
       console.error(e);
       emit({ t: 'import', drafts: [], failures: [{ name: items[0].file.name, message: `This could not be read: ${e && e.message ? e.message : e}` }] });
@@ -104,8 +81,7 @@ function pickFiles(folder, only = null, into = null) {
   input.addEventListener('change', () => {
     const items = importer.filesFromInput(input.files || []);
     input.remove();
-    if (into) startAppend(items, into);
-    else startAnalyze(items, only);
+    startAnalyze(items, only, into);
   });
   input.addEventListener('cancel', () => input.remove());
   document.body.appendChild(input);
@@ -376,6 +352,13 @@ const handlers = {
       for (const d of r.drafts) books.push(await importer.commit(d.draft_id, {}));
     }
     return { books, failures };
+  },
+
+  /** Add a reviewed draft's chapters (as the visitor left them) to the book `book`. */
+  async append({ book, draft_id, chapters }) {
+    const done = await importer.appendTo(book, [draft_id], { [draft_id]: chapters });
+    pages.forgetSource(book);
+    return done.record;
   },
 
   async commit({ draft_id, title, chapters }) {

@@ -40,11 +40,13 @@ pub struct ImportState {
     pub stage: ImportStage,
     pub reviews: Vec<Review>,
     pub failures: Vec<Failure>,
+    /// The book the chapters go into (its overview's Import more chapters); none for new books.
+    pub into: Option<String>,
 }
 
 impl Default for ImportState {
     fn default() -> Self {
-        Self { stage: ImportStage::Idle, reviews: Vec::new(), failures: Vec::new() }
+        Self { stage: ImportStage::Idle, reviews: Vec::new(), failures: Vec::new(), into: None }
     }
 }
 
@@ -414,21 +416,7 @@ fn handle_event(ctx: Ctx, ev: Event) {
                 i.stage = ImportStage::Analyzing(status);
             }
         }
-        Event::Import { drafts, failures } => ui::import::analysis_done(ctx, drafts, failures),
-        Event::Appended { book, added, failures } => {
-            // Chapters added to a book from its overview: the dialog that showed the work closes.
-            let mut imp = ctx.import;
-            imp.write().stage = ImportStage::Idle;
-            if let Some(book) = book {
-                let title = book.title.clone();
-                let mut lib = ctx.library;
-                lib.write().add_book(book);
-                ctx.notify(format!("Added {} to {title}.", plural(added, "chapter")));
-            }
-            for f in failures {
-                ctx.error(format!("{}: {}", f.name, f.message));
-            }
-        }
+        Event::Import { drafts, failures, into } => ui::import::analysis_done(ctx, drafts, failures, into),
         Event::CommitProgress { done, total } => {
             let mut imp = ctx.import;
             let mut guard = imp.write();

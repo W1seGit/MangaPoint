@@ -250,7 +250,9 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 
 /* The warning about a big export: the words, then the button under them. */
 .banner.big-export { flex-direction: column; align-items: stretch; gap: 8px; font-size: 0.8rem; line-height: 1.45; padding: 9px 12px; }
+.banner.big-export { position: relative; padding-right: 36px; }
 .banner.big-export .btn { align-self: stretch; }
+.banner.big-export .big-export-close { position: absolute; top: 4px; right: 4px; align-self: auto; min-height: 0; padding: 4px; }
 
 .menu-help { margin-left: auto; display: inline-flex; color: var(--muted); }
 /* Library: a book waiting for its file is a card like the others, with a faded placeholder. The
@@ -343,8 +345,5 @@ input[type="number"] { padding: 7px 10px; background: var(--panel-2); border: 1p
 .book-actions { margin-top: 16px; gap: 8px; }
 .book-chapters-head { display: flex; align-items: baseline; gap: 12px; margin-top: 28px; }
 .book-chapters-head h2 { margin: 0; font-size: 1.15rem; }
-.book-chapter { cursor: pointer; }
-.book-chapter:hover td { background: var(--panel-2); }
-.table-scroll:has(#book-chapters) { min-height: 0; max-height: none; }
 /* A card with its menu open sits above the cards after it, so the menu is never under them. */
 .poster:has(.poster-menu) { z-index: 30; }

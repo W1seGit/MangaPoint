@@ -11,10 +11,21 @@ use dioxus::prelude::*;
 use serde_json::json;
 
 /// The browser has looked at what was picked.
-pub fn analysis_done(ctx: Ctx, drafts: Vec<Draft>, failures: Vec<Failure>) {
+pub fn analysis_done(ctx: Ctx, drafts: Vec<Draft>, failures: Vec<Failure>, into: Option<String>) {
+    // Chapters picked for a book: the ones it has already start unticked.
+    let existing = into.as_deref().and_then(|id| ctx.book(id)).map(|b| b.chapters).unwrap_or_default();
     let mut imp = ctx.import;
     let mut i = imp.write();
-    i.reviews.extend(drafts.into_iter().map(Review::new));
+    if into.is_some() {
+        i.into = into;
+    }
+    i.reviews.extend(drafts.into_iter().map(|d| {
+        let mut r = Review::new(d);
+        if !existing.is_empty() {
+            r.leave_out_duplicates(&existing);
+        }
+        r
+    }));
     i.failures.extend(failures);
     i.stage = ImportStage::Review;
 }
@@ -79,8 +90,45 @@ pub fn kept(ctx: Ctx, book: Book) -> bool {
     stored_none
 }
 
+/// Add the reviewed chapters to the book they were picked for.
+fn add_all_to(ctx: Ctx, book_id: String) {
+    dioxus::core::spawn_forever(async move {
+        let reviews: Vec<Review> = ctx.import.peek().reviews.clone();
+        let mut added = 0usize;
+        let mut title = String::new();
+        for review in reviews {
+            if review.problem().is_some() {
+                continue;
+            }
+            let mut imp = ctx.import;
+            imp.write().stage = ImportStage::Keeping { title: review.draft.file_name.clone(), done: 0, total: 1 };
+            let chapters = review.final_chapters();
+            let n = chapters.len();
+            let args = json!({ "book": book_id, "draft_id": review.draft.draft_id, "chapters": chapters });
+            match bridge::call::<Book>("append", args).await {
+                Ok(book) => {
+                    title = book.title.clone();
+                    let mut lib = ctx.library;
+                    lib.write().add_book(book);
+                    added += n;
+                }
+                Err(e) => ctx.error(format!("Could not add the chapters of {}: {e}", review.draft.file_name)),
+            }
+        }
+        let mut imp = ctx.import;
+        *imp.write() = ImportState::default();
+        if added > 0 {
+            ctx.notify(format!("Added {} to {title}.", plural(added, "chapter")));
+        }
+    });
+}
+
 /// Keep every reviewed book on this device.
 fn keep_all(ctx: Ctx) {
+    if let Some(book) = ctx.import.peek().into.clone() {
+        add_all_to(ctx, book);
+        return;
+    }
     dioxus::core::spawn_forever(async move {
         let reviews: Vec<Review> = ctx.import.peek().reviews.clone();
         let mut added = 0usize;
@@ -168,11 +216,14 @@ fn ReviewStage(state: ImportState) -> Element {
     let ctx = use_context::<Ctx>();
     let ready: Vec<&Review> = state.reviews.iter().filter(|r| r.problem().is_none()).collect();
     let pages: usize = ready.iter().map(|r| r.included_pages()).sum();
-    let label = match ready.len() {
-        0 => "Add".to_string(),
-        1 => format!("Add to library ({})", plural(pages, "page")),
-        n => format!("Add {n} books ({})", plural(pages, "page")),
+    let into = state.into.as_deref().and_then(|id| ctx.book(id));
+    let label = match (&into, ready.len()) {
+        (Some(book), _) => format!("Add {} to {}", plural(ready.iter().map(|r| r.included_count()).sum(), "chapter"), book.title),
+        (None, 0) => "Add".to_string(),
+        (None, 1) => format!("Add to library ({})", plural(pages, "page")),
+        (None, n) => format!("Add {n} books ({})", plural(pages, "page")),
     };
+    let more_into = state.into.clone();
     rsx! {
         div { class: "import-body",
             if !state.failures.is_empty() {
@@ -196,7 +247,11 @@ fn ReviewStage(state: ImportState) -> Element {
         div { class: "actions",
             button { class: "btn ghost", id: "import-cancel", onclick: move |_| close_import(ctx), if state.reviews.is_empty() { "Close" } else { "Cancel" } }
             if !state.reviews.is_empty() {
-                button { class: "btn", title: "Add more books and pictures to this list", onclick: move |_| super::library::pick_files(),
+                button { class: "btn", title: "Add more books and pictures to this list",
+                    onclick: move |_| match &more_into {
+                        Some(id) => bridge::send("pick_more", json!({ "book": id })),
+                        None => super::library::pick_files(),
+                    },
                     Icon { name: "file-up", size: 16 } "More files"
                 }
                 button { class: "btn primary", id: "import-add", disabled: ready.is_empty(), onclick: move |_| keep_all(ctx), "{label}" }
@@ -225,13 +280,31 @@ fn BookCard(index: usize, review: Review) -> Element {
     let replaced = d.existing.as_ref().is_some_and(|e| e.stored != "none");
     let revived = d.existing.as_ref().is_some_and(|e| e.stored == "none");
     let problem = review.problem();
+    // Chapters for a book already in the library: they take its name, and the ones it has are marked.
+    let into = ctx.import.read().into.clone().and_then(|id| ctx.book(&id));
+    let dup_note = into.as_ref().filter(|_| review.duplicates > 0).map(|book| {
+        let one = review.duplicates == 1;
+        format!(
+            "{} of this file {} already in {}, so {} left unticked. Tick {} to add {} again.",
+            plural(review.duplicates, "chapter"),
+            if one { "is" } else { "are" },
+            book.title,
+            if one { "it was" } else { "they were" },
+            if one { "it" } else { "them" },
+            if one { "it" } else { "them" },
+        )
+    });
     rsx! {
         div { class: "{class}", "data-draft": "{d.draft_id}",
             div { class: "import-bar",
-                input {
-                    class: "import-title", r#type: "text", value: "{review.title}", spellcheck: "false",
-                    "aria-label": "Title", placeholder: "Title",
-                    oninput: move |e| edit(ctx, index, |r| r.title = e.value()),
+                if let Some(book) = &into {
+                    strong { class: "import-title import-into", "Adding to {book.title}" }
+                } else {
+                    input {
+                        class: "import-title", r#type: "text", value: "{review.title}", spellcheck: "false",
+                        "aria-label": "Title", placeholder: "Title",
+                        oninput: move |e| edit(ctx, index, |r| r.title = e.value()),
+                    }
                 }
                 span { class: "import-file muted small", title: "{d.file_name}", "{d.file_name}" }
                 Chip { text: kind.to_string() }
@@ -253,7 +326,10 @@ fn BookCard(index: usize, review: Review) -> Element {
                 }
                 div { class: "import-main",
                     p { class: "muted small import-count", "{counts}" }
-                    if replaced {
+                    if let Some(note) = &dup_note {
+                        p { class: "import-warning small import-duplicates", Icon { name: "triangle-alert", size: 13 } " {note}" }
+                    }
+                    if replaced && into.is_none() {
                         p { class: "import-warning small", Icon { name: "info", size: 13 } " This book is already in your library. Adding it again replaces the copy; your place in it is kept." }
                     }
                     if revived {

@@ -57,6 +57,8 @@ pub struct Review {
     pub draft: Draft,
     pub title: String,
     pub chapters: Vec<ReviewChapter>,
+    /// How many chapters the book they are added to has already (left unticked).
+    pub duplicates: usize,
 }
 
 /// A chapter number as the box shows it.
@@ -98,7 +100,27 @@ impl Review {
                 count: c.count,
             })
             .collect();
-        Self { title: draft.title.clone(), draft, chapters }
+        Self { title: draft.title.clone(), draft, chapters, duplicates: 0 }
+    }
+
+    /// Untick the chapters a book already has (the same number, or for a chapter with no number
+    /// the same name), and count them, so adding them again is a choice the visitor makes.
+    pub fn leave_out_duplicates(&mut self, existing: &[Chapter]) {
+        let numbers: Vec<String> = existing.iter().filter_map(|c| c.number).map(|n| number_text(Some(n))).collect();
+        let names: Vec<String> = existing.iter().map(|c| c.name.trim().to_lowercase()).collect();
+        let mut found = 0;
+        for c in &mut self.chapters {
+            let same = if c.number.trim().is_empty() {
+                !c.name.trim().is_empty() && names.contains(&c.name.trim().to_lowercase())
+            } else {
+                numbers.contains(&c.number.trim().to_string())
+            };
+            if same {
+                c.included = false;
+                found += 1;
+            }
+        }
+        self.duplicates = found;
     }
 
     pub fn set_name(&mut self, i: usize, name: &str) {
@@ -201,6 +223,22 @@ mod tests {
             rtl: None,
             existing: None,
         }
+    }
+
+    #[test]
+    fn chapters_a_book_has_already_are_left_unticked() {
+        let mut r = Review::new(draft());
+        let existing = vec![
+            Chapter { name: "Chapter 1".into(), number: Some(1.0), first: 0, count: 3 },
+            Chapter { name: "extra".into(), number: None, first: 3, count: 2 },
+        ];
+        r.leave_out_duplicates(&existing);
+        assert_eq!(r.duplicates, 2);
+        assert!(!r.chapters[0].included, "number 1 is there already");
+        assert!(r.chapters[1].included, "2.5 is new");
+        assert!(!r.chapters[2].included, "a chapter with no number and the same name");
+        r.toggle(0);
+        assert!(r.chapters[0].included, "and can still be added again");
     }
 
     #[test]

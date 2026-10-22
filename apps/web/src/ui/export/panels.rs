@@ -514,8 +514,12 @@ pub fn RunCard(book: Book) -> Element {
     let running = matches!(e.run, Run::Running { .. });
     rsx! {
         div { class: "export-run",
-            if big && !running && e.run == Run::Idle {
+            if big && !running && e.run == Run::Idle && !e.big_closed {
                 div { class: "banner warn big-export", id: "export-big",
+                    button { class: "btn ghost small big-export-close", id: "export-big-close", title: "Close this note", "aria-label": "Close",
+                        onclick: move |_| edit(ctx, |e| e.big_closed = true),
+                        Icon { name: "x", size: 15 }
+                    }
                     div { class: "grow",
                         "This is a big export ({plural(pages, \"page\")}, about {human_bytes(bytes)} of pictures). The files are made in this tab's memory, and a phone may run out. "
                         if grouping == Group::One { "One file per chapter is safer." } else { "Per-chapter files keep each one small." }

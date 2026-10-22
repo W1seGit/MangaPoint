@@ -300,6 +300,13 @@ impl Library {
         s.last_read_at = now_ms;
     }
 
+    /// The chapter is not read after all.
+    pub fn mark_unread(&mut self, book: &Book, chapter: usize) {
+        if let Some(s) = self.states.get_mut(&book.id) {
+            s.chapters_read.retain(|c| *c != chapter as u32);
+        }
+    }
+
     pub fn is_read(&self, book: &Book, chapter: usize) -> bool {
         self.states
             .get(&book.id)

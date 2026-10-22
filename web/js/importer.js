@@ -523,7 +523,7 @@ export async function commit(draftId, edit, onProgress = () => {}) {
  * book keeps its identity (its place, the chapters read). Resolves to the new library record and
  * how many chapters were added.
  */
-export async function appendTo(bookId, draftIds, onProgress = () => {}) {
+export async function appendTo(bookId, draftIds, edits = {}, onProgress = () => {}) {
   const record = await dbGet('books', bookId);
   const table = await dbGet('pages', bookId);
   if (!record || !table) throw new Error('This book is not in the library any more.');
@@ -550,7 +550,8 @@ export async function appendTo(bookId, draftIds, onProgress = () => {}) {
         table.pages.push({ ...rest, f: name, w: where });
       }
     }
-    for (const c of d.chapters) {
+    // The chapters as the visitor left them in the review (some left out, names and numbers edited).
+    for (const c of edits[draftId] || d.chapters) {
       chapters.push({
         name: String(c.name ?? ''),
         number: typeof c.number === 'number' && Number.isFinite(c.number) ? c.number : null,

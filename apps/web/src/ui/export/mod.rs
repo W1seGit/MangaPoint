@@ -136,6 +136,8 @@ pub struct LastExport {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExportUi {
+    /// The warning about a big export was closed (until the page is opened again).
+    pub big_closed: bool,
     pub book: Option<String>,
     pub chosen: BTreeSet<usize>,
     /// The options being edited (device, file type, the settings, grouping).
@@ -176,6 +178,7 @@ pub struct ExportUi {
 impl Default for ExportUi {
     fn default() -> Self {
         Self {
+            big_closed: false,
             book: None,
             chosen: BTreeSet::new(),
             opts: ExportOptions::default(),
