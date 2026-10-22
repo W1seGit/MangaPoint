@@ -11,15 +11,15 @@ sha2 = "0.11"
 catalog = { path = "../catalog" }
 converter = { path = "../converter", features = ["decode", "serde"] }
 library = { path = "../library" }
+formats = { path = "../formats" }
 search = { path = "../search" }
 device-profiles = { path = "../device-profiles", features = ["serde"] }
 tokio = { version = "1", features = ["rt", "macros", "time", "sync", "fs", "io-util", "net"] }
 futures-util = "0.3"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
-# EPUBs are zip files; their page pictures are PNGs of 2 or 1 bits.
+# Archive IO for desktop imports and spool files.
 zip = { version = "9", default-features = false, features = ["deflate"] }
-png = "0.18"
 # Importing books: the XML of ComicInfo.xml and of an EPUB, PDFs whose pages are
 # pictures, 7z archives, RAR archives and TIFF pages. All but the RAR reader are
 # pure Rust; the RAR one is the vendored UnRAR source (see THIRD-PARTY-LICENSES).

@@ -1,6 +1,3 @@
-//! Making a PDF of page pictures, in memory (a copy of `crates/pipeline/src/pdf.rs`
-//! that writes into a `Vec<u8>`; same objects, same bytes).
-//!
 //! Making a PDF of page pictures, written as the pages arrive.
 //!
 //! A small writer made for one job: one picture per page, the page exactly the
@@ -13,6 +10,7 @@
 //! only the offsets of the objects are kept, for the cross-reference table at
 //! the end.
 
+use crate::{FormatError, Result};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use std::io::Write;
@@ -120,9 +118,9 @@ pub fn jpeg_info(data: &[u8]) -> Option<JpegInfo> {
     None
 }
 
-/// A PDF being written.
-pub struct PdfBuilder {
-    out: Counting<Vec<u8>>,
+/// A PDF being written to `W` (a file, or memory).
+pub struct PdfBuilder<W: Write> {
+    out: Counting<W>,
     meta: PdfMeta,
     /// Where each object starts; index 0 is object 1.
     offsets: Vec<u64>,
@@ -152,13 +150,12 @@ impl<W: Write> Write for Counting<W> {
 const CATALOG: u32 = 1;
 const PAGE_TREE: u32 = 2;
 
-impl PdfBuilder {
-    /// Start a document.
-    pub fn new(meta: PdfMeta) -> Result<Self, String> {
-        let mut out = Counting { inner: Vec::new(), count: 0 };
+impl<W: Write> PdfBuilder<W> {
+    /// Start a document written to `out`.
+    pub fn new(out: W, meta: PdfMeta) -> Result<Self> {
+        let mut out = Counting { inner: out, count: 0 };
         // The second line holds bytes above 127, which tells tools this is binary.
-        out.write_all(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
-            .map_err(|e| e.to_string())?;
+        out.write_all(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")?;
         Ok(Self {
             out,
             meta,
@@ -178,31 +175,27 @@ impl PdfBuilder {
         self.chapters.push((name.to_string(), start));
     }
 
-    fn io(&self) -> impl Fn(std::io::Error) -> String {
-        |e| format!("PDF: {e}")
-    }
-
     /// Start an object and return its number.
-    fn begin(&mut self) -> Result<u32, String> {
+    fn begin(&mut self) -> Result<u32> {
         let number = self.offsets.len() as u32 + 1;
         self.offsets.push(self.out.count);
-        writeln!(self.out, "{number} 0 obj").map_err(self.io())?;
+        writeln!(self.out, "{number} 0 obj").map_err(FormatError::Io)?;
         Ok(number)
     }
 
-    fn end(&mut self) -> Result<(), String> {
-        self.out.write_all(b"\nendobj\n").map_err(self.io())
+    fn end(&mut self) -> Result<()> {
+        self.out.write_all(b"\nendobj\n").map_err(FormatError::Io)
     }
 
     /// Add a page that is exactly the size of the picture.
-    pub fn add_page(&mut self, image: PdfImage<'_>) -> Result<(), String> {
+    pub fn add_page(&mut self, image: PdfImage<'_>) -> Result<()> {
         let (width, height, color) = match &image {
             PdfImage::Jpeg { width, height, color, .. } | PdfImage::Raw { width, height, color, .. } => {
                 (*width, *height, *color)
             }
         };
         if width == 0 || height == 0 {
-            return Err("PDF: a picture has no size".to_string());
+            return Err(FormatError::bad("PDF", "a picture has no size"));
         }
         // Object numbers of this page: its picture, its content, the page itself.
         let picture = self.begin()?;
@@ -210,7 +203,7 @@ impl PdfBuilder {
             PdfImage::Jpeg { data, .. } => ("/DCTDecode", String::new(), data.into()),
             PdfImage::Raw { pixels, .. } => {
                 let packed = deflate_rows(pixels, width as usize * color.channels(), height as usize)
-                    .map_err(self.io())?;
+                    .map_err(FormatError::Io)?;
                 (
                     "/FlateDecode",
                     format!(
@@ -227,14 +220,14 @@ impl PdfBuilder {
             color.name(),
             data.len()
         )
-        .map_err(self.io())?;
-        self.out.write_all(&data).map_err(self.io())?;
-        self.out.write_all(b"\nendstream").map_err(self.io())?;
+        .map_err(FormatError::Io)?;
+        self.out.write_all(&data).map_err(FormatError::Io)?;
+        self.out.write_all(b"\nendstream").map_err(FormatError::Io)?;
         self.end()?;
 
         let content = self.begin()?;
         let draw = format!("q {width} 0 0 {height} 0 0 cm /Im0 Do Q");
-        write!(self.out, "<< /Length {} >>\nstream\n{draw}\nendstream", draw.len()).map_err(self.io())?;
+        write!(self.out, "<< /Length {} >>\nstream\n{draw}\nendstream", draw.len()).map_err(FormatError::Io)?;
         self.end()?;
 
         let page = self.begin()?;
@@ -242,17 +235,17 @@ impl PdfBuilder {
             self.out,
             "<< /Type /Page /Parent {PAGE_TREE} 0 R /MediaBox [0 0 {width} {height}] /Resources << /XObject << /Im0 {picture} 0 R >> >> /Contents {content} 0 R >>"
         )
-        .map_err(self.io())?;
+        .map_err(FormatError::Io)?;
         self.end()?;
         self.pages.push(page);
         Ok(())
     }
 
     /// Write the outline, the page tree, the catalog and the cross-reference
-    /// table, and close the file.
-    pub fn finish(mut self) -> Result<Vec<u8>, String> {
+    /// table, and give back what the document was written to.
+    pub fn finish(mut self) -> Result<W> {
         if self.pages.is_empty() {
-            return Err("PDF: the book has no pages".to_string());
+            return Err(FormatError::bad("PDF", "the book has no pages"));
         }
         // The outline: one entry for each chapter, in order, ending where the next begins.
         let chapters: Vec<(String, u32)> = self
@@ -277,7 +270,7 @@ impl PdfBuilder {
                 "<< /Title {} /Parent {outline_root} 0 R{links} /Dest [{page} 0 R /Fit] >>",
                 text_string(name)
             )
-            .map_err(self.io())?;
+            .map_err(FormatError::Io)?;
             self.end()?;
         }
         let outlines = if chapters.is_empty() {
@@ -291,7 +284,7 @@ impl PdfBuilder {
                 outline_root - 1,
                 chapters.len()
             )
-            .map_err(self.io())?;
+            .map_err(FormatError::Io)?;
             self.end()?;
             Some(outline_root)
         };
@@ -305,7 +298,7 @@ impl PdfBuilder {
             self.pages.len(),
             kids.join(" ")
         )
-        .map_err(self.io())?;
+        .map_err(FormatError::Io)?;
 
         // The catalog (object 1).
         self.offsets[CATALOG as usize - 1] = self.out.count;
@@ -317,7 +310,7 @@ impl PdfBuilder {
             catalog.push_str(" /ViewerPreferences << /Direction /R2L >>");
         }
         catalog.push_str(" >>");
-        write!(self.out, "{CATALOG} 0 obj\n{catalog}\nendobj\n").map_err(self.io())?;
+        write!(self.out, "{CATALOG} 0 obj\n{catalog}\nendobj\n").map_err(FormatError::Io)?;
 
         // Who made it.
         let info = self.begin()?;
@@ -329,21 +322,22 @@ impl PdfBuilder {
             dict.push_str(&format!(" /CreationDate ({})", pdf_date(self.meta.created)));
         }
         dict.push_str(" >>");
-        write!(self.out, "{dict}").map_err(self.io())?;
+        write!(self.out, "{dict}").map_err(FormatError::Io)?;
         self.end()?;
 
         // The cross-reference table: every entry is exactly 20 bytes.
         let xref = self.out.count;
         let size = self.offsets.len() + 1;
-        write!(self.out, "xref\n0 {size}\n0000000000 65535 f \n").map_err(self.io())?;
+        write!(self.out, "xref\n0 {size}\n0000000000 65535 f \n").map_err(FormatError::Io)?;
         for offset in &self.offsets {
-            writeln!(self.out, "{offset:010} 00000 n ").map_err(self.io())?;
+            writeln!(self.out, "{offset:010} 00000 n ").map_err(FormatError::Io)?;
         }
         write!(
             self.out,
             "trailer\n<< /Size {size} /Root {CATALOG} 0 R /Info {info} 0 R >>\nstartxref\n{xref}\n%%EOF\n"
         )
-        .map_err(self.io())?;
+        .map_err(FormatError::Io)?;
+        self.out.flush()?;
         Ok(self.out.inner)
     }
 }
@@ -418,3 +412,34 @@ fn pdf_date(secs: u64) -> String {
     )
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn titles_are_escaped_or_sent_as_utf16() {
+        assert_eq!(text_string("Solo (Leveling)"), "(Solo \\(Leveling\\))");
+        assert_eq!(text_string("進撃"), "<FEFF90326483>");
+        assert_eq!(text_string("a\\b"), "(a\\\\b)");
+    }
+
+    #[test]
+    fn dates_are_written_in_pdf_form() {
+        assert_eq!(pdf_date(0), "D:19700101000000Z");
+        assert_eq!(pdf_date(1_700_000_000), "D:20231114221320Z");
+    }
+
+    #[test]
+    fn jpeg_headers_are_read_without_decoding() {
+        // SOI, an APP0 segment, then SOF0: 8 bits, 5 high, 7 wide, 3 channels.
+        let mut jpeg = vec![0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00];
+        jpeg.extend_from_slice(&[0xff, 0xc0, 0x00, 0x11, 8, 0, 5, 0, 7, 3]);
+        assert_eq!(
+            jpeg_info(&jpeg),
+            Some(JpegInfo { width: 7, height: 5, components: 3, precision: 8 })
+        );
+        assert_eq!(jpeg_info(b"\x89PNG"), None);
+        assert_eq!(jpeg_info(&[0xff, 0xd8, 0xff]), None);
+        assert_eq!(jpeg_info(&[]), None);
+    }
+}

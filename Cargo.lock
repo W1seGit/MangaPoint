@@ -2147,6 +2147,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "formats"
+version = "1.1.1"
+dependencies = [
+ "converter",
+ "flate2",
+ "image",
+ "png 0.18.1",
+ "roxmltree",
+ "sha2 0.11.1",
+ "zip",
+]
+
+[[package]]
 name = "futf"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4408,11 +4421,11 @@ dependencies = [
  "converter",
  "device-profiles",
  "flate2",
+ "formats",
  "futures-util",
  "image",
  "library",
  "lopdf",
- "png 0.18.1",
  "reqwest",
  "roxmltree",
  "search",
@@ -6739,13 +6752,11 @@ version = "1.1.1"
 dependencies = [
  "converter",
  "device-profiles",
- "flate2",
+ "formats",
  "image",
  "js-sys",
  "library",
  "pipeline",
- "png 0.18.1",
- "roxmltree",
  "serde",
  "serde_json",
  "sha2 0.11.1",

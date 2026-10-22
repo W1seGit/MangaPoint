@@ -31,14 +31,12 @@
 //! Both are about 1.2 GB unless [`Exporter::with_limits`] says otherwise. A chapter
 //! that is refused changes nothing: the exporter can go on with smaller ones.
 
-mod cbz;
-mod epub;
-mod original;
-mod pdf;
+use formats::{epub, original};
+use std::io::Cursor;
 
-use self::cbz::{CbzBuilder, CbzMeta};
-use self::epub::{EpubBuilder, EpubMeta};
-use self::pdf::{PdfBuilder, PdfMeta};
+use formats::cbz::{CbzBuilder, CbzMeta};
+use formats::epub::{EpubBuilder, EpubMeta};
+use formats::pdf::{PdfBuilder, PdfMeta};
 use crate::options::{ExportOptions, FileType};
 use converter::xtc::{Chapter as XtcChapter, Format, Metadata, XtcBuilder};
 use converter::{Depth, GrayImage, ProcessOptions};
@@ -72,9 +70,9 @@ pub struct OutputFile {
 
 enum Book {
     Xtc(XtcBuilder),
-    Epub(Box<EpubBuilder>),
-    Cbz(Box<CbzBuilder>),
-    Pdf(Box<PdfBuilder>),
+    Epub(Box<EpubBuilder<Cursor<Vec<u8>>>>),
+    Cbz(Box<CbzBuilder<Cursor<Vec<u8>>>>),
+    Pdf(Box<PdfBuilder<Vec<u8>>>),
 }
 
 impl Book {
@@ -91,8 +89,8 @@ impl Book {
     fn add(&mut self, page: &[u8]) -> Result<(), String> {
         match self {
             Book::Xtc(b) => b.add_encoded_page(page).map_err(|e| e.to_string()),
-            Book::Epub(b) => b.add_page(page),
-            Book::Cbz(b) => b.add_page(page),
+            Book::Epub(b) => b.add_page(page).map_err(|e| e.to_string()),
+            Book::Cbz(b) => b.add_page(page).map_err(|e| e.to_string()),
             Book::Pdf(_) => Err("a PDF takes pictures as they are".into()),
         }
     }
@@ -117,9 +115,9 @@ impl Book {
     fn finish(self) -> Result<Vec<u8>, String> {
         match self {
             Book::Xtc(b) => b.build().map_err(|e| e.to_string()),
-            Book::Epub(b) => (*b).finish(),
-            Book::Cbz(b) => (*b).finish(),
-            Book::Pdf(b) => (*b).finish(),
+            Book::Epub(b) => (*b).finish().map(Cursor::into_inner).map_err(|e| e.to_string()),
+            Book::Cbz(b) => (*b).finish().map(Cursor::into_inner).map_err(|e| e.to_string()),
+            Book::Pdf(b) => (*b).finish().map_err(|e| e.to_string()),
         }
     }
 }
@@ -381,8 +379,8 @@ impl Exporter {
                     };
                     let bytes = fitted.as_deref().unwrap_or(original_bytes);
                     let added = match &mut open.book {
-                        Book::Cbz(b) => original::add_to_cbz(b, bytes),
-                        Book::Pdf(b) => original::add_to_pdf(b, bytes),
+                        Book::Cbz(b) => original::add_to_cbz(b, bytes).map_err(|e| e.to_string()),
+                        Book::Pdf(b) => original::add_to_pdf(b, bytes).map_err(|e| e.to_string()),
                         _ => Err("this kind of file cannot keep pages as they are".into()),
                     };
                     added.map_err(|e| format!("{name}, page {}: {e}", i + 1))?;
@@ -422,7 +420,7 @@ impl Exporter {
                         }),
                 )
             }
-            FileType::Epub => Book::Epub(Box::new(EpubBuilder::new(EpubMeta {
+            FileType::Epub => Book::Epub(Box::new(EpubBuilder::new(Cursor::new(Vec::new()), EpubMeta {
                 title,
                 language: o.language.clone(),
                 rtl: self.rtl,
@@ -430,7 +428,7 @@ impl Exporter {
                 height: self.process.height,
                 created: o.created,
             })?)),
-            FileType::Cbz => Book::Cbz(Box::new(CbzBuilder::new(CbzMeta {
+            FileType::Cbz => Book::Cbz(Box::new(CbzBuilder::new(Cursor::new(Vec::new()), CbzMeta {
                 series: title,
                 language: o.language.clone(),
                 rtl: self.rtl,
@@ -442,7 +440,7 @@ impl Exporter {
                 sources: info.sources.clone(),
                 created: o.created,
             }))),
-            FileType::Pdf => Book::Pdf(Box::new(PdfBuilder::new(PdfMeta {
+            FileType::Pdf => Book::Pdf(Box::new(PdfBuilder::new(Vec::new(), PdfMeta {
                 title,
                 author: if info.author.trim().is_empty() { info.artist.clone() } else { info.author.clone() },
                 rtl: self.rtl,
@@ -689,7 +687,7 @@ fn convert_chapter_planned<P: AsRef<[u8]>>(
         let prepared = converter::plan::prepare_owned_color(planes, opts, &never).map_err(|e| e.to_string())?;
         let plan = converter::plan::plan(&prepared, opts);
         let packed = converter::plan::render_all_color_with(&prepared, &plan.pages, opts, &cuts, &never, |_, image| {
-            epub::encode_color_page(&image)
+            epub::encode_color_page(&image).map_err(|e| e.to_string())
         })
         .map_err(|e| e.to_string())?;
         let made: Vec<Vec<u8>> = packed.into_iter().collect::<Result<_, _>>()?;
@@ -706,7 +704,7 @@ fn convert_chapter_planned<P: AsRef<[u8]>>(
         let packed =
             converter::plan::render_all_cropped_with(&prepared, &plan.pages, opts, &cuts, &never, |_, image| {
                 if pictures {
-                    epub::encode_page(&image)
+                    epub::encode_page(&image).map_err(|e| e.to_string())
                 } else {
                     converter::xtc::encode_page(&image).map_err(|e| e.to_string())
                 }

@@ -14,17 +14,17 @@
 //! looked up, never used as a path on disk.
 
 mod archive;
-mod comicinfo;
 mod commit;
 mod epub_in;
 mod folder;
-mod names;
 mod pdf_in;
 mod rar_in;
 mod sevenz_in;
 mod tiff_in;
 mod zip_in;
 
+// Reading ComicInfo.xml and the names inside a book is shared with the website (`formats`).
+use formats::{comicinfo, names};
 pub use comicinfo::ComicInfo;
 pub use commit::{commit, sweep_leftovers, CommitOutcome, CommitTarget};
 pub use names::{chapter_name, chapter_number, clean_name, natural_cmp, plain, series_title};

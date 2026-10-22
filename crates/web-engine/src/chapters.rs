@@ -6,10 +6,8 @@
 //! pages, in which order, where each chapter starts, what the chapters and the
 //! book are called, and which picture is the cover.
 //!
-//! The importer's name rules are not copied: `names.rs` and `comicinfo.rs` of
-//! `crates/pipeline/src/import` are compiled into this crate with `#[path]`, so
-//! there is one source of truth. What cannot be shared (the importer's code that
-//! reads real archives and folders from disk) is ported below, and the tests
+//! The name and ComicInfo rules come from `formats`, shared with the desktop importer.
+//! Archive and folder IO stays in the pipeline; the tests
 //! feed the same books to the real importer and compare the answers.
 //!
 //! ## JavaScript names
@@ -42,12 +40,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
-#[path = "../../pipeline/src/import/comicinfo.rs"]
-#[allow(dead_code)]
-mod comicinfo;
-#[path = "../../pipeline/src/import/names.rs"]
-#[allow(dead_code)]
-mod names;
+use formats::{comicinfo, names};
 
 pub use comicinfo::{ComicInfo, InfoPage};
 pub use names::{chapter_name, chapter_number, clean_name, natural_cmp, plain, series_title};

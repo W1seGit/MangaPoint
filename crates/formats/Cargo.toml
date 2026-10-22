@@ -1,0 +1,22 @@
+[package]
+name = "formats"
+version.workspace = true
+edition.workspace = true
+description = "The files MangaPoint makes and reads (CBZ, EPUB, PDF, ComicInfo), as bytes, shared by the desktop app and the website."
+publish = false
+
+[features]
+default = ["write"]
+# The writers and the picture codecs they need.
+write = ["dep:converter", "dep:zip", "dep:png", "dep:image", "dep:flate2", "dep:sha2"]
+
+[dependencies]
+roxmltree = "0.21"
+converter = { path = "../converter", features = ["serde", "decode"], optional = true }
+# The same versions and features as before in crates/pipeline and crates/web-engine, so a file is
+# byte for byte what it was.
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
+png = { version = "0.18", optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"], optional = true }
+flate2 = { version = "1", optional = true }
+sha2 = { version = "0.11", optional = true }
