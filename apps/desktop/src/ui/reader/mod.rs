@@ -98,7 +98,8 @@ impl Ctx {
     }
 
     fn send(&self, message: serde_json::Value) {
-        let _ = self.js.peek().send(message);
+        // A direct call into the page (see `mpReaderCmd` in js/reader.js).
+        let _ = document::eval(&format!("window.mpReaderCmd && window.mpReaderCmd({message})"));
     }
 
     fn chapters(&self) -> Vec<DownloadedChapter> {
@@ -354,7 +355,7 @@ fn ReaderScreen(open: ReaderOpen) -> Element {
     // Leaving: the position goes to the library now, the script stops, the window
     // is not left in full screen.
     use_drop(move || {
-        let _ = ctx.js.peek().send(serde_json::json!({ "c": "stop" }));
+        ctx.send(serde_json::json!({ "c": "stop" }));
         if *ctx.fullscreen.peek() {
             dioxus::desktop::window().set_fullscreen(false);
         }

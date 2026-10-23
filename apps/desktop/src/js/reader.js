@@ -168,6 +168,17 @@
     },
   };
 
+  // The app calls this to ask for something (`{c: ...}`): a plain call from the app's side, which
+  // reaches the page whatever the state of the message channel (that one only reports to the app).
+  window.mpReaderCmd = (m) => {
+    if (m && m.c === 'stop') {
+      if (window.mpReaderStop) window.mpReaderStop();
+      return;
+    }
+    const run = m && commands[m.c];
+    if (run) run(m);
+  };
+
   window.mpReaderStop = () => {
     document.removeEventListener('keydown', onKey, true);
     document.removeEventListener('wheel', onWheel, { capture: true });
@@ -177,6 +188,7 @@
     clearTimeout(barTimer);
     clearTimeout(reportTimer);
     window.mpReaderStop = null;
+    window.mpReaderCmd = null;
   };
 
   (async () => {
