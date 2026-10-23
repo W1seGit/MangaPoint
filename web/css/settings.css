@@ -6,7 +6,6 @@
 
 /* Settings page */
 .sx-bar { margin: 2px 0 10px; }
-.sx-buttons { gap: 8px; justify-content: flex-end; }
 @media (max-width: 700px) { .sx-buttons { justify-content: flex-start; } }
 
 /* Settings, App: the desktop app, what it does and where to get it */

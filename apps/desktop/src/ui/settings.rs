@@ -305,9 +305,8 @@ pub fn SettingsPage() -> Element {
                         Group { title: "Reading state" }
                         SettingRow {
                             label: "Reading state file",
-                            help: "Where you are in each book, and which chapters you read, in the same file the website saves (.mpstate). Save one here to carry your places to the website or another computer, and load one to take theirs. Only books you imported from a file are in it; a file you load keeps the books this library does not have, and brings them back out when you save again.",
-                            note: "Books imported before this version are matched by their file name when you load a file, but can be saved only after they are imported again.",
-                            div { class: "sx-inline",
+                            help: "Where you are in each book, and which chapters you read, in the same file the website saves (.mpstate). Save one here to carry your places to the website or another computer, and load one to take theirs. Only books you imported from a file are in it, and books imported before this version can be saved only after they are imported again (loading matches them by file name). A file you load keeps the books this library does not have, and brings them back out when you save again.",
+                            div { class: "sx-buttons",
                                 button { class: "btn", id: "reading-state-save",
                                     onclick: move |_| {
                                         spawn(async move {
@@ -318,7 +317,7 @@ pub fn SettingsPage() -> Element {
                                             }
                                         });
                                     },
-                                    Icon { name: "file-down", size: 15 } "Save…"
+                                    Icon { name: "file-down", size: 15 } "Save"
                                 }
                                 button { class: "btn", id: "reading-state-load",
                                     onclick: move |_| {
@@ -331,7 +330,7 @@ pub fn SettingsPage() -> Element {
                                             }
                                         });
                                     },
-                                    Icon { name: "file-up", size: 15 } "Load…"
+                                    Icon { name: "file-up", size: 15 } "Load"
                                 }
                             }
                         }

@@ -40,6 +40,7 @@
 .sx-control .seg { width: 100%; }
 .sx-control .seg button { flex: 1; }
 .sx-inline { display: flex; gap: 8px; width: 100%; }
+.sx-buttons { display: flex; gap: 8px; justify-content: flex-end; }
 .sx-inline input { flex: 1; min-width: 0; }
 .sx-note { color: var(--muted); font-size: 0.84rem; margin: 6px 0 0; }
 
