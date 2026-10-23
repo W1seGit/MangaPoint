@@ -18,14 +18,16 @@ New-Item -ItemType Directory -Path $data | Out-Null
 $pages = Join-Path $data 'library/smoke-book/c1'
 New-Item -ItemType Directory -Path $pages -Force | Out-Null
 Add-Type -AssemblyName System.Drawing
-$picture = New-Object Drawing.Bitmap 240,480
-$graphics = [Drawing.Graphics]::FromImage($picture)
-try {
-    $graphics.Clear([Drawing.Color]::White)
-    $graphics.FillRectangle([Drawing.Brushes]::Gray, 24, 24, 190, 400)
-    $picture.Save((Join-Path $pages '00001.img'), [Drawing.Imaging.ImageFormat]::Png)
-} finally { $graphics.Dispose(); $picture.Dispose() }
-$book = @{ id='smoke-book'; title='Smoke book'; chapters=@(@{ key='c1'; number=1; name='Chapter 1'; source_id='import'; pages=1; bytes=1000 }); imported=@{ files=@('fixture.png'); at=1; books=@() } }
+foreach ($n in 1..6) {
+    $picture = New-Object Drawing.Bitmap 240,480
+    $graphics = [Drawing.Graphics]::FromImage($picture)
+    try {
+        $graphics.Clear([Drawing.Color]::White)
+        $graphics.FillRectangle([Drawing.Brushes]::Gray, 24, 24, 190, 400)
+        $picture.Save((Join-Path $pages ('{0:00000}.img' -f $n)), [Drawing.Imaging.ImageFormat]::Png)
+    } finally { $graphics.Dispose(); $picture.Dispose() }
+}
+$book = @{ id='smoke-book'; title='Smoke book'; chapters=@(@{ key='c1'; number=1; name='Chapter 1'; source_id='import'; pages=6; bytes=6000 }); imported=@{ files=@('fixture.png'); at=1; books=@() } }
 [IO.File]::WriteAllText((Join-Path $data 'library.json'), (@{ series=@($book); reading=@{} } | ConvertTo-Json -Depth 8))
 $env:MANGAPOINT_HOME = $data
 $env:MANGAPOINT_DEBUG_PORT = "$Port"
@@ -127,6 +129,32 @@ try {
         Mouse-Click '#reader-settings-close'
         Mouse-Click '#reader-back'
         Wait-Until "!document.querySelector('#reader') && document.querySelector('.poster')" 10 'return to library'
+    }
+    Check 'the reader opens again where it was left, and the keys work' {
+        Mouse-Click '.poster-read'
+        Wait-Until "document.querySelectorAll('.reader img').length >= 6 && [...document.querySelectorAll('.reader img')].every(i => i.complete)" 15 'the pages'
+        Start-Sleep -Milliseconds 800
+        Send-Cdp 'Input.dispatchKeyEvent' @{ type='rawKeyDown'; key='End'; code='End'; windowsVirtualKeyCode=35 } | Out-Null
+        Send-Cdp 'Input.dispatchKeyEvent' @{ type='keyUp'; key='End'; code='End'; windowsVirtualKeyCode=35 } | Out-Null
+        Wait-Until "(() => { const s = document.querySelector('.reader-stage'); return s.scrollTop > s.scrollHeight * 0.5; })()" 10 'the End key scrolling to the end'
+        Eval "(() => { const s = document.querySelector('.reader-stage'); s.scrollTop = s.scrollHeight * 0.4; })()" | Out-Null
+        Start-Sleep -Milliseconds 800
+        $left = [double](Eval "document.querySelector('.reader-stage').scrollTop")
+        Mouse-Click '#reader-back'
+        Wait-Until "!document.querySelector('#reader') && document.querySelector('.poster')" 10 'return to the library'
+        Mouse-Click '.poster-read'
+        Wait-Until "document.querySelectorAll('.reader img').length >= 6" 15 'the pages again'
+        Start-Sleep -Milliseconds 1500
+        $now = [double](Eval "document.querySelector('.reader-stage').scrollTop")
+        if ([math]::Abs($now - $left) -gt 60) { throw "left at $left but reopened at $now" }
+        Mouse-Click '#reader-back'
+        Wait-Until "!document.querySelector('#reader') && document.querySelector('.poster')" 10 'return to the library'
+    }
+    Check 'Settings has the reading state buttons' {
+        Mouse-Click '.nav-item' '^Settings'
+        Wait-Until "document.querySelector('.settings-nav') !== null" 15 'Settings'
+        Mouse-Click '.settings-nav button' 'Preferences'
+        Wait-Until "document.querySelector('#reading-state-save') !== null && document.querySelector('#reading-state-load') !== null" 10 'the reading state buttons'
     }
     Check 'Ctrl+K goes to the search' {
         Send-Cdp 'Input.dispatchKeyEvent' @{ type='keyDown'; key='k'; code='KeyK'; modifiers=2; windowsVirtualKeyCode=75 } | Out-Null
