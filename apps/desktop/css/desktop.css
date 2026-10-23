@@ -39,20 +39,8 @@
 .upd-skip { margin-top: 4px; }
 .upd-status { margin-top: 4px; }
 .upd-command { display: block; margin: 4px 0 8px; padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; font-size: 0.8rem; word-break: break-all; user-select: all; }
-.cat .f0 { animation-name: cat-f0; }
-.cat .f1 { animation-name: cat-f1; }
-.cat .f2 { animation-name: cat-f2; }
-.cat .f3 { animation-name: cat-f3; }
-.cat .f4 { animation-name: cat-f4; }
-@keyframes cat-f0 { 0% { opacity: 1; } 25% { opacity: 0; } 28% { opacity: 1; } 40% { opacity: 0; } 85% { opacity: 1; } 100% { opacity: 1; } }
-@keyframes cat-f4 { 0% { opacity: 0; } 25% { opacity: 1; } 28% { opacity: 0; } 100% { opacity: 0; } }
-@keyframes cat-f1 { 0% { opacity: 0; } 40% { opacity: 1; } 45% { opacity: 0; } 80% { opacity: 1; } 85% { opacity: 0; } 100% { opacity: 0; } }
-@keyframes cat-f2 { 0% { opacity: 0; } 45% { opacity: 1; } 52% { opacity: 0; } 59% { opacity: 1; } 66% { opacity: 0; } 73% { opacity: 1; } 80% { opacity: 0; } 100% { opacity: 0; } }
-@keyframes cat-f3 { 0% { opacity: 0; } 52% { opacity: 1; } 59% { opacity: 0; } 66% { opacity: 1; } 73% { opacity: 0; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .cat .f0 { opacity: 1; } }
 .action-bar .bar-source { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .action-bar .bar-source select { max-width: 330px; padding: 7px 12px; }
-.shelf-scene .st1 { animation-delay: 1s; }
 .popover {
   position: absolute; top: calc(100% + 8px); left: 0; z-index: 20; width: min(440px, 92vw);
   background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 16px; padding: 14px;
@@ -151,8 +139,6 @@
 .series-wrap .series-card .meta { padding-bottom: 52px; }
 .add-btn { position: absolute; left: 10px; right: 10px; bottom: 10px; justify-content: center; }
 .add-btn.on { color: var(--ok); }
-.scene-cat .dot { opacity: 0; animation: dot 2.4s step-end infinite; }
-@media (prefers-reduced-motion: reduce) { .scene-cat .dot { animation: none; } }
 
 /* ---- the download planner ---- */
 .plan-section { border-top: 1px solid var(--line); padding: 14px 0; }

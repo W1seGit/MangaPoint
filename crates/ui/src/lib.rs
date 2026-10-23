@@ -54,5 +54,9 @@ mod css_tests {
         assert_eq!(sorted.len(), listed.len(), "a style sheet is listed twice");
         assert_eq!(sorted, on_disk);
         assert!(super::CSS.contains("--panel"), "the colours come first");
+        // The art's generated class names are not in any code, so a split by usage can lose them.
+        for need in [".cat .f0", "@keyframes cat-f0", ".cat .f4", ".shelf-scene .st1", ".scene-cat .dot"] {
+            assert!(super::CSS.contains(need), "the shared style sheets must hold {need}");
+        }
     }
 }

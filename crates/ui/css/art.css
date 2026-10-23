@@ -4,6 +4,17 @@
 .cat { width: 32px; height: 32px; flex: none; image-rendering: pixelated; }
 .cat .f { opacity: 0; animation-duration: 6s; animation-iteration-count: infinite; animation-timing-function: step-end; }
 .cat .tail { animation: cat-tail 1.6s step-end infinite; }
+.cat .f0 { animation-name: cat-f0; }
+.cat .f1 { animation-name: cat-f1; }
+.cat .f2 { animation-name: cat-f2; }
+.cat .f3 { animation-name: cat-f3; }
+.cat .f4 { animation-name: cat-f4; }
+@keyframes cat-f0 { 0% { opacity: 1; } 25% { opacity: 0; } 28% { opacity: 1; } 40% { opacity: 0; } 85% { opacity: 1; } 100% { opacity: 1; } }
+@keyframes cat-f4 { 0% { opacity: 0; } 25% { opacity: 1; } 28% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes cat-f1 { 0% { opacity: 0; } 40% { opacity: 1; } 45% { opacity: 0; } 80% { opacity: 1; } 85% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes cat-f2 { 0% { opacity: 0; } 45% { opacity: 1; } 52% { opacity: 0; } 59% { opacity: 1; } 66% { opacity: 0; } 73% { opacity: 1; } 80% { opacity: 0; } 100% { opacity: 0; } }
+@keyframes cat-f3 { 0% { opacity: 0; } 52% { opacity: 1; } 59% { opacity: 0; } 66% { opacity: 1; } 73% { opacity: 0; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cat .f0 { opacity: 1; } }
 @keyframes cat-tail { 0% { transform: translateY(0); } 50% { transform: translateY(-1px); } 100% { transform: translateY(0); } }
 /* the resting cat: two breaths, and "z"s drifting up */
 .cat.rest .r { opacity: 0; }
@@ -43,6 +54,7 @@
 .shelf-scene .glow { opacity: 0.1; animation: lamp-glow 5s ease-in-out infinite; }
 @keyframes lamp-glow { 0%, 100% { opacity: 0.09; } 50% { opacity: 0.17; } }
 .shelf-scene .steam { opacity: 0; animation: steam-up 3s ease-out infinite; }
+.shelf-scene .st1 { animation-delay: 1s; }
 .shelf-scene .st2 { animation-delay: 2s; }
 @keyframes steam-up {
   0% { opacity: 0; transform: translateY(0); }
@@ -61,9 +73,11 @@
 @keyframes look-blink { 0%, 90% { opacity: 0; } 92%, 96% { opacity: 1; } 97%, 100% { opacity: 0; } }
 .scene-cat .tail { animation: cat-tail 1.6s step-end infinite; }
 .scene-cat .sparkle { opacity: 0; animation: sparkle 3.2s step-end infinite; }
+.scene-cat .dot { opacity: 0; animation: dot 2.4s step-end infinite; }
 @keyframes sparkle { 0%, 55% { opacity: 0; } 60%, 75% { opacity: 1; } 80%, 100% { opacity: 0; } }
 @keyframes dot { 0% { opacity: 0; } 15%, 85% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .scene-cat .tail, .scene-cat .sparkle, .scene-cat .look-open, .scene-cat .look-blink { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .scene-cat .dot { animation: none; } }
 
 /* ---- the cat on the sea (empty Search page) ---- */
 /* The scene sits in the middle of the space under the search box. */
