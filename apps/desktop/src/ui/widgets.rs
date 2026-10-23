@@ -185,6 +185,17 @@ pub async fn pick_files(
         .map(|files| files.into_iter().map(|h| h.path().to_path_buf()).collect())
 }
 
+/// Ask the user where to save a file, with the system's own dialog. `None` if they cancel.
+pub async fn save_file(title: &str, name: &str, kind: &str, extensions: &[&str]) -> Option<std::path::PathBuf> {
+    rfd::AsyncFileDialog::new()
+        .set_title(title)
+        .set_file_name(name)
+        .add_filter(kind, extensions)
+        .save_file()
+        .await
+        .map(|h| h.path().to_path_buf())
+}
+
 /// Words as a row of pills inside a box: type one and press Enter or a comma to
 /// add it, click a pill (or press Backspace in the empty box) to take it off.
 #[component]

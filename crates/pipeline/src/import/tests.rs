@@ -224,6 +224,19 @@ fn a_cbz_from_our_own_export_imports_back_with_its_details_chapters_and_cover() 
 }
 
 #[test]
+fn a_file_gets_the_identity_the_website_gives_it() {
+    let dir = temp("identity");
+    let path = dir.join("Book - Chapter 1.zip");
+    write_zip(&path, &[("001.png", png(20)), ("002.png", png(30))]);
+    let bytes = std::fs::read(&path).unwrap();
+    let book = scan(&[path]).books.remove(0);
+    // A file this small is its own head and tail (what the website reads of it).
+    let want = formats::fingerprint::book_fingerprint_head_tail(bytes.len() as u64, &bytes, &bytes);
+    assert_eq!(content_prints(&book), [want]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_zip_named_for_a_chapter_with_no_details_is_one_chapter_and_names_are_never_paths() {
     let dir = temp("zip");
     let path = dir.join("Berserk - Chapter 41.zip");

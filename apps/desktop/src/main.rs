@@ -11,6 +11,7 @@ mod logic;
 mod notify;
 mod pages;
 mod queue;
+mod reading_state;
 mod sample;
 mod state;
 mod updates;

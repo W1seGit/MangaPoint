@@ -738,6 +738,10 @@ async fn import_unit(
             .await
             .unwrap_or_default()
     };
+    let content_prints = {
+        let book = book.clone();
+        tokio::task::spawn_blocking(move || import::content_prints(&book)).await.unwrap_or_default()
+    };
     let pages: usize = outcome.chapters.iter().map(|c| c.pages).sum();
     let chapters = outcome.chapters.len();
     let keys: Vec<String> = outcome.chapters.iter().map(|c| c.key.clone()).collect();
@@ -758,6 +762,7 @@ async fn import_unit(
         );
         if let Some(id) = &id {
             db.note_imported_books(id, prints);
+            db.note_content_prints(id, content_prints);
             if new_series {
                 db.adopt_default_preset(id, &defaults, &preset);
             }

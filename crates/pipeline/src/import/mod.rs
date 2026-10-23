@@ -365,6 +365,31 @@ pub fn book_fingerprints(book: &ImportBook) -> Vec<String> {
         .collect()
 }
 
+/// The identity of each file a book was read from (see `formats::fingerprint`): the same one the
+/// website gives the same file, so a reading-state file made by either finds the book in the other.
+/// Folders and loose pictures have none.
+pub fn content_prints(book: &ImportBook) -> Vec<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let one = |p: &std::path::Path| -> Option<String> {
+        let mut file = std::fs::File::open(p).ok()?;
+        let size = file.metadata().ok()?.len();
+        let n = formats::fingerprint::HEAD_TAIL_BYTES as u64;
+        let mut head = vec![0u8; size.min(n) as usize];
+        file.read_exact(&mut head).ok()?;
+        let mut tail = vec![0u8; size.min(n) as usize];
+        file.seek(SeekFrom::Start(size.saturating_sub(n))).ok()?;
+        file.read_exact(&mut tail).ok()?;
+        Some(formats::fingerprint::book_fingerprint_head_tail(size, &head, &tail))
+    };
+    book.sources
+        .iter()
+        .filter_map(|source| match source {
+            BookSource::Zip(p) | BookSource::SevenZ(p) | BookSource::Rar(p) | BookSource::Pdf(p) => one(p),
+            BookSource::Dir(_) => None,
+        })
+        .collect()
+}
+
 /// A file or folder that could not be read, and why.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ScanFailure {

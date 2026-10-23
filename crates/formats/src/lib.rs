@@ -5,12 +5,14 @@
 //! - `cbz`, `epub`, `pdf`: the writers, page by page, to any `Write` (`Write + Seek` for a zip).
 //! - `original`: pages kept as they were saved (for a phone or a tablet), and one width for a strip.
 //! - `comicinfo`: reading a book's `ComicInfo.xml`.
+//! - `fingerprint`: a file's identity, the same on every device (how the reading-state file finds a book).
 //! - `names`: chapter numbers, names and titles from the names inside a book.
 //!
 //! The writers are behind the `write` feature (on by default), so a user of only the readers does not
 //! build the picture codecs.
 
 pub mod comicinfo;
+pub mod fingerprint;
 pub mod names;
 
 #[cfg(feature = "write")]

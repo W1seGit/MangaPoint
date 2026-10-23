@@ -193,6 +193,9 @@ pub struct ImportInfo {
     /// Fingerprints of the books imported into it (path, size and time of the
     /// file), to notice the same file being imported twice.
     pub books: Vec<String>,
+    /// The identity of each file the series was made from, the same on every device and in the
+    /// website (`formats::fingerprint`): how a reading-state file finds this series.
+    pub content_prints: Vec<String>,
 }
 
 /// The title of the made-up series the Export screen shows when nothing has
@@ -507,6 +510,18 @@ impl LibraryDb {
         for print in prints {
             if !from.books.contains(&print) {
                 from.books.push(print);
+            }
+        }
+    }
+
+    /// Remember the content identities of the files imported into a series (see `ImportInfo`).
+    pub fn note_content_prints(&mut self, series_id: &str, prints: Vec<String>) {
+        let Some(from) = self.series.iter_mut().find(|s| s.id == series_id).and_then(|s| s.imported.as_mut()) else {
+            return;
+        };
+        for print in prints {
+            if !from.content_prints.contains(&print) {
+                from.content_prints.push(print);
             }
         }
     }

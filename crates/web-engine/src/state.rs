@@ -450,6 +450,31 @@ fn json_key(b: &BookState) -> String {
     serde_json::to_string(b).unwrap_or_default()
 }
 
+/// The ISO 8601 text of Unix milliseconds.
+pub fn iso_of_ms(ms: u64) -> String {
+    let secs = (ms / 1000) as i64;
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    // Civil from days (Howard Hinnant).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}.{:03}Z",
+        rem / 3600,
+        rem % 3600 / 60,
+        rem % 60,
+        ms % 1000
+    )
+}
+
 /// Milliseconds since the Unix epoch of an ISO 8601 text like
 /// `2026-10-19T12:00:00.000Z` (an offset such as `+02:00` is honoured); 0 when it
 /// cannot be read.
@@ -895,5 +920,194 @@ mod tests {
             (2, 4, vec![0, 2])
         );
         assert_eq!(q.prefs, b.prefs);
+    }
+}
+
+// ---- The desktop app's library <-> a reading-state file ----------------------------
+//
+// The desktop app finds the book of a file by the identity of the file a series was imported from
+// (`ImportInfo::content_prints`, made the same way the website makes `fingerprint`), and a chapter
+// by its place in the series' list, which is how the website numbers them too. What the file holds
+// about books this library does not have is kept (`other`) and written back out, so a file moved
+// through the app still brings every place of the website along.
+
+/// What [`apply_to_library`] did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Applied {
+    /// Books of the file found in the library whose place was taken from the file.
+    pub updated: usize,
+    /// Books found in the library that were read more recently here, so left as they are.
+    pub kept: usize,
+    /// Books of the file that this library does not have; they are kept for the next export.
+    pub other: usize,
+}
+
+fn series_of<'a>(db: &'a library::LibraryDb, book: &BookState) -> Option<&'a library::DownloadedSeries> {
+    db.series
+        .iter()
+        .find(|s| s.imported.as_ref().is_some_and(|i| i.content_prints.contains(&book.fingerprint)))
+        .or_else(|| {
+            // A series imported before the identity was kept: by the file's name, if only one fits.
+            let mut found = db.series.iter().filter(|s| {
+                s.imported.as_ref().is_some_and(|i| {
+                    i.content_prints.is_empty() && !book.file_name.is_empty() && i.files.contains(&book.file_name)
+                })
+            });
+            let first = found.next()?;
+            found.next().is_none().then_some(first)
+        })
+}
+
+/// The places and chapters read of every imported series that has a file identity, merged into
+/// `other` (what earlier files held about books this library does not have). A series made of
+/// several files is not written: a file of the website is one book.
+pub fn export_from_library(db: &library::LibraryDb, other: &State, saved_at: &str) -> State {
+    let mut out = other.clone();
+    for series in &db.series {
+        let Some(import) = series.imported.as_ref() else { continue };
+        let [print] = import.content_prints.as_slice() else { continue };
+        let Some(progress) = db.reading.get(&series.id) else { continue };
+        if progress.last_read_at == 0 {
+            continue;
+        }
+        let index_of = |key: &str| series.chapters.iter().position(|c| c.key == key);
+        let at = progress.chapter.as_deref().and_then(index_of).unwrap_or(0);
+        let mut read: Vec<u32> = series
+            .chapters
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| progress.is_read(&c.key))
+            .map(|(i, _)| i as u32)
+            .collect();
+        read.sort_unstable();
+        let book = BookState {
+            fingerprint: print.clone(),
+            size: 0,
+            file_name: import.files.first().cloned().unwrap_or_default(),
+            title: series.title.clone(),
+            chapters: series.chapters.len() as u32,
+            position: Position {
+                chapter: at as u32,
+                chapter_name: series.chapters.get(at).map(|c| c.name.clone()).unwrap_or_default(),
+                page: progress.page as u32,
+                scroll: progress.scroll,
+            },
+            chapters_read: read,
+            prefs: Prefs::from_reader_prefs(&progress.prefs),
+            last_read_at: progress.last_read_at.saturating_mul(1000),
+        };
+        out.upsert(book);
+    }
+    out.saved_at = saved_at.to_string();
+    out.format = FORMAT.into();
+    out.version = VERSION;
+    out
+}
+
+/// Take the places in `state` for the series of the library they belong to (the one read more
+/// recently wins; chapters read are united). The books the library does not have go back as the
+/// new `other`.
+pub fn apply_to_library(db: &mut library::LibraryDb, state: &State, other: &State) -> (Applied, State) {
+    let mut applied = Applied::default();
+    let mut rest = other.clone();
+    for book in &state.books {
+        let found = series_of(db, book)
+            .map(|s| (s.id.clone(), s.chapters.iter().map(|c| (c.key.clone(), c.pages)).collect::<Vec<_>>()));
+        let Some((id, keys)) = found else {
+            rest.upsert(book.clone());
+            applied.other += 1;
+            continue;
+        };
+        let secs = book.last_read_at / 1000;
+        let newer = db.reading.get(&id).is_none_or(|p| secs > p.last_read_at);
+        if !newer {
+            applied.kept += 1;
+            continue;
+        }
+        db.with_reading(&id, |p| {
+            if let Some((key, pages)) = keys.get(book.position.chapter as usize) {
+                p.chapter = Some(key.clone());
+                p.page = (book.position.page as usize).min(pages.saturating_sub(1));
+                p.scroll = book.position.scroll.clamp(0.0, 1.0);
+            }
+            for i in &book.chapters_read {
+                if let Some((key, pages)) = keys.get(*i as usize) {
+                    p.mark_read(key, *pages, secs);
+                }
+            }
+            p.last_read_at = secs;
+            p.prefs.zoom = book.prefs.zoom;
+        });
+        applied.updated += 1;
+    }
+    (applied, rest)
+}
+
+#[cfg(test)]
+mod library_tests {
+    use super::*;
+    use library::{DownloadedChapter, DownloadedSeries, ImportInfo, LibraryDb};
+
+    fn chapter(key: &str, pages: usize) -> DownloadedChapter {
+        DownloadedChapter { key: key.into(), name: format!("Chapter {key}"), pages, ..Default::default() }
+    }
+
+    fn db() -> LibraryDb {
+        let mut db = LibraryDb::default();
+        db.series.push(DownloadedSeries {
+            id: "s".into(),
+            title: "Book".into(),
+            chapters: vec![chapter("c1", 10), chapter("c2", 10), chapter("c3", 10)],
+            imported: Some(ImportInfo { files: vec!["book.cbz".into()], content_prints: vec!["a".repeat(64)], ..Default::default() }),
+            ..Default::default()
+        });
+        db
+    }
+
+    #[test]
+    fn a_place_goes_out_as_the_website_writes_it_and_comes_back() {
+        let mut db = db();
+        db.with_reading("s", |p| {
+            p.record("c2", 4, 0.4, 10, 1_700_000_000);
+            p.mark_read("c1", 10, 1_700_000_000);
+        });
+        let state = export_from_library(&db, &State::default(), "2026-10-22T00:00:00.000Z");
+        let b = state.find(&"a".repeat(64)).unwrap();
+        assert_eq!((b.position.chapter, b.position.page, b.chapters_read.clone()), (1, 4, vec![0]));
+        assert_eq!(b.last_read_at, 1_700_000_000_000);
+        assert_eq!(b.file_name, "book.cbz");
+        // The file read back by a library that is behind takes the place.
+        let mut behind = self::db();
+        let (applied, rest) = apply_to_library(&mut behind, &state, &State::default());
+        assert_eq!((applied.updated, applied.other), (1, 0));
+        assert!(rest.books.is_empty());
+        let p = &behind.reading["s"];
+        assert_eq!((p.chapter.as_deref(), p.page), (Some("c2"), 4));
+        assert!(p.is_read("c1"));
+    }
+
+    #[test]
+    fn the_more_recent_place_wins_and_unknown_books_are_kept() {
+        let mut db = db();
+        db.with_reading("s", |p| p.record("c3", 9, 1.0, 10, 2_000_000_000));
+        let mut state = State::default();
+        state.upsert(BookState { fingerprint: "a".repeat(64), last_read_at: 1_000_000_000_000, ..Default::default() });
+        state.upsert(BookState { fingerprint: "b".repeat(64), title: "Elsewhere".into(), last_read_at: 5, ..Default::default() });
+        let (applied, rest) = apply_to_library(&mut db, &state, &State::default());
+        assert_eq!((applied.updated, applied.kept, applied.other), (0, 1, 1));
+        assert_eq!(db.reading["s"].chapter.as_deref(), Some("c3"));
+        assert_eq!(rest.books.len(), 1);
+        // What was kept goes out again with the next export.
+        let out = export_from_library(&db, &rest, "2026-10-22T00:00:00.000Z");
+        assert_eq!(out.books.len(), 2);
+    }
+
+    #[test]
+    fn a_series_of_several_files_or_none_read_is_not_written() {
+        let mut db = db();
+        assert!(export_from_library(&db, &State::default(), "x").books.is_empty());
+        db.with_reading("s", |p| p.record("c1", 1, 0.1, 10, 5));
+        db.series[0].imported.as_mut().unwrap().content_prints.push("c".repeat(64));
+        assert!(export_from_library(&db, &State::default(), "x").books.is_empty());
     }
 }

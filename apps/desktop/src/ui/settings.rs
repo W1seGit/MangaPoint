@@ -302,6 +302,39 @@ pub fn SettingsPage() -> Element {
                         }
                     },
                     SettingsSection::Preferences => rsx! {
+                        Group { title: "Reading state" }
+                        SettingRow {
+                            label: "Reading state file",
+                            help: "Where you are in each book, and which chapters you read, in the same file the website saves (.mpstate). Save one here to carry your places to the website or another computer, and load one to take theirs. Only books you imported from a file are in it; a file you load keeps the books this library does not have, and brings them back out when you save again.",
+                            note: "Books imported before this version are matched by their file name when you load a file, but can be saved only after they are imported again.",
+                            div { class: "sx-inline",
+                                button { class: "btn", id: "reading-state-save",
+                                    onclick: move |_| {
+                                        spawn(async move {
+                                            let Some(path) = super::widgets::save_file("Save the reading state", crate::reading_state::FILE_NAME, "Reading state", &["mpstate", "json"]).await else { return };
+                                            match crate::reading_state::export_to(state, &path) {
+                                                Ok(n) => state.notify(format!("Reading state saved: {n} books in {}.", path.display())),
+                                                Err(e) => state.error(e),
+                                            }
+                                        });
+                                    },
+                                    Icon { name: "file-down", size: 15 } "Save…"
+                                }
+                                button { class: "btn", id: "reading-state-load",
+                                    onclick: move |_| {
+                                        spawn(async move {
+                                            let Some(files) = super::widgets::pick_files("Load a reading state", None, "Reading state", &["mpstate", "json"]).await else { return };
+                                            let Some(path) = files.into_iter().next() else { return };
+                                            match crate::reading_state::import_from(state, &path) {
+                                                Ok(a) => state.notify(crate::reading_state::describe(a)),
+                                                Err(e) => state.error(e),
+                                            }
+                                        });
+                                    },
+                                    Icon { name: "file-up", size: 15 } "Load…"
+                                }
+                            }
+                        }
                         Group { title: "Animations" }
                         SettingRow { label: "Animation style", help: "Clean fades pages in one part after another. Snappy skips that: pages and menus appear as fast as they can.",
                             div { class: "seg",

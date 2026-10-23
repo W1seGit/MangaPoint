@@ -66,7 +66,7 @@ pub mod chapters;
 #[cfg(feature = "core")]
 pub mod devices;
 #[cfg(feature = "core")]
-pub mod fingerprint;
+pub use formats::fingerprint;
 #[cfg(feature = "core")]
 pub mod options;
 #[cfg(feature = "core")]
