@@ -2,6 +2,7 @@
 //! find each other as `super::name`.)
 
 pub mod cat;
+pub mod design;
 pub mod desk;
 pub mod hang;
 pub mod icons;

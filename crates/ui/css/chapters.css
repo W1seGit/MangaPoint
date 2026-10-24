@@ -27,20 +27,21 @@ table.chapters tbody td { height: 42px; box-sizing: border-box; padding-top: 0; 
 table.chapters tbody tr.spacer, table.chapters tbody tr.spacer:hover { cursor: default; background: transparent; }
 table.chapters tbody tr.spacer td { padding: 0; border: 0; }
 table.chapters tbody tr:hover { background: var(--panel-2); }
-table.chapters tbody tr.on { background: #1a1a1a; box-shadow: inset 3px 0 0 var(--accent); }
+table.chapters tbody tr.on { background: var(--sub); box-shadow: inset 3px 0 0 var(--accent); }
 table.chapters td.name { overflow: hidden; text-overflow: ellipsis; max-width: 0; white-space: nowrap; }
 .summary-line { display: flex; justify-content: space-between; padding: 4px 0; }
 .summary-line span:last-child { color: var(--text); }
-.seg { display: flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+.seg { display: flex; gap: 3px; padding: 3px; background: var(--dark); border-radius: var(--radius-lg); }
 .seg button {
-  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0;
-  background: var(--panel); padding: 7px 8px; cursor: pointer; border-left: 1px solid var(--line-strong); color: var(--muted);
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; border: 0; border-radius: var(--radius-lg);
+  background: transparent; padding: 6px 10px; cursor: pointer; color: var(--muted);
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
 }
-.seg button:first-child { border-left: 0; }
+.seg button:hover:not(.on) { color: var(--text); background: var(--third); }
+.seg button:active { transform: scale(0.97); }
 .seg button.on { background: var(--accent); color: var(--accent-text); font-weight: 600; }
 .seg.stack { flex-direction: column; }
-.seg.stack button { border-left: 0; border-top: 1px solid var(--line-strong); justify-content: flex-start; padding: 8px 11px; }
-.seg.stack button:first-child { border-top: 0; }
+.seg.stack button { justify-content: flex-start; padding: 8px 14px; }
 
 table.chapters tbody tr.locked { cursor: default; opacity: 0.6; }
 table.chapters tbody tr.locked:hover { background: transparent; }

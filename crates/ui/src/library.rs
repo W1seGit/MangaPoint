@@ -1,6 +1,7 @@
 //! The Library's cards and the bar for the cards that are ticked, the same in both apps. They show
 //! what they are given and say what was clicked; each app fills in its own menu items and actions.
 
+use crate::art::design::Figure;
 use crate::widgets::Icon;
 use dioxus::prelude::*;
 
@@ -16,11 +17,21 @@ pub struct PosterButton {
     pub fraction: Option<f32>,
 }
 
+/// The two counts hanging from the top of a card: what is downloaded, and what has been exported.
+#[derive(Clone, PartialEq, Debug)]
+pub struct PosterTabs {
+    /// "125/225": the chapters on this device, of all there are.
+    pub downloaded: String,
+    /// "64/124": the chapters exported to a reader. `None` where exports are not kept.
+    pub exported: Option<String>,
+}
+
 /// What a card shows.
 #[derive(Clone, PartialEq, Debug)]
 pub struct PosterFacts {
     pub id: String,
     pub title: String,
+    pub tabs: Option<PosterTabs>,
     /// How many chapters, and the space they take.
     pub stats: Option<(String, String)>,
     /// Short lines under the title, by class (`poster-about`, `poster-status`, `poster-place`).
@@ -63,6 +74,14 @@ pub fn Poster(
             on_open.call(());
         }
     };
+    // What the card used to spell out (chapters, storage, status) is in the tooltip of the title.
+    let mut about: Vec<String> = Vec::new();
+    if let Some((have, stored)) = f.stats.clone() {
+        about.push(format!("{have} chapters"));
+        about.push(stored);
+    }
+    about.extend(f.lines.iter().map(|(_, text)| text.clone()));
+    let tip = if about.is_empty() { f.title.clone() } else { format!("{} \u{b7} {}", f.title, about.join(" \u{b7} ")) };
     rsx! {
         div { class: "{class}", "data-id": "{f.id}",
             div { class: "poster-art", title: open_title.clone(), onclick: click,
@@ -80,34 +99,46 @@ pub fn Poster(
                     Icon { name: "ellipsis", size: 16 }
                 }
             }
+            if let Some(tabs) = f.tabs.clone() {
+                div { class: if tabs.exported.is_some() { "poster-tabs" } else { "poster-tabs one" },
+                    div { class: "poster-tab down", title: "Chapters downloaded",
+                        Figure { name: "download-small" }
+                        span { "{tabs.downloaded}" }
+                    }
+                    if let Some(exported) = tabs.exported.clone() {
+                        div { class: "poster-tab up", title: "Chapters exported",
+                            span { "{exported}" }
+                            Figure { name: "export-small" }
+                        }
+                    }
+                }
+            }
             if menu_open {
                 div { class: "menu-scrim", onclick: move |_| on_menu.call(false) }
                 div { class: "menu down poster-menu", onclick: move |_| on_menu.call(false), {menu} }
             }
-            // The text opens the book too, and lights up with the cover.
-            div { class: "poster-text", title: open_title, onclick: click,
-                strong { class: "poster-title", title: "{f.title}", "{f.title}" }
-                if let Some((have, stored)) = f.stats.clone() {
-                    div { class: "poster-stats",
-                        div { span { class: "poster-stat-label", "Chapters" } strong { "{have}" } }
-                        div { span { class: "poster-stat-label", "Storage" } strong { "{stored}" } }
+            // The text opens the book too.
+            div { class: "poster-info", onclick: click,
+                strong { class: "poster-title", title: "{tip}", "{f.title}" }
+                if f.not_installed {
+                    span { class: "poster-note", "Not installed yet" }
+                }
+                if let Some(b) = f.button.clone() {
+                    button {
+                        class: "btn poster-read", id: "{b.id}", "data-id": "{f.id}",
+                        "aria-label": "{b.aria}", title: "{b.title}",
+                        onclick: move |e| {
+                            e.stop_propagation();
+                            if selecting { on_toggle.call(()); } else { on_button.call(()); }
+                        },
+                        span { "{b.label}" }
+                        Figure { name: "reading" }
                     }
-                }
-                for (kind, text) in f.lines.iter().cloned() {
-                    span { class: "muted small {kind}", title: "{text}", "{text}" }
-                }
-            }
-            if let Some(b) = f.button.clone() {
-                button {
-                    class: "btn poster-read", id: "{b.id}", "data-id": "{f.id}",
-                    "aria-label": "{b.aria}", title: "{b.title}",
-                    onclick: move |_| { if selecting { on_toggle.call(()); } else { on_button.call(()); } },
-                    Icon { name: b.icon, size: 15 } "{b.label}"
-                }
-                if let Some(done) = b.fraction {
-                    div { class: "progress poster-read-progress", "aria-label": "Read so far",
-                        title: "{(done * 100.0).round()}% read",
-                        div { style: "width: {(done * 100.0).round()}%" }
+                    if let Some(done) = b.fraction {
+                        div { class: "progress poster-read-progress", "aria-label": "Read so far",
+                            title: "{(done * 100.0).round()}% read",
+                            div { style: "width: {(done * 100.0).round()}%" }
+                        }
                     }
                 }
             }

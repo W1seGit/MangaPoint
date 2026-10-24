@@ -7,7 +7,7 @@
 
 .menu-help { margin-left: auto; display: inline-flex; color: var(--muted); }
 /* Library: a book waiting for its file is a card like the others, with a faded placeholder. The
-   selection is the app's (the tick on each card, the action bar); on a phone the bar sits above the tabs. */
+   selection is the app's (the tick on each card, the action bar); on a phone the bar sits above the dock. */
 .poster.not-installed .poster-art .cover { opacity: 0.55; }
 .poster-place { display: block; margin-top: 2px; }
 

@@ -46,8 +46,8 @@ pub fn ReadersEditor() -> Element {
     let devices_empty = s.devices().is_empty();
     let chosen = current.id.clone();
 
-    rsx! {
-        div { class: "pills", style: "margin-bottom: 18px",
+    let pick = rsx! {
+        div { class: "pills reader-chips",
             for d in devices {
                 {
                     let id = d.id.clone();
@@ -79,6 +79,10 @@ pub fn ReadersEditor() -> Element {
                 }
             }
         }
+    };
+    rsx! {
+        // With no reader chosen to edit there is no name above them: the readers come first.
+        if devices_empty || phone_chosen { {pick.clone()} }
         if phone_chosen {
             p { class: "sx-note", "\"Phone or tablet · original quality\" is chosen on the Export screen. Pick one of your readers above to change its settings." }
         }
@@ -88,7 +92,7 @@ pub fn ReadersEditor() -> Element {
         // Keyed, so choosing another reader (or saving) starts the form afresh.
         if !devices_empty && !phone_chosen {
             for key in [form_key] {
-                ReaderForm { key: "{key}", revision }
+                ReaderForm { key: "{key}", revision, pick: pick.clone() }
             }
         }
     }

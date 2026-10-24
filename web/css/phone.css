@@ -1,5 +1,5 @@
-/* Tablets and phones: a bottom tab bar instead of the sidebar, 44 px targets, dialogs that fill the
-   screen. */
+/* Tablets and phones: 44 px targets and dialogs that fill the screen. The dock and the corner bar are the
+   same as on a computer (crates/ui/css/shell.css). */
 
 /* Settings rows stack on narrow screens */
 @media (max-width: 700px) {
@@ -8,21 +8,9 @@
   .sx-control .seg { width: 100%; }
 }
 
-/* ---- tablets and phones: a bottom tab bar instead of the sidebar ---- */
+/* ---- tablets and phones ---- */
 @media (max-width: 800px) {
-  .app { flex-direction: column-reverse; }
-  .nav {
-    width: auto; flex: none; flex-direction: row; justify-content: space-around; gap: 2px;
-    border-right: 0; border-top: 1px solid var(--line);
-    padding: 6px max(8px, var(--sar)) calc(6px + var(--sab)) max(8px, var(--sal));
-    z-index: 10;
-  }
-  .brand, .nav-spacer { display: none; }
-  .nav-item {
-    flex: 1; flex-direction: column; justify-content: center; gap: 3px; min-height: 52px;
-    padding: 6px 4px; font-size: 0.74rem; text-align: center; border-radius: 10px;
-  }
-  .content { padding: calc(14px + var(--sat)) max(14px, var(--sal)) 28px max(14px, var(--sal)); padding-right: max(14px, var(--sar)); }
+  .content { padding: calc(14px + var(--sat)) max(14px, var(--sar)) calc(170px + var(--sab)) max(14px, var(--sal)); }
   h1 { font-size: 1.35rem; }
 
   /* 44px targets */
@@ -39,8 +27,6 @@
   .q-head { gap: 8px; }
   .lib-tools { gap: 8px; }
   .lib-filter { width: 100%; order: 3; }
-  .poster-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-  .poster-read { min-height: 44px; }
 
   /* Dialogs fill the screen */
   .overlay { padding: 0; align-items: stretch; }
@@ -67,17 +53,13 @@
   .seg { flex-wrap: nowrap; }
   .seg button { flex: 1; white-space: normal; }
 
-  /* Toasts above the tab bar */
-  .toasts { left: 12px; right: 12px; width: auto; bottom: calc(76px + var(--sab)); }
+  /* Toasts above the dock */
+  .toasts { left: 12px; right: 12px; width: auto; bottom: calc(136px + var(--sab)); }
   .toast { left: 0; right: 0; width: auto; }
 
 }
 
-@media (max-width: 420px) {
-  .poster-grid { grid-template-columns: minmax(0, 1fr); }
-}
 @media (max-width: 800px) {
-  .action-bar { left: 0; bottom: calc(65px + var(--sab)); padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
-  .page:has(.action-bar) { padding-bottom: 120px; }
+  .action-bar { bottom: calc(92px + var(--sab)); padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
   .poster-check { opacity: 1; }
 }

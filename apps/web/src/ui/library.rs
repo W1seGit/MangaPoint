@@ -7,7 +7,7 @@ use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
 use crate::model::{Book, LibrarySort, LibraryView};
 use dioxus::prelude::*;
-use mangapoint_ui::library::{ActionBar, LibraryTools, Poster, PosterButton, PosterFacts};
+use mangapoint_ui::library::{ActionBar, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -156,6 +156,7 @@ pub fn BrowserLibraryPage() -> Element {
                         let facts = PosterFacts {
                             id: id.clone(),
                             title: b.title.clone(),
+                            tabs: Some(PosterTabs { downloaded: format!("{have}/{have}"), exported: None }),
                             stats: Some((have.clone(), stored.clone())),
                             lines: vec![("poster-status", status)],
                             button: reading.map(|r| PosterButton {
@@ -246,6 +247,7 @@ pub fn BrowserLibraryPage() -> Element {
                         let facts = PosterFacts {
                             id: fp.clone(),
                             title: title.clone(),
+                            tabs: None,
                             stats: None,
                             lines: vec![("poster-status", "Not installed yet".to_string()), ("poster-place", place.clone())],
                             button: Some(PosterButton {

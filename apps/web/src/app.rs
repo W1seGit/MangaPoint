@@ -10,6 +10,7 @@ use crate::ui::{self, widgets::Icon};
 use dioxus::prelude::*;
 use mangapoint_ui::dialogs::{ToastHost, UnsavedHost};
 use mangapoint_ui::host::{Ask, Host, Leave, LocalFuture, SharedAction, UiState};
+use mangapoint_ui::shell::BarItem;
 use serde_json::json;
 use std::rc::Rc;
 use web_engine::state::Settings;
@@ -424,25 +425,13 @@ fn handle_event(ctx: Ctx, ev: Event) {
 
 // ---- the shell ----------------------------------------------------------------------------------
 
-#[component]
-fn BrowserNavItem(page: Page, label: &'static str, icon: &'static str) -> Element {
-    let ctx = use_context::<Ctx>();
-    // A book's overview belongs to the Library.
-    let current = match *ctx.page.read() {
-        Page::Book => Page::Library,
-        p => p,
-    };
-    let on = current == page;
-    rsx! {
-        button {
-            class: if on { "nav-item active" } else { "nav-item" },
-            "aria-current": if on { "page" } else { "false" },
-            id: "nav-{label}",
-            onclick: move |_| ctx.go(page),
-            Icon { name: icon, size: 18 }
-            span { class: "nav-label", "{label}" }
-        }
-    }
+/// A press on the dock or the corner bar.
+fn pick(ctx: Ctx, id: &str) {
+    ctx.go(match id {
+        "library" => Page::Library,
+        "export" => Page::Export,
+        _ => Page::Settings,
+    });
 }
 
 #[component]
@@ -453,6 +442,11 @@ fn BrowserShell() -> Element {
     let online = *ctx.online.read();
     let update = *ctx.update_ready.read();
     let mut later = use_signal(|| false);
+    // A book's overview belongs to the Library.
+    let current = match page {
+        Page::Book => Page::Library,
+        p => p,
+    };
     // The address bar follows the screen: /, /export, /settings#reader, /read/<book>/<chapter>.
     use_effect(move || {
         if !*ctx.routed.read() {
@@ -463,15 +457,18 @@ fn BrowserShell() -> Element {
     });
     rsx! {
         div { class: "app", "data-motion": "clean", "data-reading": "{reading}",
-            nav { class: "nav",
-                div { class: "brand",
-                    art::cat::Cat {}
-                    span { "MangaPoint" }
-                }
-                BrowserNavItem { page: Page::Library, label: "Library", icon: "book-open" }
-                BrowserNavItem { page: Page::Export, label: "Export", icon: "file-down" }
-                div { class: "nav-spacer" }
-                BrowserNavItem { page: Page::Settings, label: "Settings", icon: "settings" }
+            if !reading {
+            mangapoint_ui::shell::Dock {
+                items: vec![
+                    BarItem::new("library", "Library", "nav-library", current == Page::Library),
+                    BarItem::new("export", "Export", "nav-export", current == Page::Export),
+                ],
+                on_pick: move |id| pick(ctx, id),
+            }
+            mangapoint_ui::shell::CornerBar {
+                items: vec![BarItem::new("settings", "Settings", "gear", current == Page::Settings)],
+                on_pick: move |id| pick(ctx, id),
+            }
             }
             main { class: "content", id: "content",
                 div { class: "page",

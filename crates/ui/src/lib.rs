@@ -30,6 +30,7 @@ pub mod logic;
 pub mod reader;
 pub mod readers;
 pub mod scripts;
+pub mod shell;
 pub mod widgets;
 
 // The shared style sheets as one text, in their order (see `build.rs` and `css/ORDER`).

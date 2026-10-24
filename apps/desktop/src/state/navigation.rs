@@ -7,7 +7,6 @@ use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
-    Setup,
     Search,
     /// A series the user opened: chapters, downloads, preview, export.
     Series,
@@ -32,6 +31,8 @@ pub enum SettingsSection {
     Downloads,
     Files,
     Preferences,
+    /// Where the sources are added, checked and removed.
+    Sources,
     About,
 }
 
@@ -53,6 +54,12 @@ impl AppState {
     }
 
     fn go_now(&self, page: Page) {
+        // The sources live in Settings.
+        if page == Page::Sources {
+            let mut section = self.settings_section;
+            section.set(SettingsSection::Sources);
+            return self.go_now(Page::Settings);
+        }
         let mut p = self.page;
         // The Export screen borrows the workspace for its own series; the
         // series that was open before it comes back when it is left.

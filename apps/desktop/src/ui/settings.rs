@@ -12,11 +12,12 @@ use dioxus::prelude::*;
 use library::{DownloadLimits, DownloadSpeed, PageQuality};
 
 /// The sections, in the order the sidebar lists them.
-const SECTIONS: [(SettingsSection, &str, &str); 5] = [
+const SECTIONS: [(SettingsSection, &str, &str); 6] = [
     (SettingsSection::Readers, "hard-drive", "Your reader"),
     (SettingsSection::Downloads, "download", "Downloads"),
     (SettingsSection::Files, "folder-open", "Files"),
     (SettingsSection::Preferences, "sliders-horizontal", "Preferences"),
+    (SettingsSection::Sources, "layers", "Sources"),
     (SettingsSection::About, "info", "About"),
 ];
 
@@ -77,12 +78,11 @@ pub fn SettingsPage() -> Element {
     rsx! {
         div { class: "settings",
             nav { class: "settings-nav",
-                for (sec, icon, label) in SECTIONS {
+                for (sec, _icon, label) in SECTIONS {
                     button {
                         key: "{label}",
                         class: if sec == section { "nav-item active" } else { "nav-item" },
                         onclick: move |_| state.open_section(sec),
-                        Icon { name: icon, size: 17 }
                         "{label}"
                     }
                 }
@@ -350,6 +350,7 @@ pub fn SettingsPage() -> Element {
                             }
                         }
                     },
+                    SettingsSection::Sources => rsx! { super::sources_page::SourcesPage {} },
                     SettingsSection::About => rsx! {
                         UpdateRow {}
                         SettingRow {

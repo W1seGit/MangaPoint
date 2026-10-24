@@ -6,30 +6,53 @@
 .size-boxes .btn.icon { width: 36px; height: 36px; padding: 0; justify-content: center; }
 .size-boxes .btn.icon.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 
-/* ---- the reader page: the name is the heading, edited in place ---- */
+/* ---- the reader page: the name in pixel type, the size of its screen as two linked pills ---- */
 
-.reader-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted); }
-.title-input { font: inherit; font-size: 1.5rem; font-weight: 650; letter-spacing: -0.01em; color: var(--text); width: min(100%, 460px); padding: 3px 10px; margin-left: -10px; background: transparent; border: 1px solid transparent; border-radius: 8px; }
-.title-input:hover { border-color: var(--line-strong); }
-.title-input:focus { border-color: var(--accent); background: var(--panel); outline: none; }
+.reader-line { display: flex; align-items: center; gap: 38px; flex-wrap: wrap; margin: 4px 0 26px; }
+input.title-input {
+  font: 400 24px/normal var(--font-pixel); text-transform: uppercase; color: var(--heading); field-sizing: content; min-width: 120px; max-width: 100%;
+  padding: 2px 8px; margin-left: -8px; background: transparent; border: 2px solid transparent; border-radius: var(--radius);
+}
+input.title-input:hover { border-color: var(--third); }
+input.title-input:focus { border-color: var(--icon); background: transparent; outline: none; }
+.title-input.fixed { display: flex; align-items: center; }
+.size-boxes { display: flex; align-items: center; gap: 0; }
+.size-boxes .unit-box { position: relative; }
+.size-boxes .pre, .size-boxes .unit { display: none; }
+/* Two pills with a bridge between them: the link, lit while the shape of the screen is kept. */
+.size-boxes .dim-box input[type="number"] {
+  field-sizing: content; width: auto; min-width: 70px; height: 33px; padding: 0 14px; text-align: center;
+  font: 400 24px/normal var(--font-ui); color: #fff; background: var(--dark); border: 2px solid var(--icon); border-radius: var(--radius-lg);
+  appearance: textfield; -moz-appearance: textfield; position: relative; z-index: 1;
+}
+.size-boxes .dim-box input::-webkit-outer-spin-button, .size-boxes .dim-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.size-boxes .dim-box input[type="number"]:focus { border-color: #fff; }
+.size-boxes .btn.icon.chain {
+  width: 49px; height: 33px; min-height: 33px; margin: 0 -12px; padding: 0; border-radius: 0; background: var(--icon); color: var(--dark);
+  justify-content: center; transition: background-color 0.2s ease, filter 0.2s ease;
+}
+.size-boxes .btn.icon.chain:not(.on) { background: var(--third); color: var(--icon); }
+.size-boxes .btn.icon.chain:hover { filter: brightness(1.12); }
+.size-boxes .btn.icon.chain .fig, .size-boxes .btn.icon.chain .icon { transition: transform 0.3s cubic-bezier(0.34, 1.7, 0.64, 1); }
+.size-boxes .btn.icon.chain:active .fig, .size-boxes .btn.icon.chain:active .icon { transform: scale(0.8) rotate(-12deg); }
+/* How many pixels an inch has: smaller, after the sizes. */
+.size-boxes .ppi-box { margin-left: 14px; }
+.size-boxes .ppi-box .unit { display: inline; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 0.8rem; }
+.size-boxes .ppi-box input[type="number"] { min-width: 0; width: 92px; height: 33px; padding: 0 38px 0 12px; font-size: 1rem; text-align: left; border-color: var(--third); }
 .sx-control.sx-inline { gap: 8px; }
 .sx-control.sx-inline input[type="number"] { width: 110px; }
 
 /* ---- the reader form ---- */
-.title-input.fixed { display: flex; align-items: center; color: var(--text); }
-.reader-line .title-input { height: 46px; box-sizing: border-box; margin-left: 0; background: var(--panel); border-color: var(--line-strong); font-size: 1.3rem; }
-.reader-line .size-boxes input[type="number"] { width: 96px; height: 46px; box-sizing: border-box; padding: 0 12px; font-size: 1.1rem; text-align: center; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; color: var(--text); }
-.reader-line .size-boxes .btn.icon { width: 46px; height: 46px; }
-.panel-section .size-boxes input[type="number"] { height: 40px; box-sizing: border-box; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; color: var(--text); padding: 0 10px; }
+.panel-section .size-boxes input[type="number"] { height: 40px; box-sizing: border-box; background: var(--sub); border: 2px solid transparent; border-radius: var(--radius); color: var(--text); padding: 0 10px; }
 .panel-section .size-boxes .btn.icon { width: 40px; height: 40px; }
 .form-footer { display: flex; align-items: center; gap: 12px; margin-top: 24px; }
 
 /* ---- adding a reader: a search box with the answers under it ---- */
 .adder { position: relative; width: 320px; max-width: 100%; }
-.adder-box { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--panel); color: var(--muted); transition: border-color 0.18s ease; }
+.adder-box { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border: 2px solid transparent; border-radius: 999px; background: var(--sub); color: var(--muted); transition: border-color 0.18s ease; }
 .adder-box.focused { border-color: var(--accent); }
 .adder-box input, .adder-box input:focus { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--text); }
-.adder-list { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--panel-2); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6); max-height: 280px; overflow-y: auto; }
+.adder-list { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; padding: 5px; border: 1px solid #292929; border-radius: 18px; background: var(--dark); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6); max-height: 280px; overflow-y: auto; }
 .adder-opt { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
 .adder-opt:hover { background: var(--panel-3); }
 .adder-opt.create { color: var(--muted); }
@@ -41,20 +64,4 @@
 @keyframes pill-pop { from { opacity: 0; transform: translateY(10px) scale(0.85); } to { opacity: 1; transform: none; } }
 .app[data-motion="snappy"] .pill.pop { animation-duration: 0.06s; transition-duration: 0.06s; }
 @media (prefers-reduced-motion: reduce) { .pill.pop { animation: none; } }
-.dim-box .pre { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 700; pointer-events: none; }
-.reader-line .dim-box input[type="number"] { width: 118px; padding: 0 36px 0 32px; text-align: left; }
-.reader-line .ppi-box input[type="number"] { width: 112px; padding: 0 42px 0 14px; }
-.reader-line .dim-box .unit { right: 13px; }
-.reader-line .size-boxes { flex-wrap: wrap; row-gap: 8px; }
-/* The name and the sizes share one row: the name gives way, the sizes do not. */
-.reader-line { flex-wrap: nowrap; row-gap: 10px; }
-.reader-line .title-input { flex: 1 1 140px; width: auto; min-width: 90px; }
-.reader-line .size-boxes { flex: none; flex-wrap: nowrap; gap: 4px; }
-.reader-line .size-boxes .btn.icon.chain { width: 30px; height: 46px; padding: 0; background: transparent; border-color: transparent; color: var(--muted); }
-.reader-line .size-boxes .btn.icon.chain:hover { color: var(--text); }
-.reader-line .size-boxes .btn.icon.chain.on { color: var(--accent); }
-.reader-line .dim-box input[type="number"] { width: 112px; padding: 0 28px 0 28px; font-size: 1rem; }
-.reader-line .ppi-box { margin-left: 8px; }
-.reader-line .ppi-box input[type="number"] { width: 96px; padding: 0 38px 0 12px; }
-.reader-line .dim-box .unit { right: 11px; }
-.reader-line .dim-box .pre { left: 11px; }
+.reader-chips { margin: 0 0 22px; }

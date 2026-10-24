@@ -255,6 +255,8 @@ try {
   r.check('Phone or tablet offers CBZ and PDF', fm.join() === 'CBZ,PDF', fm.join());
   await page.shot(`${viewport}-32-export-phone`);
   // A phone or tablet gets the pages as they are: one long page, nothing between them, no Compare.
+  // The pages load as they come near what is shown; a wide column shows less than two of them at once.
+  await page.eval("document.querySelector('#export-pages').scrollTop = 400");
   await page.waitFor("document.querySelectorAll('.original-preview .reader-tile img').length > 1", 30, 'the original pages');
   r.check('phone or tablet: no Compare, no switch, no converted rows', !(await page.eval("!!document.querySelector('#export-compare, .compare-tab, .editor-mobile-switch, .editor-row')")));
   r.check('phone or tablet keeps the top bar: page jump and zoom', await page.eval("!!document.querySelector('.editor-toolbar .editor-page-jump input') && !!document.querySelector('.editor-toolbar .zoom-menu')"));

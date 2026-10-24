@@ -132,7 +132,7 @@ export class Page {
 
   /** The visible element's box as [x, y, w, h] for a selector (and a text filter). */
   async rect(selector, text = null, index = 0) {
-    return this.eval(`(() => {
+    return this.eval(`(async () => {
       const want = ${JSON.stringify(text)};
       const els = [...document.querySelectorAll(${JSON.stringify(selector)})].filter((e) => {
         const r = e.getBoundingClientRect();
@@ -143,7 +143,20 @@ export class Page {
       const el = pick[${index}];
       if (!el) return null;
       el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-      const r = el.getBoundingClientRect();
+      let r = el.getBoundingClientRect();
+      // Something fixed over it (the dock, a toast)? Bring it to the middle of the screen.
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (hit && !el.contains(hit) && !hit.contains(el)) {
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        r = el.getBoundingClientRect();
+        // A toast still in the way (on a small screen it is wide): let it go.
+        const over = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        if (over && over.closest('.toasts') && !el.closest('.toasts')) {
+          document.querySelectorAll('.toast-x').forEach((b) => b.click());
+          await new Promise((done) => setTimeout(done, 500));
+          r = el.getBoundingClientRect();
+        }
+      }
       return [r.left, r.top, r.width, r.height];
     })()`);
   }

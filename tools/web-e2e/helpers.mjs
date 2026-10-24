@@ -11,8 +11,10 @@ export async function openApp(page, url, viewport = 'desktop') {
   await sleep(300);
 }
 
-/** Go to a screen by its nav button (the sidebar on desktop, the tab bar on phones). */
+/** Go to a screen by its button in the dock (or the corner bar). */
 export async function nav(page, label) {
+  // The dock slides in when it appears (the app starts, a book is closed): wait until it sits at the bottom.
+  await page.waitFor(`(() => { const b = document.querySelector('#nav-${label}'); if (!b) return false; const r = b.getBoundingClientRect(); return r.bottom <= innerHeight + 0.5 && !document.querySelector('.dock')?.getAnimations().some((a) => a.playState === 'running'); })()`, 10, 'the dock');
   await page.click(`#nav-${label}`);
   await sleep(250);
 }
@@ -57,6 +59,9 @@ export const titles = (page) => page.eval("[...document.querySelectorAll('.poste
 export async function openBook(page, title) {
   const id = await page.eval(`(() => { const p = [...document.querySelectorAll('.poster')].find((p) => p.querySelector('.poster-title').textContent.includes(${JSON.stringify(title)})); return p ? p.dataset.id : null; })()`);
   if (!id) throw new Error(`no book called ${title}`);
+  // A toast from the import may lie over the card on a small screen: dismiss what is showing.
+  await page.eval("document.querySelectorAll('.toast-x').forEach((b) => b.click())");
+  await sleep(450);
   await page.click(`#read-${id}`);
   await page.waitFor("!!document.querySelector('#reader')", 20, 'the reader');
   await page.waitFor("!!document.querySelector('.reader-tile img, .reader-end')", 20, 'a page');

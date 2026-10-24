@@ -1,6 +1,7 @@
 //! Editing the chosen reader: its name, screen, file types and firmware, and where the app can
 //! send files to it (`Caps::send_to_reader`), how they get there.
 
+use crate::art::design::Figure;
 use crate::widgets::{Help, Icon};
 use crate::host::{use_ui, UiState};
 use device_profiles::{DeviceError, Firmware};
@@ -87,7 +88,8 @@ fn save_reader(state: UiState, draft: &ReaderDraft, revision: &mut Signal<u32>) 
 
 /// The chosen reader, edited as a draft and written when Save is pressed.
 #[component]
-pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
+/// `pick` is the row of readers to choose from; it sits under the name and size of the chosen one.
+pub(super) fn ReaderForm(revision: Signal<u32>, pick: Element) -> Element {
     let state = use_ui();
     let s = state.settings.read().clone();
     let current = s.device_profile();
@@ -109,7 +111,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
     let mut ppi = use_signal(|| saved.ppi.to_string());
     let mut color = use_signal(|| saved.color);
     let mut touched = use_signal(|| false);
-    let mut locked = use_signal(|| false);
+    let mut locked = use_signal(|| true);
 
     // What the form holds now. A memo, so the effect below follows every change.
     let saved_for_draft = saved.clone();
@@ -197,7 +199,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
                 }
                 button { class: "{lock_class}", title: "{lock_title}", "aria-pressed": "{pressed}",
                     onclick: move |_| locked.set(!locked()),
-                    Icon { name: lock_icon, size: 18 }
+                    if locked() { Figure { name: "link" } } else { Icon { name: lock_icon, size: 18 } }
                 }
                 div { class: "unit-box dim-box",
                     span { class: "pre", "H" }
@@ -228,6 +230,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>) -> Element {
                 Help { text: "The size of the reader's screen in inches, width and height, and how many pixels it packs into each inch (its density). Pages are made at inches times density, in pixels, so nothing is scaled again on the reader. The Xteink screens are 220 ppi." }
             }
         }
+        {pick}
 
         div { class: "sx-row",
             div { class: "sx-text",

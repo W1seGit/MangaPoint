@@ -4,14 +4,15 @@ if (!window.mpScrollReady) {
   window.mpScrollReady = true;
   const saved = {};
 
-  // Which page this is: the sidebar item it belongs to, and whatever tells
+  // Which page this is: the dock or corner item it belongs to, and whatever tells
   // series, settings sections and the Export screen apart.
   const where = () => {
     const nav = document.querySelector('.nav .nav-item.active');
+    // (the dock shows a name only under the item that is on, so the id is the key)
     const series = document.querySelector('.overview h1, .page-head h1');
     const section = document.querySelector('.settings-nav .nav-item.active');
     return [
-      nav ? nav.innerText.trim() : '',
+      nav ? nav.id : '',
       series ? series.innerText.trim() : '',
       section ? section.innerText.trim() : '',
     ].join('|');

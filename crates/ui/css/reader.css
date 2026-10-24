@@ -116,13 +116,7 @@
 .reader-end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .reader-gone { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; }
 
-/* ---- on the Library cards and the chapter table ---- */
-.poster-read {
-  grid-column: 2; grid-row: 2; align-self: end;
-  display: flex; align-items: center; justify-content: center; gap: 6px; width: auto; margin: 8px 14px 14px;
-  min-height: 34px; padding: 6px 10px; font-size: 0.9rem;
-}
-.poster-read-progress { grid-column: 2; grid-row: 3; height: 3px; margin: -8px 14px 14px; }
+/* ---- on the chapter table ---- */
 .chapter-read { margin-left: 8px; padding: 3px 9px !important; min-height: 28px !important; font-size: 0.82rem; }
 
 /* ---- the Export screen's preview for a phone or tablet ---- */

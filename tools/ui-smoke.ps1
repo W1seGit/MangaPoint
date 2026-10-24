@@ -45,9 +45,10 @@ try {
         try { Connect-App $Port; break } catch { Start-Sleep -Milliseconds 500 }
     }
     Wait-Until "document.querySelector('.nav') !== null" 300 'the app window'
+    Start-Sleep -Milliseconds 1200 # the dock slides in when the app starts
 
     Check 'the Export page opens on the sample pages' {
-        Mouse-Click '.nav-item' 'export'
+        Mouse-Click '#nav-Export'
         Wait-Until "document.querySelector('.export-screen') !== null" 30 'the Export screen'
         Wait-Until "document.querySelectorAll('.px-panel-head').length >= 3" 30 'the panels'
     }
@@ -63,7 +64,7 @@ try {
         if (Eval "document.querySelectorAll('.size-boxes').length") { throw 'size boxes are on the Export screen' }
         Mouse-Click '.px-new' 'New device'
         Wait-Until "document.querySelector('.dim-box') !== null" 15 'the reader page in Settings'
-        Mouse-Click '.nav-item' 'export'
+        Mouse-Click '#nav-Export'
         Wait-Until "document.querySelector('.export-screen') !== null" 30 'the Export screen'
     }
     Check 'the Export button stays on screen in the smallest window' {
@@ -96,17 +97,18 @@ try {
         if (-not (Eval "document.querySelector('.export-screen') !== null")) { throw 'the screen is gone' }
     }
     Check 'reader form guards unsaved edits and can discard them' {
-        Mouse-Click '.nav-item' '^Settings'
+        Mouse-Click '#nav-Settings'
         Wait-Until "document.querySelector('.title-input') !== null" 15 'the reader form'
         Set-Input '.title-input' 'Temporary reader name'
-        Mouse-Click '.nav-item' '^Library'
+        Mouse-Click '#nav-Library'
         Wait-Until "document.querySelector('#unsaved-prompt') !== null" 10 'the unsaved prompt'
         Mouse-Click '#unsaved-keep'
         Wait-Until "!document.querySelector('#unsaved-prompt')" 5 'keep editing'
-        Mouse-Click '.nav-item' '^Library'
+        Mouse-Click '#nav-Library'
         Wait-Until "document.querySelector('#unsaved-prompt') !== null" 10 'the second prompt'
         Mouse-Click '#unsaved-discard'
         Wait-Until "document.querySelector('.poster') !== null" 10 'the library card'
+        Start-Sleep -Milliseconds 900 # the cards come up one after another
     }
     Check 'library cards select and deselect through the shared action bar' {
         Mouse-Click '.poster-check'
@@ -151,7 +153,7 @@ try {
         Wait-Until "!document.querySelector('#reader') && document.querySelector('.poster')" 10 'return to the library'
     }
     Check 'Settings has the reading state buttons' {
-        Mouse-Click '.nav-item' '^Settings'
+        Mouse-Click '#nav-Settings'
         Wait-Until "document.querySelector('.settings-nav') !== null" 15 'Settings'
         Mouse-Click '.settings-nav button' 'Preferences'
         Wait-Until "document.querySelector('#reading-state-save') !== null && document.querySelector('#reading-state-load') !== null" 10 'the reading state buttons'
@@ -159,7 +161,7 @@ try {
     Check 'Ctrl+K goes to the search' {
         Send-Cdp 'Input.dispatchKeyEvent' @{ type='keyDown'; key='k'; code='KeyK'; modifiers=2; windowsVirtualKeyCode=75 } | Out-Null
         Send-Cdp 'Input.dispatchKeyEvent' @{ type='keyUp'; key='k'; code='KeyK'; modifiers=2; windowsVirtualKeyCode=75 } | Out-Null
-        Wait-Until "document.querySelector('.nav-item.active').innerText.trim().startsWith('Search')" 10 'the Search page'
+        Wait-Until "document.querySelector('.dock .nav-item.active')?.id === 'nav-Search'" 10 'the Search page'
     }
 }
 finally {

@@ -127,13 +127,12 @@ pub fn BrowserSettingsPage() -> Element {
     rsx! {
         div { class: "settings",
             nav { class: "settings-nav",
-                for (sec, icon, label, slug) in SECTIONS {
+                for (sec, _icon, label, slug) in SECTIONS {
                     button {
                         key: "{label}",
                         id: "settings-nav-{slug}",
                         class: if sec == section() { "nav-item active" } else { "nav-item" },
                         onclick: move |_| ctx.open_section(sec),
-                        Icon { name: icon, size: 17 }
                         "{label}"
                     }
                 }

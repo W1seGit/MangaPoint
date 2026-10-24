@@ -15,17 +15,17 @@ mod reader;
 mod search;
 mod settings;
 mod setup;
-mod sidebar;
 mod sources_page;
 mod widgets;
 pub mod work;
 mod workspace;
 
 // The art and the chapter table are shared with the website.
-pub use mangapoint_ui::art::{cat, ocean, pixels, walker};
+pub use mangapoint_ui::art::{cat, pixels, walker};
 use mangapoint_ui::chapter_table;
 use mangapoint_ui::readers;
 use mangapoint_ui::dialogs::{ToastHost, UnsavedHost};
+use mangapoint_ui::shell::{Backdrop, BarItem, CornerBar, Dock};
 
 use crate::backend;
 use crate::state::spawn_forever;
@@ -34,7 +34,7 @@ use dioxus::desktop::tao::event::{Event, WindowEvent};
 use dioxus::desktop::use_wry_event_handler;
 use dioxus::prelude::*;
 use sources::SourceManager;
-use widgets::{Icon, ProgressBar};
+use widgets::ProgressBar;
 
 /// What only the desktop app shows, after the shared style sheets (`mangapoint_ui::CSS`).
 const DESKTOP_CSS: &str = include_str!("../../css/desktop.css");
@@ -210,30 +210,39 @@ fn Failed(message: String) -> Element {
 fn Shell() -> Element {
     let state = use_context::<AppState>();
     let page = *state.page.read();
-    // How many batches are downloading or waiting, for the badge on Downloads.
-    // The count is all the nav shows: it changes when a batch comes or goes,
-    // not with every page that arrives.
+    // How many batches are downloading or waiting, for the badge on Tasks. The count is all the
+    // dock shows: it changes when a batch comes or goes, not with every page that arrives.
     let in_queue = use_memo(move || {
         let (running, waiting, _) = state.queue.read().counts();
         running + waiting
     })();
+    let busy = use_memo(move || state.queue.read().running().is_some() || state.job.read().as_ref().is_some_and(|j| j.result.is_none()))();
+    // An open series belongs to wherever it was opened from.
+    let opened_from_library = state.workspace.read().as_ref().is_some_and(|w| w.origin == Page::Library);
+    let owner = match page {
+        Page::Series if opened_from_library => Page::Library,
+        Page::Series => Page::Search,
+        other => other,
+    };
+    let scene = if page == Page::Search { "search" } else { "" };
+    let mut tasks = BarItem::new("tasks", "Tasks", "pulse", owner == Page::Tasks);
+    tasks.badge = (in_queue > 0).then(|| in_queue.to_string());
+    tasks.busy = busy;
     rsx! {
-        nav { class: "nav",
-            div { class: "brand",
-                cat::Cat {}
-                span { "MangaPoint" }
-            }
-            NavItem { page: Page::Search, label: "Search", icon: "search" }
-            NavItem { page: Page::Library, label: "Library", icon: "book-open" }
-            NavItem { page: Page::Export, label: "Export", icon: "file-down" }
-            div { class: "nav-spacer" }
-            sidebar::SidebarJobs {}
-            NavItem {
-                page: Page::Tasks, label: "Tasks", icon: "list-checks",
-                badge: (in_queue > 0).then(|| in_queue.to_string()),
-            }
-            NavItem { page: Page::Sources, label: "Sources", icon: "layers" }
-            NavItem { page: Page::Settings, label: "Settings", icon: "settings" }
+        Backdrop { scene }
+        if page != Page::Reader {
+        Dock {
+            items: vec![
+                BarItem::new("search", "Search", "nav-search", owner == Page::Search),
+                BarItem::new("library", "Library", "nav-library", owner == Page::Library),
+                BarItem::new("export", "Export", "nav-export", owner == Page::Export),
+            ],
+            on_pick: move |id| pick(state, id),
+        }
+        CornerBar {
+            items: vec![tasks, BarItem::new("settings", "Settings", "gear", owner == Page::Settings)],
+            on_pick: move |id| pick(state, id),
+        }
         }
         main { class: "content",
             div { class: "page",
@@ -246,15 +255,13 @@ fn Shell() -> Element {
                     library_page::LibraryPage {}
                 }
                 {match page {
-                    Page::Setup => rsx! { setup::Setup {} },
                     Page::Search => rsx! {},
                     Page::Series => rsx! { workspace::WorkspacePage {} },
                     Page::Library => rsx! {},
                     Page::Tasks => rsx! { tasks_page::TasksPage {} },
                     Page::Plan => rsx! { plan_page::PlanPage {} },
                     Page::Export => rsx! { export_page::ExportPage {} },
-                    Page::Sources => rsx! { sources_page::SourcesPage {} },
-                    Page::Settings => rsx! { settings::SettingsPage {} },
+                    Page::Settings | Page::Sources => rsx! { settings::SettingsPage {} },
                     Page::Reader => rsx! { reader::ReaderPage {} },
                 }}
             }
@@ -262,62 +269,27 @@ fn Shell() -> Element {
     }
 }
 
-#[component]
-fn NavItem(page: Page, label: &'static str, icon: &'static str, badge: Option<String>) -> Element {
-    let state = use_context::<AppState>();
+/// A press on the dock or the corner bar. A series left open is where you come back to; pressing
+/// the place it belongs to while looking at it goes to the list.
+fn pick(state: AppState, id: &str) {
+    let page = match id {
+        "search" => Page::Search,
+        "library" => Page::Library,
+        "export" => Page::Export,
+        "tasks" => Page::Tasks,
+        _ => Page::Settings,
+    };
     let current = *state.page.read();
-    // An open series belongs to wherever it was opened from; first-run
-    // setup belongs to Sources.
-    let opened_from_library = state
-        .workspace
-        .read()
-        .as_ref()
-        .is_some_and(|w| w.origin == Page::Library);
     // On the Export screen the series that was open waits to be put back.
     let open_from = if current == Page::Export {
         state.parked_workspace.read().as_ref().map(|w| w.origin)
     } else {
         state.workspace.read().as_ref().map(|w| w.origin)
     };
-    let active = current == page
-        || (page == Page::Search && current == Page::Series && !opened_from_library)
-        || (page == Page::Library && current == Page::Series && opened_from_library)
-        || (page == Page::Sources && current == Page::Setup);
-    let class = if active {
-        "nav-item active"
-    } else {
-        "nav-item"
-    };
-    rsx! {
-        button { class: "{class}",
-            onclick: move |_| {
-                // A series left open is where you come back to; pressing the
-                // tab it belongs to while looking at it goes to the list.
-                match open_from {
-                    Some(origin) if origin == page && current == Page::Series => state.close_series(page),
-                    Some(origin) if origin == page && current != Page::Series => state.go(Page::Series),
-                    _ => state.go(page),
-                }
-            },
-            Icon { name: icon, size: 17 }
-            span { class: "grow", "{label}" }
-            if page == Page::Search { ShortcutKeys {} }
-            if let Some(count) = badge { span { class: "nav-badge", "{count}" } }
-        }
-    }
-}
-
-/// The shortcut to the search, as keys: Command K on a Mac, Ctrl K elsewhere.
-#[component]
-fn ShortcutKeys() -> Element {
-    let mac = cfg!(target_os = "macos");
-    rsx! {
-        span { class: "kbds", title: if mac { "Press Command+K (or /) to search" } else { "Press Ctrl+K (or /) to search" },
-            kbd {
-                if mac { Icon { name: "command", size: 11 } } else { "Ctrl" }
-            }
-            kbd { "K" }
-        }
+    match open_from {
+        Some(origin) if origin == page && current == Page::Series => state.close_series(page),
+        Some(origin) if origin == page && current != Page::Series => state.go(Page::Series),
+        _ => state.go(page),
     }
 }
 

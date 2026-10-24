@@ -1,30 +1,40 @@
 /* The colours, the type and the plain elements: what every screen of both apps starts from. */
 :root {
   color-scheme: dark;
-  --bg: #000000;
-  --panel: #0a0a0a;
-  --panel-2: #141414;
-  --panel-3: #1c1c1c;
-  --line: #262626;
-  --line-strong: #3a3a3a;
-  --text: #ededed;
-  --muted: #8c8c8c;
-  --accent: #b4b4b4;
-  --accent-hover: #d0d0d0;
-  --accent-text: #000000;
+  /* The palette of the design (Figma "MangaPoint", the variables of its frames). */
+  --dark: #161210;          /* primary/dark-background: the dock, buttons' text, inputs */
+  --bg: #1e1916;            /* the page */
+  --sub: #3b2f2a;           /* primary/sub-background: cards and the search bar */
+  --third: #45362e;         /* primary/thirdenary: pills, tabs, the bottom of a card */
+  --icon: #aa8d7e;          /* text/icon-color: icons, text, the chosen item */
+  --placeholder: #63534a;   /* text/placeholder */
+  --panel: var(--dark);
+  --panel-2: var(--sub);
+  --panel-3: var(--third);
+  --line: #45362e;
+  --line-strong: #5a4739;
+  --text: var(--icon);
+  --heading: #ffffff;
+  --muted: #817f7f;
+  --accent: var(--icon);
+  --accent-hover: #bfa395;
+  --accent-text: var(--dark);
   --ok: #7fd18b;
   --warn: #e3b341;
   --bad: #f08585;
-  --radius: 10px;
-  font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --radius: 13px;           /* the small pills (Sort, Sources) */
+  --radius-lg: 25px;        /* border/default-radius: cards, buttons, the search bar */
+  --font-ui: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-pixel: "Pixelify Sans", "Inter", system-ui, sans-serif;
+  font-family: var(--font-ui);
   font-size: 14.5px;
   color: var(--text);
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
 button, input, select { font: inherit; color: inherit; }
-h1 { font-size: 1.55rem; margin: 0 0 4px; letter-spacing: -0.01em; font-weight: 650; }
-h2 { font-size: 1rem; margin: 0 0 10px; font-weight: 650; }
+h1 { font-family: var(--font-pixel); color: var(--heading); font-size: 1.9rem; margin: 0 0 4px; font-weight: 400; }
+h2 { font-family: var(--font-pixel); color: var(--heading); font-size: 1.25rem; margin: 0 0 10px; font-weight: 400; }
 p { margin: 0 0 10px; line-height: 1.45; }
 .muted { color: var(--muted); }
 .small { font-size: 0.86rem; }
@@ -37,7 +47,7 @@ p { margin: 0 0 10px; line-height: 1.45; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---- search results ---- */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 26px 22px; }
 .cover { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel-2); display: block; }
 .cover.empty { display: flex; align-items: center; justify-content: center; color: var(--line-strong); }
 
@@ -45,6 +55,6 @@ p { margin: 0 0 10px; line-height: 1.45; }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
-::-webkit-scrollbar-thumb { background: #2c2c2c; border: 4px solid transparent; border-radius: 999px; background-clip: content-box; transition: background-color 0.15s; }
-::-webkit-scrollbar-thumb:hover { background: #4a4a4a; background-clip: content-box; border: 4px solid transparent; }
-::-webkit-scrollbar-thumb:active { background: #6a6a6a; background-clip: content-box; border: 4px solid transparent; }
+::-webkit-scrollbar-thumb { background: var(--third); border: 4px solid transparent; border-radius: 999px; background-clip: content-box; transition: background-color 0.15s; }
+::-webkit-scrollbar-thumb:hover { background: #5a4739; background-clip: content-box; border: 4px solid transparent; }
+::-webkit-scrollbar-thumb:active { background: var(--icon); background-clip: content-box; border: 4px solid transparent; }

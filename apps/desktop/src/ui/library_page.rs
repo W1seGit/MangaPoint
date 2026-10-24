@@ -9,7 +9,7 @@ use super::work::{
 use crate::logic::{human_bytes, library_order_read, plural, read_button, LibrarySort, LibraryView};
 use crate::state::{library_files, AppState, Modal, ModalAction, Page};
 use dioxus::prelude::*;
-use mangapoint_ui::library::{ActionBar, LibraryTools, Poster, PosterButton, PosterFacts};
+use mangapoint_ui::library::{ActionBar, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
 use std::collections::HashSet;
 
 #[component]
@@ -65,6 +65,19 @@ pub fn LibraryPage() -> Element {
         .iter()
         .map(|r| r.series_id.clone())
         .collect();
+    // The chapters of each series that went into an export (an old record that did not keep which
+    // ones counts as the chapters it holds).
+    let exported_chapters: std::collections::HashMap<String, usize> = {
+        let mut by_series: std::collections::HashMap<String, (HashSet<String>, usize)> = std::collections::HashMap::new();
+        for r in state.exports.read().records.iter() {
+            let entry = by_series.entry(r.series_id.clone()).or_default();
+            entry.0.extend(r.chapter_keys.iter().cloned());
+            if r.chapter_keys.is_empty() {
+                entry.1 = entry.1.max(r.chapters);
+            }
+        }
+        by_series.into_iter().map(|(id, (keys, old))| (id, keys.len().max(old))).collect()
+    };
     let order = library_order_read(&series, view(), sort(), &filter.read(), &exported, &|id| {
         db.reading_of(id).map_or(0, |p| p.last_read_at)
     });
@@ -297,6 +310,10 @@ pub fn LibraryPage() -> Element {
                         let facts = PosterFacts {
                             id: s.id.clone(),
                             title: s.title.clone(),
+                            tabs: Some(PosterTabs {
+                                downloaded: format!("{chapters}/{}", s.chapter_total.filter(|t| *t >= chapters).unwrap_or(chapters)),
+                                exported: Some(format!("{}/{chapters}", exported_chapters.get(&s.id).copied().unwrap_or(0).min(chapters))),
+                            }),
                             stats: Some((have.clone(), stored.clone())),
                             lines,
                             button: reading.map(|r| PosterButton {
