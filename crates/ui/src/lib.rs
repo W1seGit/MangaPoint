@@ -25,6 +25,7 @@ pub mod conversion;
 pub mod dialogs;
 pub mod export;
 pub mod library;
+pub mod page_editor;
 pub mod logic;
 pub mod reader;
 pub mod readers;

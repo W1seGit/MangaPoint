@@ -9,7 +9,7 @@ use super::work::{
 use crate::logic::{human_bytes, library_order_read, plural, read_button, LibrarySort, LibraryView};
 use crate::state::{library_files, AppState, Modal, ModalAction, Page};
 use dioxus::prelude::*;
-use mangapoint_ui::library::{ActionBar, Poster, PosterButton, PosterFacts};
+use mangapoint_ui::library::{ActionBar, LibraryTools, Poster, PosterButton, PosterFacts};
 use std::collections::HashSet;
 
 #[component]
@@ -188,28 +188,13 @@ pub fn LibraryPage() -> Element {
                 button { class: "btn", onclick: move |_| start_import(state, None, false), Icon { name: "file-up", size: 16 } "Import files" }
             }
         } else {
-            div { class: "lib-tools",
-                div { class: "pillrow",
-                    for v in LibraryView::ALL {
-                        button {
-                            key: "{v.label()}",
-                            class: if view() == v { "pill on" } else { "pill" },
-                            onclick: move |_| view.set(v),
-                            "{v.label()}"
-                        }
-                    }
-                }
-                input {
-                    class: "lib-filter", r#type: "search", placeholder: "Filter your library",
-                    value: "{filter}", oninput: move |e| filter.set(e.value()),
-                }
-                select {
-                    class: "lib-sort", value: "{sort().key()}",
-                    onchange: move |e| sort.set(LibrarySort::from_key(&e.value())),
-                    for o in LibrarySort::ALL {
-                        option { key: "{o.key()}", value: "{o.key()}", selected: sort() == o, "{o.label()}" }
-                    }
-                }
+            LibraryTools {
+                views: LibraryView::ALL.iter().map(|v| (v.label(), *v == view())).collect(),
+                on_view: move |i| view.set(LibraryView::ALL[i]),
+                filter: filter(),
+                on_filter: move |text| filter.set(text),
+                sorts: LibrarySort::ALL.iter().map(|o| (o.key(), o.label(), *o == sort())).collect(),
+                on_sort: move |key: String| sort.set(LibrarySort::from_key(&key)),
             }
             if order.is_empty() {
                 if !filter.read().trim().is_empty() {

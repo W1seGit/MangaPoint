@@ -153,3 +153,43 @@ pub fn ActionBar(
         }
     }
 }
+
+/// The row above the cards: which part of the library to show, a filter and the sort order. The
+/// views and sorts are given as (label, is it the chosen one) so that each app keeps its own list.
+#[component]
+pub fn LibraryTools(
+    views: Vec<(&'static str, bool)>,
+    on_view: EventHandler<usize>,
+    filter: String,
+    on_filter: EventHandler<String>,
+    /// (key, label, chosen) of every way to sort.
+    sorts: Vec<(&'static str, &'static str, bool)>,
+    on_sort: EventHandler<String>,
+) -> Element {
+    let chosen = sorts.iter().find(|s| s.2).map(|s| s.0).unwrap_or_default();
+    rsx! {
+        div { class: "lib-tools",
+            div { class: "pillrow",
+                for (i, (label, on)) in views.into_iter().enumerate() {
+                    button {
+                        key: "{label}",
+                        class: if on { "pill on" } else { "pill" },
+                        onclick: move |_| on_view.call(i),
+                        "{label}"
+                    }
+                }
+            }
+            input {
+                class: "lib-filter", r#type: "search", placeholder: "Filter your library", "aria-label": "Filter your library",
+                value: "{filter}", oninput: move |e| on_filter.call(e.value()),
+            }
+            select {
+                class: "lib-sort", "aria-label": "Sort", value: "{chosen}",
+                onchange: move |e| on_sort.call(e.value()),
+                for (key, label, on) in sorts {
+                    option { key: "{key}", value: "{key}", selected: on, "{label}" }
+                }
+            }
+        }
+    }
+}

@@ -1,14 +1,15 @@
 //! The page editor: every page of a chapter in one continuous scroll, like a
 //! PDF viewer, with the original beside each converted page.
 use super::crop_editor::SourceCanvas;
-use crate::state::{AppState, Shot};
+use crate::state::AppState;
 use crate::ui::cat::CirclingCat;
-use crate::ui::widgets::{EmptyState, Icon};
+use crate::ui::widgets::EmptyState;
 use crate::ui::work::{prepare_preview, schedule_preview, select_preview_page};
 use converter::plan::Source;
 use dioxus::prelude::*;
 use library::CropRect;
-use mangapoint_ui::logic::preview::{groups, part_note, reader_style, row_height, seams, PageSlot, Seam, SlotPart};
+use mangapoint_ui::logic::preview::{groups, part_note, reader_style, row_height, seams, PageSlot, SlotPart};
+use mangapoint_ui::page_editor as editor;
 
 /// Where a page sits in its source page, for the layout shared with the website.
 fn slot(page: &crate::state::PreviewPage) -> PageSlot {
@@ -30,73 +31,6 @@ fn slot(page: &crate::state::PreviewPage) -> PageSlot {
 pub(crate) fn editor_script() -> String {
     let source = mangapoint_ui::scripts::source("preview_editor").unwrap_or_default();
     format!("{source}\n;window.MP.preview_editor.start((m) => dioxus.send(m));\nawait new Promise(() => {{}});")
-}
-
-/// One page of the chapter in the scrolling list: the page as the reader will
-/// show it. The original sits beside it, in the group's source cell.
-#[component]
-fn EditorRow(
-    index: usize,
-    selected: bool,
-    result: Option<Shot>,
-    /// "Page 13", and when the source page makes several, which part this is.
-    label: String,
-    row_style: String,
-    frame_style: String,
-    seam: Option<Seam>,
-    /// The page is being drawn again: it is darkened, with the cat on it.
-    busy: bool,
-) -> Element {
-    let state = use_context::<AppState>();
-    rsx! {
-        article {
-            class: if selected { "editor-row selected" } else { "editor-row" },
-            "data-row": "{index}",
-            style: "{row_style}",
-            onclick: move |_| {
-                if !selected {
-                    let mut preview = state.preview;
-                    let mut p = preview.write();
-                    p.selected = index;
-                    p.draft_crop = None;
-                }
-            },
-            div { class: "editor-row-label", "{label}" }
-            div { class: "editor-row-panes",
-                div { class: "row-pane result-pane",
-                    div { class: "editor-reader-frame", style: "{frame_style}",
-                        if let Some(shot) = result {
-                            img { src: "{shot.url}", alt: "Page {index + 1} exactly as exported to the reader", draggable: "false" }
-                        } else {
-                            div { class: "editor-image-loading" }
-                        }
-                        if busy {
-                            div { class: "render-veil", CirclingCat { size: 96 } }
-                        }
-                        if let Some(seam) = seam.as_ref().filter(|s| s.rows > 0) {
-                            div {
-                                class: "editor-seam-band",
-                                style: "top: {seam.band_top}%; height: {seam.band_height}%;",
-                                title: "The next page starts with these rows again",
-                                span { "Repeated on the next page" }
-                            }
-                        }
-                    }
-                }
-            }
-            if let Some(seam) = seam {
-                div { class: if seam.rows > 0 { "editor-seam-note repeats" } else { "editor-seam-note clean" },
-                    if seam.rows > 0 {
-                        Icon { name: "layers", size: 13 }
-                        "Next page repeats these last {seam.rows} rows"
-                    } else {
-                        Icon { name: "check", size: 13 }
-                        "Clean cut: the next page starts right below"
-                    }
-                }
-            }
-        }
-    }
 }
 
 /// The source artwork beside a group of reader pages. It stays in view while
@@ -150,59 +84,26 @@ fn SourceCell(
         (false, None) => Some([0.0, 0.0, 1.0, 1.0]),
     };
     rsx! {
-        div { class: "source-cell source-pane", style: "grid-row: 1 / span {pages.len()};",
-            div { class: "source-sticky",
-                if let Some(source) = source {
-                    if let (Some(current), Some(frame)) = (current, frame) {
-                        SourceCanvas {
-                            key: "{chapter}/{first}",
-                            source,
-                            draft,
-                            crop_key: current.crop_key.clone(),
-                            editing,
-                            guide,
-                            frame,
-                            marks,
-                        }
-                    } else {
-                        SourcePicture { source, index: first, marks }
+        editor::SourceCell { count: pages.len(),
+            if let Some(source) = source {
+                if let (Some(current), Some(frame)) = (current, frame) {
+                    SourceCanvas {
+                        key: "{chapter}/{first}",
+                        source,
+                        draft,
+                        crop_key: current.crop_key.clone(),
+                        editing,
+                        guide,
+                        frame,
+                        marks,
                     }
                 } else {
-                    div { class: "editor-image-loading source-loading", "Preparing source…" }
+                    editor::SourceArt { url: source.url.clone(), width: source.width, height: source.height, index: first,
+                        editor::SourceMarks { marks }
+                    }
                 }
-            }
-        }
-    }
-}
-
-/// The picture of a page that is not being cropped, with the parts that
-/// reader pages show marked on it.
-#[component]
-fn SourcePicture(source: Shot, index: usize, marks: Vec<(usize, [f32; 4], bool)>) -> Element {
-    rsx! {
-        div { class: "editor-source-scroll",
-            div {
-                class: "editor-source-art",
-                style: "aspect-ratio: {source.width} / {source.height}; --source-aspect: {source.width as f64 / source.height.max(1) as f64};",
-                img { src: "{source.url}", alt: "Source artwork of page {index + 1}", draggable: "false" }
-                SourceMarks { marks }
-            }
-        }
-    }
-}
-
-/// The rectangles of a picture that reader pages show: the page in view is
-/// lit, the others outlined and numbered.
-#[component]
-pub(super) fn SourceMarks(marks: Vec<(usize, [f32; 4], bool)>) -> Element {
-    rsx! {
-        for (page, r, on) in marks {
-            div {
-                key: "{page}",
-                class: if on { "source-region on" } else { "source-region" },
-                style: "left:{r[0] * 100.0}%;top:{r[1] * 100.0}%;width:{r[2] * 100.0}%;height:{r[3] * 100.0}%;",
-                title: "Shown on page {page + 1}",
-                span { "{page + 1}" }
+            } else {
+                editor::SourceLoading {}
             }
         }
     }
@@ -341,19 +242,7 @@ pub fn PreviewTab() -> Element {
     rsx! {
         div { id: "page-editor", class: "{classes}", tabindex: "0",
             div { class: "editor-toolbar",
-                label { class: "editor-page-jump",
-                    span { "Page" }
-                    input {
-                        r#type: "number", min: "1", max: "{total}", step: "1",
-                        value: "{number}", disabled: total == 0, "aria-label": "Go to page",
-                        onchange: move |e| {
-                            if let Ok(n) = e.value().trim().parse::<usize>() {
-                                if (1..=total).contains(&n) { select_preview_page(state, n - 1); }
-                            }
-                        },
-                    }
-                    span { class: "muted", "/ {total}" }
-                }
+                editor::PageJump { total, number, on_go: move |i| select_preview_page(state, i) }
                 div { class: "editor-toolbar-actions",
                     ZoomMenu {}
                 }
@@ -372,21 +261,8 @@ pub fn PreviewTab() -> Element {
                         if needs && !state.preview.peek().overview { schedule_preview(state, 80); }
                     },
                     for (i, page) in p.pages.iter().enumerate() {
-                        button {
-                            key: "{i}",
-                            class: if i == selected { "editor-thumb selected" } else { "editor-thumb" },
-                            "data-editor-page": "{i}",
-                            "aria-label": "Open page {i + 1}",
-                            "aria-current": if i == selected { "page" } else { "false" },
-                            onclick: move |_| select_preview_page(state, i),
-                            div { class: "editor-thumb-art",
-                                if let Some(shot) = page.thumbnail.as_ref().or(page.shot.as_ref()) {
-                                    img { src: "{shot.url}", alt: "Reader page {i + 1}" }
-                                } else {
-                                    Icon { name: "file-image", size: 23 }
-                                }
-                            }
-                            span { "{i + 1}" }
+                        editor::Thumb { key: "{i}", index: i, selected: i == selected, on_open: move |_| select_preview_page(state, i),
+                            editor::PageImage { url: page.thumbnail.as_ref().or(page.shot.as_ref()).map(|s| s.url.clone()), index: i, size: 23 }
                         }
                     }
                     button {
@@ -461,22 +337,40 @@ pub fn PreviewTab() -> Element {
                                     }
                                 }
                                 for i in start..end {
-                                    EditorRow {
-                                        key: "{chapter}/{i}",
-                                        index: i,
-                                        selected: i == selected,
-                                        result: p.pages[i].shot.clone(),
-                                        label: match part_note(&slots[i], i - start, end - start) {
-                                            Some(note) => format!("Page {} · {note}", i + 1),
-                                            None => format!("Page {}", i + 1),
-                                        },
-                                        row_style: row_style.clone(),
-                                        frame_style: frame_style.clone(),
-                                        seam: seams.get(i).cloned().flatten(),
+                                    {
+                                        let page = &p.pages[i];
                                         // Darkened only while this page is being drawn again: a page drawn the
                                         // way it should look is left alone, whatever else is loading.
-                                        busy: (i + 1 >= p.window.0 && i <= p.window.1 + 1)
-                                            && (p.pages[i].shot.is_none() || (p.busy && p.pages[i].rendered_for != p.signature)),
+                                        let busy = (i + 1 >= p.window.0 && i <= p.window.1 + 1)
+                                            && (page.shot.is_none() || (p.busy && page.rendered_for != p.signature));
+                                        rsx! {
+                                            editor::PageRow {
+                                                key: "{chapter}/{i}",
+                                                index: i,
+                                                selected: i == selected,
+                                                label: match part_note(&slots[i], i - start, end - start) {
+                                                    Some(note) => format!("Page {} · {note}", i + 1),
+                                                    None => format!("Page {}", i + 1),
+                                                },
+                                                row_style: row_style.clone(),
+                                                frame_style: frame_style.clone(),
+                                                seam: seams.get(i).cloned().flatten(),
+                                                on_select: move |_| {
+                                                    let mut preview = state.preview;
+                                                    let mut p = preview.write();
+                                                    p.selected = i;
+                                                    p.draft_crop = None;
+                                                },
+                                                if let Some(shot) = page.shot.as_ref() {
+                                                    img { src: "{shot.url}", alt: "Page {i + 1} exactly as exported to the reader", draggable: "false" }
+                                                } else {
+                                                    div { class: "editor-image-loading" }
+                                                }
+                                                if busy {
+                                                    div { class: "render-veil", CirclingCat { size: 96 } }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -485,28 +379,10 @@ pub fn PreviewTab() -> Element {
                 }
             }
             if p.overview {
-                div { class: "editor-overview-backdrop",
-                    section { class: "editor-overview", role: "dialog", "aria-modal": "true", "aria-label": "Chapter page overview",
-                        header {
-                            strong { "Chapter overview · {total} reader pages" }
-                            button { id: "editor-close-overview", class: "btn small", onclick: move |_| { state.preview.write().overview = false; }, Icon { name: "x", size: 16 } }
-                        }
-                        div { class: "editor-overview-grid",
-                            for (i, page) in p.pages.iter().enumerate() {
-                                button {
-                                    key: "{i}",
-                                    class: if i == selected { "selected" } else { "" },
-                                    onclick: move |_| select_preview_page(state, i),
-                                    div { class: "editor-overview-art",
-                                        if let Some(shot) = page.thumbnail.as_ref().or(page.shot.as_ref()) {
-                                            img { src: "{shot.url}", alt: "Reader page {i + 1}" }
-                                        } else {
-                                            Icon { name: "file-image", size: 24 }
-                                        }
-                                    }
-                                    span { "Page {i + 1}" }
-                                }
-                            }
+                editor::Overview { total, on_close: move |_| { state.preview.write().overview = false; },
+                    for (i, page) in p.pages.iter().enumerate() {
+                        editor::OverviewPage { key: "{i}", index: i, selected: i == selected, on_open: move |_| select_preview_page(state, i),
+                            editor::PageImage { url: page.thumbnail.as_ref().or(page.shot.as_ref()).map(|s| s.url.clone()), index: i, size: 24 }
                         }
                     }
                 }

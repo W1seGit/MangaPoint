@@ -8,76 +8,40 @@ use super::{edit, Look, PageSource, Zoom};
 use crate::app::Ctx;
 use crate::bridge;
 use crate::model::Book;
-use crate::ui::widgets::{EmptyState, Icon, Loading};
+use crate::ui::widgets::{EmptyState, Loading};
 use dioxus::prelude::*;
-use mangapoint_ui::logic::preview::{groups, part_note, reader_style, row_height, seams, PageSlot, Seam};
+use mangapoint_ui::logic::preview::{groups, part_note, reader_style, row_height, seams, PageSlot};
+use mangapoint_ui::page_editor as editor;
 use serde_json::json;
 
 /// One page of the chapter in the scrolling list: the page as the reader will show it.
 #[component]
-fn BrowserEditorRow(index: usize, selected: bool, url: String, label: String, row_style: String, frame_style: String, seam: Option<Seam>) -> Element {
+fn BrowserRow(index: usize, selected: bool, url: String, label: String, row_style: String, frame_style: String, seam: Option<mangapoint_ui::logic::preview::Seam>) -> Element {
     let ctx = use_context::<Ctx>();
     let mut failed = use_signal(|| false);
     rsx! {
-        article {
-            class: if selected { "editor-row selected" } else { "editor-row" },
-            "data-row": "{index}",
-            style: "{row_style}",
-            onclick: move |_| { if !selected { edit(ctx, |e| e.selected = index); } },
-            div { class: "editor-row-label", "{label}" }
-            div { class: "editor-row-panes",
-                div { class: "row-pane result-pane",
-                    div { class: "editor-reader-frame", style: "{frame_style}",
-                        if url.is_empty() || failed() {
-                            div { class: "editor-image-loading", "Page {index + 1} could not be shown." }
-                        } else {
-                            img { src: "{url}", alt: "Page {index + 1} exactly as exported to the reader", draggable: "false", onerror: move |_| failed.set(true) }
-                        }
-                        if let Some(seam) = seam.as_ref().filter(|s| s.rows > 0) {
-                            div {
-                                class: "editor-seam-band",
-                                style: "top: {seam.band_top}%; height: {seam.band_height}%;",
-                                title: "The next page starts with these rows again",
-                                span { "Repeated on the next page" }
-                            }
-                        }
-                    }
-                }
-            }
-            if let Some(seam) = seam {
-                div { class: if seam.rows > 0 { "editor-seam-note repeats" } else { "editor-seam-note clean" },
-                    if seam.rows > 0 {
-                        Icon { name: "layers", size: 13 }
-                        "Next page repeats these last {seam.rows} rows"
-                    } else {
-                        Icon { name: "check", size: 13 }
-                        "Clean cut: the next page starts right below"
-                    }
-                }
+        editor::PageRow { index, selected, label, row_style, frame_style, seam, on_select: move |_| edit(ctx, |e| e.selected = index),
+            if url.is_empty() || failed() {
+                div { class: "editor-image-loading", "Page {index + 1} could not be shown." }
+            } else {
+                img { src: "{url}", alt: "Page {index + 1} exactly as exported to the reader", draggable: "false", onerror: move |_| failed.set(true) }
             }
         }
     }
 }
 
-/// The source artwork beside a group of reader pages. It stays in view while any of the group's
-/// pages is. It is the picture as it was imported, never the split.
-#[component]
-fn BrowserSourceCell(first: usize, count: usize, original: Option<(String, u32, u32)>) -> Element {
-    rsx! {
-        div { class: "source-cell source-pane", style: "grid-row: 1 / span {count};",
-            div { class: "source-sticky",
-                if let Some((url, width, height)) = original {
-                    div { class: "editor-source-scroll",
-                        div {
-                            class: "editor-source-art",
-                            style: "aspect-ratio: {width} / {height}; --source-aspect: {width as f64 / height.max(1) as f64};",
-                            img { src: "{url}", alt: "Source artwork of page {first + 1}", draggable: "false" }
-                        }
-                    }
-                } else {
-                    div { class: "editor-image-loading source-loading", "Preparing source…" }
-                }
-            }
+/// The picture a group of pages was made from: an imported page, or for a strip the downloaded
+/// rows. `None` while it is not ready.
+fn source_of(sources: &[PageSource], originals: &[String], sizes: &[(u32, u32)], start: usize) -> Option<(String, u32, u32)> {
+    match sources[start].image {
+        Some(img) => {
+            let url = originals.get(img)?.clone();
+            let (w, h) = sizes.get(img).copied().filter(|(w, h)| *w > 0 && *h > 0).unwrap_or((600, 900));
+            (!url.is_empty()).then_some((url, w, h))
+        }
+        None => {
+            let s = &sources[start];
+            (!s.strip_url.is_empty() && s.rows_width > 0 && s.rows_height > 0).then(|| (s.strip_url.clone(), s.rows_width, s.rows_height))
         }
     }
 }
@@ -125,19 +89,7 @@ fn OriginalPages(book: Book) -> Element {
     rsx! {
         div { id: "page-editor", class: "page-editor original-editor", tabindex: "0",
             div { class: "editor-toolbar",
-                label { class: "editor-page-jump",
-                    span { "Page" }
-                    input {
-                        id: "export-page-jump", r#type: "number", min: "1", max: "{total}", step: "1",
-                        value: "{number}", disabled: total == 0, "aria-label": "Go to page",
-                        onchange: move |ev| {
-                            if let Ok(n) = ev.value().trim().parse::<usize>() {
-                                if (1..=total).contains(&n) { select_page(ctx, n - 1); }
-                            }
-                        },
-                    }
-                    span { class: "muted", "/ {total}" }
-                }
+                editor::PageJump { id: "export-page-jump", total, number, on_go: move |i| select_page(ctx, i) }
                 div { class: "editor-toolbar-actions",
                     BrowserZoomMenu {}
                 }
@@ -146,32 +98,14 @@ fn OriginalPages(book: Book) -> Element {
                 nav { class: "editor-thumbnails", id: "export-thumbnails", "aria-label": "Pages",
                     if let (Some(chapter), true) = (&chapter, from_library) {
                         for n in 0..chapter.count {
-                            button {
-                                key: "{book.id}-{chapter.first + n}",
-                                class: if n == selected { "editor-thumb selected" } else { "editor-thumb" },
-                                "data-editor-page": "{n}",
-                                "aria-label": "Open page {n + 1}",
-                                "aria-current": if n == selected { "page" } else { "false" },
-                                onclick: move |_| select_page(ctx, n),
-                                div { class: "editor-thumb-art",
-                                    div { class: "reader-tile original-thumb", "data-book": "{book.id}", "data-page": "{chapter.first + n}" }
-                                }
-                                span { "{n + 1}" }
+                            editor::Thumb { key: "{book.id}-{chapter.first + n}", index: n, selected: n == selected, on_open: move |_| select_page(ctx, n),
+                                div { class: "reader-tile original-thumb", "data-book": "{book.id}", "data-page": "{chapter.first + n}" }
                             }
                         }
                     } else if let Look::Ready { originals, .. } = &e.look {
                         for (n, url) in originals.iter().enumerate() {
-                            button {
-                                key: "{n}",
-                                class: if n == selected { "editor-thumb selected" } else { "editor-thumb" },
-                                "data-editor-page": "{n}",
-                                "aria-label": "Open page {n + 1}",
-                                "aria-current": if n == selected { "page" } else { "false" },
-                                onclick: move |_| select_page(ctx, n),
-                                div { class: "editor-thumb-art",
-                                    if url.is_empty() { Icon { name: "file-image", size: 23 } } else { img { src: "{url}", alt: "Page {n + 1}" } }
-                                }
-                                span { "{n + 1}" }
+                            editor::Thumb { key: "{n}", index: n, selected: n == selected, on_open: move |_| select_page(ctx, n),
+                                editor::PageImage { url: Some(url.clone()), index: n, size: 23 }
                             }
                         }
                     }
@@ -250,19 +184,7 @@ pub fn Preview(book: Book) -> Element {
     rsx! {
         div { id: "page-editor", class: "{classes}", tabindex: "0",
             div { class: "editor-toolbar",
-                label { class: "editor-page-jump",
-                    span { "Page" }
-                    input {
-                        id: "export-page-jump", r#type: "number", min: "1", max: "{total}", step: "1",
-                        value: "{number}", disabled: total == 0, "aria-label": "Go to page",
-                        onchange: move |ev| {
-                            if let Ok(n) = ev.value().trim().parse::<usize>() {
-                                if (1..=total).contains(&n) { select_page(ctx, n - 1); }
-                            }
-                        },
-                    }
-                    span { class: "muted", "/ {total}" }
-                }
+                editor::PageJump { id: "export-page-jump", total, number, on_go: move |i| select_page(ctx, i) }
                 div { class: "editor-toolbar-actions",
                     BrowserZoomMenu {}
                 }
@@ -271,17 +193,8 @@ pub fn Preview(book: Book) -> Element {
             div { class: "editor-body",
                 nav { class: "editor-thumbnails", id: "export-thumbnails", "aria-label": "Reader pages",
                     for (i, url) in converted.iter().enumerate() {
-                        button {
-                            key: "{i}",
-                            class: if i == selected { "editor-thumb selected" } else { "editor-thumb" },
-                            "data-editor-page": "{i}",
-                            "aria-label": "Open page {i + 1}",
-                            "aria-current": if i == selected { "page" } else { "false" },
-                            onclick: move |_| select_page(ctx, i),
-                            div { class: "editor-thumb-art",
-                                if url.is_empty() { Icon { name: "file-image", size: 23 } } else { img { src: "{url}", alt: "Reader page {i + 1}" } }
-                            }
-                            span { "{i + 1}" }
+                        editor::Thumb { key: "{i}", index: i, selected: i == selected, on_open: move |_| select_page(ctx, i),
+                            editor::PageImage { url: Some(url.clone()), index: i, size: 23 }
                         }
                     }
                     button {
@@ -327,26 +240,15 @@ pub fn Preview(book: Book) -> Element {
                                 },
                                 style: "{row_style}",
                                 if compare {
-                                    BrowserSourceCell {
-                                        first: start,
-                                        count: end - start,
-                                        original: match sources[start].image {
-                                            Some(img) => (|| {
-                                                let url = originals.get(img)?.clone();
-                                                let (w, h) = sizes.get(img).copied().filter(|(w, h)| *w > 0 && *h > 0).unwrap_or((600, 900));
-                                                (!url.is_empty()).then_some((url, w, h))
-                                            })(),
-                                            // A strip page: the downloaded rows it is made from.
-                                            None => {
-                                                let s = &sources[start];
-                                                (!s.strip_url.is_empty() && s.rows_width > 0 && s.rows_height > 0)
-                                                    .then(|| (s.strip_url.clone(), s.rows_width, s.rows_height))
-                                            }
-                                        },
+                                    editor::SourceCell { count: end - start,
+                                        match source_of(&sources, &originals, &sizes, start) {
+                                            Some((url, w, h)) => rsx! { editor::SourceArt { url, width: w, height: h, index: start } },
+                                            None => rsx! { editor::SourceLoading {} },
+                                        }
                                     }
                                 }
                                 for i in start..end {
-                                    BrowserEditorRow {
+                                    BrowserRow {
                                         key: "{chapter}/{i}",
                                         index: i,
                                         selected: i == selected,
@@ -369,24 +271,10 @@ pub fn Preview(book: Book) -> Element {
                 }
             }
             if e.overview {
-                div { class: "editor-overview-backdrop",
-                    section { class: "editor-overview", role: "dialog", "aria-modal": "true", "aria-label": "Chapter page overview",
-                        header {
-                            strong { "Chapter overview · {total} reader pages" }
-                            button { id: "editor-close-overview", class: "btn small", onclick: move |_| edit(ctx, |e| e.overview = false), Icon { name: "x", size: 16 } }
-                        }
-                        div { class: "editor-overview-grid",
-                            for (i, url) in converted.iter().enumerate() {
-                                button {
-                                    key: "{i}",
-                                    class: if i == selected { "selected" } else { "" },
-                                    onclick: move |_| select_page(ctx, i),
-                                    div { class: "editor-overview-art",
-                                        if url.is_empty() { Icon { name: "file-image", size: 24 } } else { img { src: "{url}", alt: "Reader page {i + 1}" } }
-                                    }
-                                    span { "Page {i + 1}" }
-                                }
-                            }
+                editor::Overview { total, on_close: move |_| edit(ctx, |e| e.overview = false),
+                    for (i, url) in converted.iter().enumerate() {
+                        editor::OverviewPage { key: "{i}", index: i, selected: i == selected, on_open: move |_| select_page(ctx, i),
+                            editor::PageImage { url: Some(url.clone()), index: i, size: 24 }
                         }
                     }
                 }
