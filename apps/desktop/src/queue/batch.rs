@@ -67,6 +67,11 @@ pub struct Batch {
     pub added_at: u64,
     /// When it finished, in the same seconds; 0 until it has.
     pub finished_at: u64,
+    /// The page quality chosen for just this download; `None` follows the setting.
+    pub quality: Option<library::PageQuality>,
+    /// The chapters are downloaded already and are replaced by this download,
+    /// each only once its new copy is complete.
+    pub replace: bool,
 }
 
 impl Batch {
@@ -98,7 +103,23 @@ impl Batch {
             failed: Vec::new(),
             added_at,
             finished_at: 0,
+            quality: None,
+            replace: false,
         }
+    }
+
+    /// Download at this page quality whatever the setting says, replacing
+    /// chapters that are already downloaded.
+    pub fn replacing_at(mut self, quality: library::PageQuality) -> Self {
+        self.quality = Some(quality);
+        self.replace = true;
+        self
+    }
+
+    /// Chapters of another batch may join this one only if they are
+    /// downloaded the same way.
+    pub fn same_mode(&self, other: &Batch) -> bool {
+        self.quality == other.quality && self.replace == other.replace
     }
 
     pub fn chapter_count(&self) -> usize {

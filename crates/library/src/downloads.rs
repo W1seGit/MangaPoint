@@ -14,7 +14,9 @@
 //! inside the library.
 
 use crate::presets::PresetsDb;
-use crate::settings::{ConversionField, ConversionSettings};
+use crate::reading::ReadProgress;
+use crate::settings::{ConversionField, ConversionSettings, PageQuality};
+use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io;
@@ -78,6 +80,10 @@ pub struct DownloadedChapter {
     /// Size of the saved pages on disk.
     pub bytes: u64,
     pub downloaded_at: u64,
+    /// The page quality these pages were saved with. Chapters downloaded
+    /// before it was recorded are `None`: not known.
+    #[serde(default)]
+    pub quality: Option<PageQuality>,
 }
 
 /// A source's copy of a series, saved with it so the series can be opened and
@@ -166,6 +172,30 @@ pub struct DownloadedSeries {
     /// When it was added to the library (seconds since the Unix epoch).
     pub added_at: u64,
     pub updated_at: u64,
+    /// Set for a series made by importing files instead of downloading: its
+    /// details can be edited by hand, and it has no source to look at.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub imported: Option<ImportInfo>,
+}
+
+/// The `source_id` of the chapters of an imported series: they came from files
+/// on this computer, not from a source, so there is nothing to download again.
+pub const IMPORT_SOURCE: &str = "import";
+
+/// Where an imported series came from.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ImportInfo {
+    /// The names of the files and folders it was made from, as a record.
+    pub files: Vec<String>,
+    /// When it was first imported (seconds since the Unix epoch).
+    pub at: u64,
+    /// Fingerprints of the books imported into it (path, size and time of the
+    /// file), to notice the same file being imported twice.
+    pub books: Vec<String>,
+    /// The identity of each file the series was made from, the same on every device and in the
+    /// website (`formats::fingerprint`): how a reading-state file finds this series.
+    pub content_prints: Vec<String>,
 }
 
 /// The title of the made-up series the Export screen shows when nothing has
@@ -176,6 +206,11 @@ impl DownloadedSeries {
     /// The made-up series of sample pages.
     pub fn is_sample(&self) -> bool {
         self.title == SAMPLE_TITLE
+    }
+
+    /// Made by importing files.
+    pub fn is_imported(&self) -> bool {
+        self.imported.is_some()
     }
 
     pub fn bytes(&self) -> u64 {
@@ -196,9 +231,41 @@ impl DownloadedSeries {
 pub struct LibraryDb {
     #[serde(deserialize_with = "crate::json::lenient_vec")]
     pub series: Vec<DownloadedSeries>,
+    /// Where the user is in each series they read, by series id. Entries for
+    /// series that are gone are dropped with them; see [`LibraryDb::reading_of`].
+    #[serde(default, deserialize_with = "crate::json::lenient_map")]
+    pub reading: BTreeMap<String, ReadProgress>,
 }
 
 impl LibraryDb {
+    /// How far the user has read a series, if at all.
+    pub fn reading_of(&self, series_id: &str) -> Option<&ReadProgress> {
+        self.reading.get(series_id).filter(|_| self.find(series_id).is_some())
+    }
+
+    /// Change a series' reading progress (made if there is none). Nothing
+    /// happens, and `None` comes back, for a series that is not in the library.
+    pub fn with_reading<R>(
+        &mut self,
+        series_id: &str,
+        change: impl FnOnce(&mut ReadProgress) -> R,
+    ) -> Option<R> {
+        self.find(series_id)?;
+        Some(change(self.reading.entry(series_id.to_string()).or_default()))
+    }
+
+    /// Drop progress that points at nothing: series that are gone, and chapters
+    /// a series no longer has.
+    pub fn prune_reading(&mut self) {
+        let series = &self.series;
+        self.reading.retain(|id, _| series.iter().any(|s| &s.id == id));
+        for s in &self.series {
+            if let Some(p) = self.reading.get_mut(&s.id) {
+                p.retain_chapters(|k| s.chapters.iter().any(|c| c.key == k));
+            }
+        }
+    }
+
     pub fn find(&self, series_id: &str) -> Option<&DownloadedSeries> {
         self.series.iter().find(|s| s.id == series_id)
     }
@@ -230,6 +297,7 @@ impl LibraryDb {
                     chapter_total: None,
                     added_at: now,
                     updated_at: now,
+                    imported: None,
                 });
                 self.series.len() - 1
             }
@@ -278,7 +346,11 @@ impl LibraryDb {
         };
         let before = s.chapters.len();
         s.chapters.retain(|c| c.key != key);
-        s.chapters.len() != before
+        let removed = s.chapters.len() != before;
+        if let Some(p) = self.reading.get_mut(series_id) {
+            p.forget_chapter(key);
+        }
+        removed
     }
 
     /// Put a series in the library without downloading anything. If it is
@@ -306,9 +378,192 @@ impl LibraryDb {
                 chapter_total: None,
                 added_at: now,
                 updated_at: now,
+                imported: None,
             }),
         }
         id
+    }
+
+    /// The id the next imported chapter takes: imported chapters have no id
+    /// from a source, so they count down from -1 and cannot meet a real one.
+    pub fn next_import_chapter_id(&self) -> i64 {
+        self.series
+            .iter()
+            .flat_map(|s| &s.chapters)
+            .filter(|c| c.source_id == IMPORT_SOURCE)
+            .map(|c| c.chapter_id)
+            .min()
+            .map_or(-1, |lowest| lowest.min(0) - 1)
+    }
+
+    /// A title no other series of the library has, by adding " (2)", " (3)"
+    /// and so on, for importing something that is not the series it shares
+    /// a name with.
+    pub fn free_title(&self, title: &str) -> String {
+        let mut candidate = title.to_string();
+        let mut n = 2;
+        while self.find(&series_id(&candidate)).is_some() {
+            candidate = format!("{title} ({n})");
+            n += 1;
+        }
+        candidate
+    }
+
+    /// Put imported chapters into a series, which is made if it is not there.
+    /// What `info` says fills in what the series does not have yet (nothing
+    /// that was edited is replaced). Returns the series id.
+    pub fn add_imported(
+        &mut self,
+        title: &str,
+        defaults: &ConversionSettings,
+        info: Option<SeriesInfo>,
+        files: Vec<String>,
+        chapters: Vec<DownloadedChapter>,
+        now: u64,
+    ) -> String {
+        let id = series_id(title);
+        self.add_imported_to(&id, title, defaults, info, files, chapters, now, true)
+            .unwrap_or(id)
+    }
+
+    /// Like [`LibraryDb::add_imported`], for the series with this id, whatever
+    /// its title is now: a series that was renamed keeps its id (and folder), and
+    /// the pages must go on landing in it, not in a second series made from the
+    /// new title. With `create` false the series is not made when it is missing
+    /// (the person deleted it while the import ran), and `None` is returned.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_imported_to(
+        &mut self,
+        id: &str,
+        title: &str,
+        defaults: &ConversionSettings,
+        info: Option<SeriesInfo>,
+        files: Vec<String>,
+        chapters: Vec<DownloadedChapter>,
+        now: u64,
+        create: bool,
+    ) -> Option<String> {
+        let id = id.to_string();
+        if self.find(&id).is_none() {
+            if !create {
+                return None;
+            }
+            self.series.push(DownloadedSeries {
+                id: id.clone(),
+                title: title.to_string(),
+                settings: defaults.clone(),
+                added_at: now,
+                updated_at: now,
+                imported: Some(ImportInfo { at: now, ..Default::default() }),
+                ..Default::default()
+            });
+        }
+        let series = self.series.iter_mut().find(|s| s.id == id)?;
+        for chapter in chapters {
+            Self::insert_chapter(series, chapter, now);
+        }
+        if let Some(from) = series.imported.as_mut() {
+            for file in files {
+                if !from.files.contains(&file) {
+                    from.files.push(file);
+                }
+            }
+        }
+        if let Some(new) = info {
+            match series.info.as_mut() {
+                None => series.info = Some(new),
+                Some(have) => {
+                    if have.description.is_empty() {
+                        have.description = new.description;
+                    }
+                    if have.author.is_empty() {
+                        have.author = new.author;
+                    }
+                    if have.artist.is_empty() {
+                        have.artist = new.artist;
+                    }
+                    if have.status.is_empty() {
+                        have.status = new.status;
+                    }
+                    if have.genres.is_empty() {
+                        have.genres = new.genres;
+                    }
+                    have.has_cover |= new.has_cover;
+                }
+            }
+        }
+        Some(id)
+    }
+
+    /// Remember which books (see `pipeline::import::book_fingerprints`) have been
+    /// imported into an imported series, so importing the same file again can
+    /// be noticed. Does nothing for a series that is not there or not imported.
+    pub fn note_imported_books(&mut self, series_id: &str, prints: Vec<String>) {
+        let Some(from) = self
+            .series
+            .iter_mut()
+            .find(|s| s.id == series_id)
+            .and_then(|s| s.imported.as_mut())
+        else {
+            return;
+        };
+        for print in prints {
+            if !from.books.contains(&print) {
+                from.books.push(print);
+            }
+        }
+    }
+
+    /// Remember the content identities of the files imported into a series (see `ImportInfo`).
+    pub fn note_content_prints(&mut self, series_id: &str, prints: Vec<String>) {
+        let Some(from) = self.series.iter_mut().find(|s| s.id == series_id).and_then(|s| s.imported.as_mut()) else {
+            return;
+        };
+        for print in prints {
+            if !from.content_prints.contains(&print) {
+                from.content_prints.push(print);
+            }
+        }
+    }
+
+    /// Has a book with this fingerprint been imported into the series?
+    pub fn has_imported_book(&self, series_id: &str, print: &str) -> bool {
+        self.find(series_id)
+            .and_then(|s| s.imported.as_ref())
+            .is_some_and(|i| i.books.iter().any(|b| b == print))
+    }
+
+    /// Change what one chapter is called and numbered. Its folder (the key)
+    /// stays, so the saved pages are not touched. True if there was such a chapter.
+    pub fn set_chapter_details(
+        &mut self,
+        series_id: &str,
+        key: &str,
+        number: Option<f64>,
+        name: &str,
+    ) -> bool {
+        let Some(series) = self.series.iter_mut().find(|s| s.id == series_id) else {
+            return false;
+        };
+        let Some(chapter) = series.chapters.iter_mut().find(|c| c.key == key) else {
+            return false;
+        };
+        chapter.number = number;
+        chapter.name = name.to_string();
+        series.chapters.sort_by(|a, b| {
+            a.number
+                .unwrap_or(f64::MAX)
+                .total_cmp(&b.number.unwrap_or(f64::MAX))
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        true
+    }
+
+    /// Rename a series. Its id, and so its folder, stay as they are.
+    pub fn set_title(&mut self, series_id: &str, title: &str) {
+        if let Some(s) = self.series.iter_mut().find(|s| s.id == series_id) {
+            s.title = title.trim().to_string();
+        }
     }
 
     /// Note more sources a series can be found at.
@@ -320,6 +575,7 @@ impl LibraryDb {
 
     pub fn remove_series(&mut self, series_id: &str) -> Option<DownloadedSeries> {
         let i = self.series.iter().position(|s| s.id == series_id)?;
+        self.reading.remove(series_id);
         Some(self.series.remove(i))
     }
 
@@ -494,6 +750,13 @@ impl LibraryFiles {
             .map_or(self.root.as_path(), PathBuf::as_path)
     }
 
+    /// Every folder series are kept in: the one new series go to, then the others.
+    pub fn roots(&self) -> Vec<&Path> {
+        std::iter::once(self.root.as_path())
+            .chain(self.others.iter().map(PathBuf::as_path))
+            .collect()
+    }
+
     pub fn series_dir(&self, series_id: &str) -> PathBuf {
         self.series_root(series_id).join(component(series_id))
     }
@@ -603,7 +866,132 @@ mod tests {
             pages: 10,
             bytes: 1000,
             downloaded_at: 5,
+            quality: None,
         }
+    }
+
+    fn imported(number: Option<f64>, id: i64, name: &str) -> DownloadedChapter {
+        DownloadedChapter {
+            source_id: IMPORT_SOURCE.into(),
+            ..chapter(number, id, name)
+        }
+    }
+
+    #[test]
+    fn imported_chapters_count_down_from_minus_one_so_they_never_meet_a_real_id() {
+        let mut db = LibraryDb::default();
+        assert_eq!(db.next_import_chapter_id(), -1);
+        let defaults = ConversionSettings::default();
+        db.add_imported("Mine", &defaults, None, vec!["a.cbz".into()], vec![imported(Some(1.0), -1, "One")], 5);
+        db.add_imported("Mine", &defaults, None, vec!["b.cbz".into()], vec![imported(Some(2.0), -2, "Two")], 6);
+        assert_eq!(db.next_import_chapter_id(), -3);
+        // A downloaded chapter's id does not count.
+        db.record_chapter("Other", &defaults, chapter(Some(1.0), 900, "x"), 1);
+        assert_eq!(db.next_import_chapter_id(), -3);
+    }
+
+    #[test]
+    fn an_imported_series_is_marked_collects_its_files_and_fills_only_what_is_empty() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let info = |author: &str, description: &str| SeriesInfo {
+            author: author.into(),
+            description: description.into(),
+            ..Default::default()
+        };
+        let id = db.add_imported(
+            "Mine",
+            &defaults,
+            Some(info("A. Writer", "")),
+            vec!["a.cbz".into()],
+            vec![imported(Some(1.0), -1, "One")],
+            5,
+        );
+        let series = db.find(&id).unwrap();
+        assert!(series.is_imported() && !series.is_sample());
+        assert_eq!(series.imported.as_ref().unwrap().at, 5);
+        // More pages later: the details that were edited stay, the empty ones fill in.
+        db.set_info(&id, info("Edited", ""));
+        db.add_imported(
+            "Mine",
+            &defaults,
+            Some(info("Someone else", "A story.")),
+            vec!["a.cbz".into(), "b.cbz".into()],
+            vec![imported(Some(2.0), -2, "Two")],
+            9,
+        );
+        let series = db.find(&id).unwrap();
+        assert_eq!(series.chapters.len(), 2);
+        assert_eq!(series.imported.as_ref().unwrap().files, ["a.cbz", "b.cbz"]);
+        let info = series.info.as_ref().unwrap();
+        assert_eq!((info.author.as_str(), info.description.as_str()), ("Edited", "A story."));
+        // A title already taken by another series gets a free one.
+        db.record_chapter("Taken", &defaults, chapter(Some(1.0), 1, "x"), 1);
+        assert_eq!(db.free_title("Taken"), "Taken (2)");
+        assert_eq!(db.free_title("Fresh"), "Fresh");
+    }
+
+    #[test]
+    fn pages_imported_into_a_renamed_series_land_in_it_not_in_a_second_series() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported("Mine", &defaults, None, vec![], vec![imported(Some(1.0), -1, "One")], 5);
+        db.set_title(&id, "Renamed");
+        // The title no longer gives the id; the id is passed explicitly.
+        let got = db.add_imported_to(&id, "Renamed", &defaults, None, vec![], vec![imported(Some(2.0), -2, "Two")], 6, true);
+        assert_eq!(got.as_deref(), Some(id.as_str()));
+        assert_eq!(db.series.len(), 1, "no duplicate series: {:?}", db.series.iter().map(|s| &s.id).collect::<Vec<_>>());
+        assert_eq!(db.find(&id).unwrap().chapters.len(), 2);
+        assert_eq!(db.find(&id).unwrap().title, "Renamed");
+    }
+
+    #[test]
+    fn a_series_deleted_during_an_import_is_not_brought_back_by_its_result() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported("Mine", &defaults, None, vec![], vec![imported(Some(1.0), -1, "One")], 5);
+        db.remove_series(&id);
+        let got = db.add_imported_to(&id, "Mine", &defaults, None, vec![], vec![imported(Some(2.0), -2, "Two")], 6, false);
+        assert!(got.is_none());
+        assert!(db.series.is_empty());
+        // When the import is what makes the series, it is made.
+        assert!(db.add_imported_to(&id, "Mine", &defaults, None, vec![], vec![imported(Some(2.0), -2, "Two")], 7, true).is_some());
+        assert_eq!(db.series.len(), 1);
+    }
+
+    #[test]
+    fn imported_books_are_remembered_by_fingerprint() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported("Mine", &defaults, None, vec![], vec![imported(Some(1.0), -1, "One")], 5);
+        assert!(!db.has_imported_book(&id, "a|1|2"));
+        db.note_imported_books(&id, vec!["a|1|2".into(), "a|1|2".into()]);
+        assert!(db.has_imported_book(&id, "a|1|2"));
+        assert_eq!(db.find(&id).unwrap().imported.as_ref().unwrap().books.len(), 1);
+        assert!(!db.has_imported_book("nowhere", "a|1|2"));
+    }
+
+    #[test]
+    fn a_chapter_can_be_renamed_and_renumbered_without_moving_its_pages() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.add_imported(
+            "Mine",
+            &defaults,
+            None,
+            vec![],
+            vec![imported(Some(1.0), -1, "One"), imported(None, -2, "Extra")],
+            5,
+        );
+        assert!(db.set_chapter_details(&id, "c1", Some(7.0), "Seven"));
+        let series = db.find(&id).unwrap();
+        assert_eq!(series.chapters[1].key, "u-2", "unnumbered last");
+        assert_eq!(series.chapters[0].key, "c1", "the folder name did not change");
+        assert_eq!((series.chapters[0].number, series.chapters[0].name.as_str()), (Some(7.0), "Seven"));
+        assert!(!db.set_chapter_details(&id, "nope", None, ""));
+        db.set_title(&id, "  Renamed ");
+        assert_eq!(db.find(&id).unwrap().title, "Renamed");
+        assert_eq!(db.find(&id).unwrap().id, id, "the id stays");
     }
 
     #[test]
@@ -983,5 +1371,75 @@ mod tests {
         assert!(!old.join("kept-series").exists());
         assert!(old.exists(), "the folder itself is left alone");
         let _ = fs::remove_dir_all(&base);
+    }
+    #[test]
+    fn reading_progress_survives_a_restart_exactly() {
+        let dir = temp("reading");
+        let path = dir.join("library.json");
+        let mut db = LibraryDb::default();
+        let id = db.record_chapter("Solo", &ConversionSettings::default(), chapter(Some(1.0), 1, "a"), 1);
+        db.record_chapter_if_present("Solo", chapter(Some(2.0), 2, "b"), 2);
+        db.with_reading(&id, |p| {
+            p.record("c2", 7, 0.3125, 20, 1234);
+            p.mark_read("c1", 10, 1200);
+            p.prefs.mode = Some(crate::ReadMode::Scroll);
+            p.prefs.direction = Some(crate::PageDirection::RightToLeft);
+            p.prefs.fit = Some(crate::ReadFit::Height);
+        })
+        .unwrap();
+        let file = crate::JsonFile::<LibraryDb>::new(&path);
+        file.save(&db).unwrap();
+        let back = file.load();
+        assert_eq!(back, db);
+        let p = back.reading_of(&id).unwrap();
+        assert_eq!((p.chapter.as_deref(), p.page, p.scroll, p.last_read_at), (Some("c2"), 7, 0.3125, 1234));
+        assert!(p.is_read("c1") && !p.is_read("c2"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_old_library_file_without_reading_or_quality_loads() {
+        let old = r#"{"series":[{"id":"a","title":"A","chapters":[{"key":"c1","pages":3}]}]}"#;
+        let db: LibraryDb = serde_json::from_str(old).unwrap();
+        assert!(db.reading.is_empty());
+        assert_eq!(db.series[0].chapters[0].quality, None);
+        // One bad progress entry does not cost the others.
+        let mixed = r#"{"series":[{"id":"a","title":"A"}],"reading":{"a":{"page":4},"b":{"page":"x"}}}"#;
+        let db: LibraryDb = serde_json::from_str(mixed).unwrap();
+        assert_eq!(db.reading_of("a").unwrap().page, 4);
+        assert!(!db.reading.contains_key("b"));
+    }
+
+    #[test]
+    fn deleting_a_chapter_or_series_cleans_its_progress() {
+        let mut db = LibraryDb::default();
+        let defaults = ConversionSettings::default();
+        let id = db.record_chapter("Solo", &defaults, chapter(Some(1.0), 1, "a"), 1);
+        db.record_chapter_if_present("Solo", chapter(Some(2.0), 2, "b"), 2);
+        db.with_reading(&id, |p| {
+            p.record("c1", 1, 0.0, 5, 10);
+            p.mark_read("c2", 5, 11);
+        });
+        db.remove_chapter(&id, "c1");
+        let p = db.reading_of(&id).unwrap();
+        assert!(p.chapter.is_none() && !p.chapters.contains_key("c1") && p.is_read("c2"));
+        // Progress for a chapter that is no longer there is ignored and can be pruned.
+        db.with_reading(&id, |p| p.mark_read("c9", 3, 12));
+        db.prune_reading();
+        assert!(!db.reading_of(&id).unwrap().chapters.contains_key("c9"));
+        db.remove_series(&id);
+        assert!(db.reading.is_empty(), "no dangling entry");
+        // A series that is not in the library cannot get progress.
+        assert!(db.with_reading("nope", |_| ()).is_none());
+        assert!(db.reading.is_empty());
+    }
+
+    #[test]
+    fn the_quality_a_chapter_was_saved_with_round_trips() {
+        let mut c = chapter(Some(1.0), 1, "a");
+        c.quality = Some(PageQuality::Full);
+        let json = serde_json::to_string(&c).unwrap();
+        let back: DownloadedChapter = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.quality, Some(PageQuality::Full));
     }
 }

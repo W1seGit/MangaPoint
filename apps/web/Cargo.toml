@@ -1,0 +1,24 @@
+[package]
+name = "mangapoint-web"
+version.workspace = true
+edition.workspace = true
+description = "The MangaPoint website: read, import and export your own books in the browser. Nothing is uploaded."
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+dioxus = { version = "0.7", default-features = false, features = ["web", "macro", "html", "signals", "hooks", "launch"] }
+library = { path = "../../crates/library" }
+mangapoint-ui = { path = "../../crates/ui" }
+converter = { path = "../../crates/converter", features = ["serde"] }
+device-profiles = { path = "../../crates/device-profiles", features = ["serde"] }
+web-engine = { path = "../../crates/web-engine", default-features = false, features = ["core"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"

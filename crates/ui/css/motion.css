@@ -1,0 +1,57 @@
+/* How things move: buttons fade between states, pages come up a piece at a time; snappy skips it. */
+
+/* ---- buttons and the like fade between their states; pages do not ---- */
+.btn, .nav-item, .pill, .menu-item, .chip, .poster-title, .lib-filter, .lib-sort, input, select, textarea, .toggle, .px-panel-head {
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, opacity 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+}
+.btn:active:not(:disabled) { transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) { .btn, .nav-item, .pill, .menu-item { transition: none; } }
+.app { min-width: 1280px; min-height: 720px; }
+@media (max-width: 1500px) { .export-body { grid-template-columns: var(--left-w, 290px) minmax(0, 1fr) var(--right-w, 350px); } }
+
+/* ---- pages come up a piece at a time, quickly (not the Export screen, which is left as it is) ---- */
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.keep.lib:not(.gone) > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.overview-cover { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 60ms both; }
+.overview-body > * { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.poster-grid > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.keep.lib:not(.gone) > :nth-child(2) { animation-delay: 40ms; }
+.keep.lib:not(.gone) > :nth-child(3) { animation-delay: 80ms; }
+.keep.lib:not(.gone) > :nth-child(4) { animation-delay: 120ms; }
+.keep.lib:not(.gone) > :nth-child(5) { animation-delay: 160ms; }
+.keep.lib:not(.gone) > :nth-child(6) { animation-delay: 200ms; }
+.keep.lib:not(.gone) > :nth-child(7) { animation-delay: 240ms; }
+.keep.lib:not(.gone) > :nth-child(8) { animation-delay: 280ms; }
+.keep.lib:not(.gone) > :nth-child(9) { animation-delay: 320ms; }
+.keep.lib:not(.gone) > :nth-child(10) { animation-delay: 360ms; }
+.keep.lib:not(.gone) > :nth-child(11) { animation-delay: 400ms; }
+.keep.lib:not(.gone) > :nth-child(12) { animation-delay: 440ms; }
+.overview-body > :nth-child(1) { animation-delay: 135ms; }
+.overview-body > :nth-child(2) { animation-delay: 190ms; }
+.overview-body > :nth-child(3) { animation-delay: 245ms; }
+.overview-body > :nth-child(4) { animation-delay: 300ms; }
+.overview-body > :nth-child(5) { animation-delay: 355ms; }
+.overview-body > :nth-child(6) { animation-delay: 410ms; }
+.overview-body > :nth-child(7) { animation-delay: 465ms; }
+.poster-grid > :nth-child(1) { animation-delay: 140ms; }
+.poster-grid > :nth-child(2) { animation-delay: 175ms; }
+.poster-grid > :nth-child(3) { animation-delay: 210ms; }
+.poster-grid > :nth-child(4) { animation-delay: 245ms; }
+.poster-grid > :nth-child(5) { animation-delay: 280ms; }
+.poster-grid > :nth-child(6) { animation-delay: 315ms; }
+.poster-grid > :nth-child(7) { animation-delay: 350ms; }
+.poster-grid > :nth-child(8) { animation-delay: 385ms; }
+.poster-grid > :nth-child(9) { animation-delay: 420ms; }
+.poster-grid > :nth-child(10) { animation-delay: 455ms; }
+.poster-grid > :nth-child(11) { animation-delay: 490ms; }
+.poster-grid > :nth-child(12) { animation-delay: 525ms; }
+.poster-grid > :nth-child(13) { animation-delay: 560ms; }
+.poster-grid > :nth-child(14) { animation-delay: 595ms; }
+.poster-grid > :nth-child(15) { animation-delay: 630ms; }
+.poster-grid > :nth-child(16) { animation-delay: 665ms; }
+@media (prefers-reduced-motion: reduce) { .keep.lib > *, .overview-cover, .overview-body > *, .poster-grid > * { animation: none; } }
+
+/* ---- Preferences: snappy animations ---- */
+.app[data-motion="snappy"] .keep.lib > *, .app[data-motion="snappy"] .overview-cover, .app[data-motion="snappy"] .overview-body > *, .app[data-motion="snappy"] .poster-grid > * { animation: none; }
+.app[data-motion="snappy"] .btn, .app[data-motion="snappy"] .nav-item, .app[data-motion="snappy"] .pill, .app[data-motion="snappy"] .menu-item, .app[data-motion="snappy"] input, .app[data-motion="snappy"] select, .app[data-motion="snappy"] .chip { transition-duration: 0.05s; }
+.app[data-motion="snappy"] .overlay, .app[data-motion="snappy"] .modal, .app[data-motion="snappy"] .menu { animation-duration: 0.07s; }

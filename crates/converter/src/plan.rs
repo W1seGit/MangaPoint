@@ -18,10 +18,10 @@
 //! Positions in a strip are also given in *units* (the strip scaled to 1000
 //! wide), which do not depend on the device.
 
-use crate::gray::{GrayImage, LevelImage};
+use crate::gray::{ColorImage, GrayImage, LevelImage};
 use crate::process::{
-    border_median, clamp_rect, crop_bounds, crop_rect, finish_guided, letterbox_top, resize, rotate_cw, show,
-    tile, tile_arrow, tile_order, trim_bounds, trim_threshold, zoom_grid, Arrow, CropMode, Layout,
+    border_median, clamp_rect, crop_bounds, crop_rect, finish_guided, letterbox_top_fill, resize,
+    rotate_cw, show_fill, tile_fill, tile_arrow, tile_order, trim_bounds, trim_threshold, zoom_grid, Arrow, CropMode, Layout,
     Margins, ProcessOptions, SpreadMode, StripCut, ZoomMode,
 };
 use crate::xtc::ReadDirection;
@@ -55,12 +55,14 @@ pub enum Piece {
 }
 
 /// The piece of `img` that `part` shows, before it is scaled to the screen.
-fn piece(img: &GrayImage, of: Piece) -> GrayImage {
+/// For any plane of a chapter: the spine of a double page is found
+/// on the luma (`mid`) and the same column cuts the chroma planes too.
+fn piece_at(img: &GrayImage, of: Piece, mid: impl FnOnce() -> u32) -> GrayImage {
     match of {
         Piece::Whole => img.clone(),
         Piece::Rotated => rotate_cw(img),
         Piece::Half(n) => {
-            let mid = spine(img);
+            let mid = mid();
             if n == 1 {
                 crop_rect(img, mid, 0, img.width - mid, img.height)
             } else {
@@ -118,7 +120,12 @@ pub struct ChapterPlan {
 
 /// A chapter, cropped and (for a webtoon) stitched, ready to plan and render.
 pub struct Prepared {
+    /// The luma (gray) planes: everything that is decided from the picture's
+    /// content (trim, spine, blank rows, the plan) is decided here.
     kind: Kind,
+    /// A colour chapter's two chroma planes (Cb, Cr), cut and scaled with
+    /// exactly the rectangles and sizes found on the luma.
+    chroma: Option<Box<[Kind; 2]>>,
 }
 
 enum Kind {
@@ -148,6 +155,11 @@ impl Prepared {
     /// [`MAX_IMAGE_ROWS`] and [`MAX_STRIP_ROWS`].
     pub fn truncated(&self) -> bool {
         matches!(&self.kind, Kind::Strip(strip) if strip.truncated)
+    }
+
+    /// Whether the chapter was prepared with its colour (see [`prepare_owned_color`]).
+    pub fn has_color(&self) -> bool {
+        self.chroma.is_some()
     }
 
     /// The number of source images.
@@ -184,7 +196,8 @@ pub fn is_strip_chapter(images: &[(u32, u32)], opts: &ProcessOptions) -> bool {
 pub const MAX_IMAGE_ROWS: u32 = 150_000;
 
 /// The most rows a whole strip may have. Images that would take it past this
-/// are cut short, and later ones left out.
+/// are cut short, and later ones left out. (A strip kept in colour has three
+/// planes and is held to a third of it.)
 pub const MAX_STRIP_ROWS: u32 = 600_000;
 
 /// A chapter's work was stopped by the caller.
@@ -286,29 +299,77 @@ pub fn prepare_owned(
     opts: &ProcessOptions,
     cancel: CancelCheck,
 ) -> Result<Prepared, Cancelled> {
+    prepare_planes(images, None, opts, cancel)
+}
+
+/// [`prepare_owned`] for a chapter kept in colour: each page is its luma and
+/// two chroma planes (see `decode::decode_to_ycc`). Every decision that
+/// depends on what is drawn (the trim, the blank rows of a strip, the spine of
+/// a double page) is made on the luma alone, once; the chroma planes are cut
+/// and scaled by the same rectangles and sizes, so they stay exactly under
+/// the luma. A chroma plane that is not the size of its luma is resampled to it.
+pub fn prepare_owned_color(
+    images: Vec<(GrayImage, [GrayImage; 2])>,
+    opts: &ProcessOptions,
+    cancel: CancelCheck,
+) -> Result<Prepared, Cancelled> {
+    let mut luma = Vec::with_capacity(images.len());
+    let mut chroma = Vec::with_capacity(images.len());
+    for (y, [cb, cr]) in images {
+        let same = |c: GrayImage| {
+            if (c.width, c.height) == (y.width, y.height) {
+                c
+            } else {
+                resize(&c, y.width, y.height)
+            }
+        };
+        chroma.push([same(cb), same(cr)]);
+        luma.push(y);
+    }
+    prepare_planes(luma, Some(chroma), opts, cancel)
+}
+
+fn prepare_planes(
+    images: Vec<GrayImage>,
+    chroma: Option<Vec<[GrayImage; 2]>>,
+    opts: &ProcessOptions,
+    cancel: CancelCheck,
+) -> Result<Prepared, Cancelled> {
     let dims: Vec<(u32, u32)> = images.iter().map(|i| (i.width, i.height)).collect();
     if is_strip_chapter(&dims, opts) {
+        let (strip, chroma) = build_strip_planes(images, chroma, opts, cancel)?;
         Ok(Prepared {
-            kind: Kind::Strip(build_strip(images, opts, cancel)?),
+            kind: Kind::Strip(strip),
+            chroma: chroma.map(|[cb, cr]| Box::new([Kind::Strip(cb), Kind::Strip(cr)])),
         })
     } else {
         let mut cropped = Vec::with_capacity(images.len());
+        let mut cb_cropped = Vec::new();
+        let mut cr_cropped = Vec::new();
+        let colour = chroma.is_some();
+        let mut chroma = chroma.map(|c| c.into_iter());
         for img in images {
             if cancel() {
                 return Err(Cancelled);
             }
             let (x, y, w, h) = crop_bounds(&img, opts);
-            cropped.push(if (x, y, w, h) == (0, 0, img.width, img.height) {
-                img
-            } else {
-                crop_rect(&img, x, y, w, h)
-            });
+            let whole = (x, y, w, h) == (0, 0, img.width, img.height);
+            if let Some([cb, cr]) = chroma.as_mut().and_then(|c| c.next()) {
+                let cut = |p: GrayImage| if whole { p } else { crop_rect(&p, x, y, w, h) };
+                cb_cropped.push(cut(cb));
+                cr_cropped.push(cut(cr));
+            }
+            cropped.push(if whole { img } else { crop_rect(&img, x, y, w, h) });
         }
         Ok(Prepared {
             kind: Kind::Paged(cropped),
+            chroma: colour.then(|| Box::new([Kind::Paged(cb_cropped), Kind::Paged(cr_cropped)])),
         })
     }
 }
+
+/// An image's luma and, in a colour chapter, its two chroma planes.
+type ImagePlanes = (GrayImage, Option<[GrayImage; 2]>);
 
 /// What to do with one image of a strip: the part of it that is kept, as a
 /// rectangle of the downloaded picture, and how tall it is once scaled.
@@ -317,11 +378,21 @@ struct StripJob {
     scaled_h: u32,
 }
 
+#[cfg(test)]
 fn build_strip(
     images: Vec<GrayImage>,
     opts: &ProcessOptions,
     cancel: CancelCheck,
 ) -> Result<Strip, Cancelled> {
+    build_strip_planes(images, None, opts, cancel).map(|(strip, _)| strip)
+}
+
+fn build_strip_planes(
+    images: Vec<GrayImage>,
+    chroma: Option<Vec<[GrayImage; 2]>>,
+    opts: &ProcessOptions,
+    cancel: CancelCheck,
+) -> Result<(Strip, Option<[Strip; 2]>), Cancelled> {
     let side = |p: u8| p.min(Margins::MAX_PERCENT) as u64;
     let cut = |len: u32, p: u8| (len as u64 * side(p) / 100) as u32;
     let threshold = trim_threshold(opts.trim_sensitivity);
@@ -383,7 +454,8 @@ fn build_strip(
     // cut short rather than allocated at absurd sizes.
     let width = opts.width.max(1);
     let mut jobs: Vec<Option<StripJob>> = Vec::with_capacity(images.len());
-    let mut budget = MAX_STRIP_ROWS as u64;
+    // A colour strip holds three planes, so it is held to a third of the rows.
+    let mut budget = if chroma.is_some() { MAX_STRIP_ROWS / 3 } else { MAX_STRIP_ROWS } as u64;
     let mut truncated = false;
     for &(fx, fy, fw, fh) in &fixed {
         let x = ((left * fw as f32).floor() as u32).min(fw - 1);
@@ -410,25 +482,35 @@ fn build_strip(
     }
 
     // Scale the images side by side, each freed as it is taken. The order of
-    // the rows does not depend on which finishes first.
-    let slots: Vec<std::sync::Mutex<Option<GrayImage>>> = images
+    // the rows does not depend on which finishes first. The chroma planes of a
+    // colour chapter are cut and scaled by the very same rectangles and sizes.
+    let has_chroma = chroma.is_some();
+    let mut chroma: Vec<Option<[GrayImage; 2]>> = match chroma {
+        Some(c) => c.into_iter().map(Some).collect(),
+        None => images.iter().map(|_| None).collect(),
+    };
+    let slots: Vec<std::sync::Mutex<Option<ImagePlanes>>> = images
         .into_iter()
-        .map(|img| std::sync::Mutex::new(Some(img)))
+        .zip(chroma.iter_mut())
+        .map(|(img, ch)| std::sync::Mutex::new(Some((img, ch.take()))))
         .collect();
     let scaled = par_map(slots.len(), cancel, |i| {
         let job = jobs[i].as_ref()?;
-        let img = slots[i].lock().expect("no panic holds the lock").take()?;
+        let (img, ch) = slots[i].lock().expect("no panic holds the lock").take()?;
         let (x, y, w, h) = job.rect;
-        let sideways = if (x, y, w, h) == (0, 0, img.width, img.height) {
-            img
-        } else {
-            crop_rect(&img, x, y, w, h)
+        let scale_plane = |img: GrayImage| {
+            let sideways = if (x, y, w, h) == (0, 0, img.width, img.height) {
+                img
+            } else {
+                crop_rect(&img, x, y, w, h)
+            };
+            if (sideways.width, sideways.height) == (width, job.scaled_h) {
+                sideways
+            } else {
+                resize(&sideways, width, job.scaled_h)
+            }
         };
-        let scaled = if (sideways.width, sideways.height) == (width, job.scaled_h) {
-            sideways
-        } else {
-            resize(&sideways, width, job.scaled_h)
-        };
+        let scaled = scale_plane(img);
         let bg = border_median(&scaled) as i16;
         let row_limit = (width / 200).max(1) as usize;
         let blank: Vec<bool> = scaled
@@ -441,27 +523,46 @@ fn build_strip(
                     <= row_limit
             })
             .collect();
-        Some((scaled, blank))
+        let ch = ch.map(|[cb, cr]| [scale_plane(cb), scale_plane(cr)]);
+        Some((scaled, blank, ch))
     })?;
 
     let mut parts = Vec::with_capacity(scaled.len());
+    let mut cb_parts = Vec::new();
+    let mut cr_parts = Vec::new();
     let mut starts = Vec::with_capacity(scaled.len());
     let mut blank = Vec::new();
     let mut total = 0u32;
-    for (scaled, rows_blank) in scaled.into_iter().flatten() {
+    for (scaled, rows_blank, ch) in scaled.into_iter().flatten() {
         starts.push(total);
         total += scaled.height;
         blank.extend(rows_blank);
         parts.push(scaled);
+        if let Some([cb, cr]) = ch {
+            cb_parts.push(cb);
+            cr_parts.push(cr);
+        }
     }
-    Ok(Strip {
+    let plane = |parts: Vec<GrayImage>| Strip {
         width,
         parts,
-        starts,
+        starts: starts.clone(),
         total,
-        blank,
+        blank: Vec::new(),
         truncated,
-    })
+    };
+    let chroma = has_chroma.then(|| [plane(cb_parts), plane(cr_parts)]);
+    Ok((
+        Strip {
+            width,
+            parts,
+            starts: starts.clone(),
+            total,
+            blank,
+            truncated,
+        },
+        chroma,
+    ))
 }
 
 fn to_units(px: u32, width: u32) -> u32 {
@@ -697,13 +798,14 @@ struct CachedPiece {
 /// from, made once however many screens (and threads) use them, and dropped
 /// when the last screen has.
 struct PieceCache {
-    pieces: std::sync::Mutex<std::collections::HashMap<(usize, Piece), std::sync::Arc<CachedPiece>>>,
+    pieces: std::sync::Mutex<std::collections::HashMap<(usize, Piece, usize), std::sync::Arc<CachedPiece>>>,
 }
 
 impl PieceCache {
-    /// For the pages about to be rendered; `None` if none shares a piece.
-    fn for_pages(pages: &[PlannedPage]) -> Option<PieceCache> {
-        let mut counts: std::collections::HashMap<(usize, Piece), usize> = Default::default();
+    /// For the pages about to be rendered in `planes` planes (1 for gray, 3 for
+    /// colour); `None` if none shares a piece.
+    fn for_pages(pages: &[PlannedPage], planes: usize) -> Option<PieceCache> {
+        let mut counts: std::collections::HashMap<(usize, Piece, usize), usize> = Default::default();
         for page in pages {
             if let Source::Image {
                 index,
@@ -711,7 +813,9 @@ impl PieceCache {
             } = page.source
             {
                 if of != Piece::Whole {
-                    *counts.entry((index, of)).or_default() += 1;
+                    for plane in 0..planes {
+                        *counts.entry((index, of, plane)).or_default() += 1;
+                    }
                 }
             }
         }
@@ -734,11 +838,22 @@ impl PieceCache {
         })
     }
 
-    fn get(&self, img: &GrayImage, index: usize, of: Piece) -> Option<std::sync::Arc<GrayImage>> {
-        let entry = self.pieces.lock().expect("no panic holds the lock").get(&(index, of))?.clone();
-        let piece = entry.piece.get_or_init(|| std::sync::Arc::new(piece(img, of))).clone();
+    fn get(
+        &self,
+        img: &GrayImage,
+        luma: &GrayImage,
+        index: usize,
+        of: Piece,
+        plane: usize,
+    ) -> Option<std::sync::Arc<GrayImage>> {
+        let key = (index, of, plane);
+        let entry = self.pieces.lock().expect("no panic holds the lock").get(&key)?.clone();
+        let piece = entry
+            .piece
+            .get_or_init(|| std::sync::Arc::new(piece_at(img, of, || spine(luma))))
+            .clone();
         if entry.left.fetch_sub(1, std::sync::atomic::Ordering::AcqRel) == 1 {
-            self.pieces.lock().expect("no panic holds the lock").remove(&(index, of));
+            self.pieces.lock().expect("no panic holds the lock").remove(&key);
         }
         Some(piece)
     }
@@ -747,8 +862,10 @@ impl PieceCache {
 /// The piece of source image `index` that screens of a zoomed page are cut from.
 fn piece_of<'a>(
     img: &'a GrayImage,
+    luma: &GrayImage,
     index: usize,
     of: Piece,
+    plane: usize,
     cache: Option<&PieceCache>,
 ) -> PieceRef<'a> {
     if of == Piece::Whole {
@@ -756,8 +873,8 @@ fn piece_of<'a>(
     }
     PieceRef::Shared(
         cache
-            .and_then(|c| c.get(img, index, of))
-            .unwrap_or_else(|| std::sync::Arc::new(piece(img, of))),
+            .and_then(|c| c.get(img, luma, index, of, plane))
+            .unwrap_or_else(|| std::sync::Arc::new(piece_at(img, of, || spine(luma)))),
     )
 }
 
@@ -772,16 +889,90 @@ fn render_page_with(
     opts: &ProcessOptions,
     cache: Option<&PieceCache>,
 ) -> LevelImage {
-    let screen = match (&prepared.kind, page.source) {
-        (Kind::Strip(strip), Source::Strip { top, height }) => {
-            letterbox_top(&strip_rows(strip, top, height), opts.width, opts.height)
-        }
-        (Kind::Paged(images), Source::Image { index, part }) => {
-            paged_screen(&images[index], index, part, opts, cache)
-        }
-        _ => unreachable!("a plan is only rendered with the chapter it was made from"),
-    };
+    let screen = screen_of_plane(prepared, page, opts, [0.0; 4], cache, 0);
     finish_guided(screen, opts, page_arrow(prepared, page, opts))
+}
+
+/// The kind of source a plane lives in: 0 is the luma, 1 and 2 the chroma.
+fn plane_kind(prepared: &Prepared, plane: usize) -> &Kind {
+    match (plane, &prepared.chroma) {
+        (0, _) | (_, None) => &prepared.kind,
+        (n, Some(chroma)) => &chroma[n - 1],
+    }
+}
+
+/// What a plane is padded with where the page does not fill the screen: white
+/// for luma, neutral for chroma (so the padding is white, not tinted).
+fn plane_fill(plane: usize) -> u8 {
+    if plane == 0 {
+        255
+    } else {
+        128
+    }
+}
+
+/// The screen-sized picture of one plane of a page, before any tone work:
+/// fitted, rotated, cut into halves or tiles, zoomed and manually cropped
+/// exactly as the page asks. The gray render and the colour render both come
+/// through here, so luma and chroma can never be laid out differently. `crop`
+/// has been cleaned (see [`clean_crop`]).
+fn screen_of_plane(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+    crop: [f32; 4],
+    cache: Option<&PieceCache>,
+    plane: usize,
+) -> GrayImage {
+    let fill = plane_fill(plane);
+    if crop == [0.0; 4] {
+        return match (plane_kind(prepared, plane), page.source) {
+            (Kind::Strip(strip), Source::Strip { top, height }) => {
+                letterbox_top_fill(&strip_rows(strip, top, height), opts.width, opts.height, fill)
+            }
+            (Kind::Paged(images), Source::Image { index, part }) => {
+                paged_screen(&images[index], luma_of(prepared, index), index, part, opts, cache, plane)
+            }
+            _ => unreachable!("a plan is only rendered with the chapter it was made from"),
+        };
+    }
+    let source = source_of_plane(prepared, page, cache, plane);
+    let x = ((source.width as f32 * crop[0]).floor() as u32).min(source.width - 1);
+    let y = ((source.height as f32 * crop[1]).floor() as u32).min(source.height - 1);
+    let w = source
+        .width
+        .saturating_sub(x + (source.width as f32 * crop[2]).floor() as u32)
+        .max(1);
+    let h = source
+        .height
+        .saturating_sub(y + (source.height as f32 * crop[3]).floor() as u32)
+        .max(1);
+    let cut = crop_rect(&source, x, y, w, h);
+    drop(source);
+    if matches!(page.source, Source::Strip { .. }) {
+        let scale =
+            (opts.width as f64 / cut.width as f64).min(opts.height as f64 / cut.height as f64);
+        let w = (cut.width as f64 * scale).round().max(1.0) as u32;
+        let h = (cut.height as f64 * scale).round().max(1.0) as u32;
+        letterbox_top_fill(&resize(&cut, w, h), opts.width, opts.height, fill)
+    } else if let Source::Image {
+        part: Part::Tile { col, row, .. },
+        ..
+    } = page.source
+    {
+        tile_fill(&cut, opts, col as u32, row as u32, fill)
+    } else {
+        show_fill(&cut, opts, fill)
+    }
+}
+
+/// The luma of source image `index` of a paged chapter: what the spine of a
+/// double page is found on, whichever plane is being cut.
+fn luma_of(prepared: &Prepared, index: usize) -> &GrayImage {
+    match &prepared.kind {
+        Kind::Paged(images) => &images[index],
+        Kind::Strip(_) => unreachable!("a strip has no source images"),
+    }
 }
 
 /// The guide arrow this page gets, when they are on: the first half of a
@@ -810,18 +1001,25 @@ fn page_arrow(prepared: &Prepared, page: &PlannedPage, opts: &ProcessOptions) ->
 
 fn paged_screen(
     img: &GrayImage,
+    luma: &GrayImage,
     index: usize,
     part: Part,
     opts: &ProcessOptions,
     cache: Option<&PieceCache>,
+    plane: usize,
 ) -> GrayImage {
+    let fill = plane_fill(plane);
     match part {
-        Part::Whole => show(img, opts),
-        Part::Rotated => show(&rotate_cw(img), opts),
-        Part::Half(_) => show(&piece(img, half_of(part)), opts),
-        Part::Tile { of, col, row } => {
-            tile(&piece_of(img, index, of, cache), opts, col as u32, row as u32)
-        }
+        Part::Whole => show_fill(img, opts, fill),
+        Part::Rotated => show_fill(&rotate_cw(img), opts, fill),
+        Part::Half(_) => show_fill(&piece_at(img, half_of(part), || spine(luma)), opts, fill),
+        Part::Tile { of, col, row } => tile_fill(
+            &piece_of(img, luma, index, of, plane, cache),
+            opts,
+            col as u32,
+            row as u32,
+            fill,
+        ),
     }
 }
 
@@ -950,7 +1148,7 @@ pub fn render_all_cropped_with<T: Send>(
     cancel: CancelCheck,
     finish: impl Fn(usize, LevelImage) -> T + Sync,
 ) -> Result<Vec<T>, Cancelled> {
-    let cache = PieceCache::for_pages(pages);
+    let cache = PieceCache::for_pages(pages, 1);
     par_map(pages.len(), cancel, |i| {
         finish(
             i,
@@ -1205,7 +1403,7 @@ mod tests {
 #[cfg(test)]
 mod manual_crop_tests {
     use super::*;
-    use crate::process::{finish, fit};
+    use crate::process::{finish, fit, letterbox_top};
     use crate::{Depth, Dither};
     #[test]
     fn manual_crop_uses_source_before_fit_and_zero_preserves_pixels() {
@@ -1294,7 +1492,16 @@ fn source_of<'a>(
     _opts: &ProcessOptions,
     cache: Option<&PieceCache>,
 ) -> PieceRef<'a> {
-    match (&prepared.kind, page.source) {
+    source_of_plane(prepared, page, cache, 0)
+}
+
+fn source_of_plane<'a>(
+    prepared: &'a Prepared,
+    page: &PlannedPage,
+    cache: Option<&PieceCache>,
+    plane: usize,
+) -> PieceRef<'a> {
+    match (plane_kind(prepared, plane), page.source) {
         (Kind::Strip(strip), Source::Strip { top, height }) => {
             PieceRef::Shared(std::sync::Arc::new(strip_rows(strip, top, height)))
         }
@@ -1306,10 +1513,41 @@ fn source_of<'a>(
                 Part::Half(n) => Piece::Half(n),
                 Part::Tile { of, .. } => of,
             };
-            piece_of(img, index, of, cache)
+            piece_of(img, luma_of(prepared, index), index, of, plane, cache)
         }
         _ => unreachable!("a plan belongs to its prepared chapter"),
     }
+}
+
+/// [`page_source`] in colour: the prepared section before fitting, with its
+/// chroma. A chapter prepared without colour gives its gray picture.
+pub fn page_source_color(prepared: &Prepared, page: &PlannedPage) -> ColorImage {
+    color_of_planes(|plane| source_of_plane(prepared, page, None, plane).into_owned(), prepared)
+}
+
+/// [`whole_source`] in colour.
+pub fn whole_source_color(prepared: &Prepared, page: &PlannedPage) -> ColorImage {
+    match (&prepared.kind, page.source) {
+        (Kind::Paged(_), Source::Image { index, .. }) => color_of_planes(
+            |plane| match plane_kind(prepared, plane) {
+                Kind::Paged(images) => images[index].clone(),
+                Kind::Strip(_) => unreachable!("planes of a chapter are alike"),
+            },
+            prepared,
+        ),
+        _ => page_source_color(prepared, page),
+    }
+}
+
+fn color_of_planes(plane: impl Fn(usize) -> GrayImage, prepared: &Prepared) -> ColorImage {
+    let luma = plane(0);
+    let neutral = || GrayImage::new(luma.width, luma.height, 128).expect("non-zero size");
+    let (cb, cr) = if prepared.chroma.is_some() {
+        (plane(1), plane(2))
+    } else {
+        (neutral(), neutral())
+    };
+    ColorImage::from_ycc(&luma, &cb, &cr)
 }
 
 /// The downloaded picture a page comes from, whole: for a split double page
@@ -1415,13 +1653,9 @@ pub fn render_page_cropped(
     render_page_cropped_with(prepared, page, opts, crop, None)
 }
 
-fn render_page_cropped_with(
-    prepared: &Prepared,
-    page: &PlannedPage,
-    opts: &ProcessOptions,
-    crop: [f32; 4],
-    cache: Option<&PieceCache>,
-) -> LevelImage {
+/// A manual crop made safe to apply: finite, each edge below 99%, and the
+/// two edges of an axis together below 99%.
+fn clean_crop(crop: [f32; 4]) -> [f32; 4] {
     let mut c = crop.map(|v| {
         if v.is_finite() {
             v.clamp(0.0, 0.99)
@@ -1436,38 +1670,89 @@ fn render_page_cropped_with(
             c[b] *= 0.99 / sum;
         }
     }
-    if c == [0.0; 4] {
-        return render_page_with(prepared, page, opts, cache);
-    }
-    let source = source_of(prepared, page, opts, cache);
-    let x = ((source.width as f32 * c[0]).floor() as u32).min(source.width - 1);
-    let y = ((source.height as f32 * c[1]).floor() as u32).min(source.height - 1);
-    let w = source
-        .width
-        .saturating_sub(x + (source.width as f32 * c[2]).floor() as u32)
-        .max(1);
-    let h = source
-        .height
-        .saturating_sub(y + (source.height as f32 * c[3]).floor() as u32)
-        .max(1);
-    let cut = crop_rect(&source, x, y, w, h);
-    drop(source);
-    let screen = if matches!(page.source, Source::Strip { .. }) {
-        let scale =
-            (opts.width as f64 / cut.width as f64).min(opts.height as f64 / cut.height as f64);
-        let w = (cut.width as f64 * scale).round().max(1.0) as u32;
-        let h = (cut.height as f64 * scale).round().max(1.0) as u32;
-        letterbox_top(&resize(&cut, w, h), opts.width, opts.height)
-    } else if let Source::Image {
-        part: Part::Tile { col, row, .. },
-        ..
-    } = page.source
-    {
-        tile(&cut, opts, col as u32, row as u32)
-    } else {
-        show(&cut, opts)
-    };
+    c
+}
+
+fn render_page_cropped_with(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+    crop: [f32; 4],
+    cache: Option<&PieceCache>,
+) -> LevelImage {
+    let screen = screen_of_plane(prepared, page, opts, clean_crop(crop), cache, 0);
     finish_guided(screen, opts, page_arrow(prepared, page, opts))
+}
+
+/// Render one planned page in colour: the luma screen exactly as the gray
+/// render lays it out but *before* its tone work (no stretched levels, no
+/// contrast, no dithering), joined with the two chroma screens cut and placed
+/// the same way, as RGB. The page is turned like the gray one when `opts.turn`.
+///
+/// Guide arrows (`opts.guide_arrows`) are a feature of the gray pages and are
+/// not drawn in colour. A chapter prepared without colour comes out as its
+/// gray picture in RGB form.
+pub fn render_page_color(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+    crop: [f32; 4],
+) -> ColorImage {
+    render_page_color_with(prepared, page, opts, crop, None)
+}
+
+fn render_page_color_with(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+    crop: [f32; 4],
+    cache: Option<&PieceCache>,
+) -> ColorImage {
+    let crop = clean_crop(crop);
+    let mut planes = [0, 1, 2].map(|plane| {
+        if plane > 0 && prepared.chroma.is_none() {
+            None
+        } else {
+            Some(screen_of_plane(prepared, page, opts, crop, cache, plane))
+        }
+    });
+    let luma = planes[0].take().expect("the luma is always drawn");
+    let neutral = || GrayImage::new(luma.width, luma.height, 128).expect("non-zero size");
+    let cb = planes[1].take().unwrap_or_else(neutral);
+    let cr = planes[2].take().unwrap_or_else(neutral);
+    let (luma, cb, cr) = if opts.turn {
+        (rotate_cw(&luma), rotate_cw(&cb), rotate_cw(&cr))
+    } else {
+        (luma, cb, cr)
+    };
+    ColorImage::from_ycc(&luma, &cb, &cr)
+}
+
+/// [`render_all_cropped_with`] for colour: each page is drawn with
+/// [`render_page_color`] and handed to `finish` (with its number) on the
+/// thread that drew it, so it can be encoded while the others are still being
+/// drawn. Gives up with `Err` once `cancel` is true.
+pub fn render_all_color_with<T: Send>(
+    prepared: &Prepared,
+    pages: &[PlannedPage],
+    opts: &ProcessOptions,
+    crops: &[[f32; 4]],
+    cancel: CancelCheck,
+    finish: impl Fn(usize, ColorImage) -> T + Sync,
+) -> Result<Vec<T>, Cancelled> {
+    let cache = PieceCache::for_pages(pages, 3);
+    par_map(pages.len(), cancel, |i| {
+        finish(
+            i,
+            render_page_color_with(
+                prepared,
+                &pages[i],
+                opts,
+                crops.get(i).copied().unwrap_or([0.0; 4]),
+                cache.as_ref(),
+            ),
+        )
+    })
 }
 
 #[cfg(test)]

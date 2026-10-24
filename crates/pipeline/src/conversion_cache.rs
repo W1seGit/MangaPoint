@@ -28,8 +28,23 @@ const PICTURES_MAGIC: &[u8; 8] = b"MPCACHE4";
 /// does not matter to pictures, the overlap does not matter to a quiet cut,
 /// the trim does not matter to a page that keeps its whole picture, and a
 /// zoom that comes to Fit is Fit.
+///
+/// Colour pictures are a different conversion altogether, so their key starts
+/// `pictures-color|` and a gray cache can never answer for one (or the other
+/// way round). They have no tone work, so the contrast, levels, dither, depth
+/// and arrows do not count. A gray key is written exactly as it was before
+/// colour existed, so caches already on disk stay good.
 pub(crate) fn cache_key(options: &ProcessOptions, pictures: bool) -> String {
     let mut o = options.clone();
+    let color = o.color && pictures;
+    o.color = color;
+    if color {
+        o.contrast = 50;
+        o.auto_levels = false;
+        o.dither = converter::Dither::Threshold;
+        o.depth = Depth::Eight;
+        o.guide_arrows = false;
+    }
     o.zoom = o.zoom.clamped();
     if o.zoom.is_fit() {
         o.zoom = PageZoom::Fit;
@@ -65,7 +80,19 @@ pub(crate) fn cache_key(options: &ProcessOptions, pictures: bool) -> String {
     if o.depth == Depth::Eight {
         o.dither = converter::Dither::Threshold;
     }
-    format!("{}|{o:?}", if pictures { "pictures" } else { "packed" })
+    let text = format!("{o:?}");
+    // `color` is the last field of the options; while it is off it is not part
+    // of the key, which keeps every gray key what it always was.
+    let text = match text.strip_suffix(", color: false }") {
+        Some(rest) => format!("{rest} }}"),
+        None => text,
+    };
+    let kind = match (pictures, color) {
+        (_, true) => "pictures-color",
+        (true, false) => "pictures",
+        (false, false) => "packed",
+    };
+    format!("{kind}|{text}")
 }
 
 fn fingerprint_header(key: &str, pages: usize) -> Sha256 {
@@ -306,6 +333,43 @@ mod tests {
         s.set_output(output);
         change(&mut s);
         s
+    }
+
+    fn colour_key(settings: &ConversionSettings, device: &device_profiles::DeviceProfile) -> String {
+        cache_key(&process_options_for(device, settings), settings.pictures())
+    }
+
+    #[test]
+    fn a_gray_key_is_what_it_was_before_colour_existed_and_a_colour_key_is_its_own() {
+        // Pinned: caches already on disk are found by this text.
+        let o = ProcessOptions::manga_default(480, 800, Depth::Two);
+        let key = cache_key(&o, false);
+        assert!(key.starts_with("packed|ProcessOptions { width: 480, height: 800, layout: Auto,"), "{key}");
+        assert!(key.ends_with(", guide_arrows: false }") && !key.contains("color"), "{key}");
+        assert!(cache_key(&o, true).starts_with("pictures|"));
+
+        let device = device_profiles::known("kobo-libra-colour").unwrap();
+        let epub = with(OutputFormat::Epub, |_| {});
+        let colour = colour_key(&epub, &device);
+        let gray = colour_key(&with(OutputFormat::Epub, |s| s.black_and_white = true), &device);
+        assert!(colour.starts_with("pictures-color|") && colour.contains("color: true"), "{colour}");
+        assert!(gray.starts_with("pictures|") && !gray.contains("color"), "{gray}");
+        assert_ne!(colour, gray);
+        // A CBZ shares the EPUB's colour pictures.
+        assert_eq!(colour, colour_key(&with(OutputFormat::Cbz, |_| {}), &device));
+        // The tone settings and the dither do not touch a colour page.
+        for change in [
+            (|s: &mut ConversionSettings| s.contrast = 80) as fn(&mut ConversionSettings),
+            |s| s.auto_levels = false,
+            |s| s.dither = converter::Dither::Atkinson,
+        ] {
+            assert_eq!(colour, colour_key(&with(OutputFormat::Epub, change), &device));
+        }
+        // But the geometry does.
+        assert_ne!(colour, colour_key(&with(OutputFormat::Epub, |s| s.crop = CropMode::Full), &device));
+        // A gray reader's EPUB is the gray key whatever the box says.
+        let mono = device_profiles::known("kobo-libra-2").unwrap();
+        assert!(colour_key(&epub, &mono).starts_with("pictures|"));
     }
 
     #[test]

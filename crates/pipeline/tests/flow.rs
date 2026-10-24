@@ -1188,6 +1188,7 @@ fn limits(chapters: usize, pages: usize) -> DownloadLimits {
         pages,
         spread_sources: true,
         race_sources: false,
+        keep_color: false,
     }
 }
 

@@ -64,6 +64,7 @@ impl DownloadQueue {
             b.status == BatchStatus::Waiting
                 && b.series_id == batch.series_id
                 && b.choice == batch.choice
+                && b.same_mode(&batch)
         }) {
             existing.requests.extend(fresh_requests);
             existing.plan.extend(fresh_plan);
@@ -293,6 +294,7 @@ impl DownloadQueue {
             old.source_names.clone(),
             now,
         );
+        let batch = Batch { quality: old.quality, replace: old.replace, ..batch };
         let queued = self.add(batch).chapters;
         // The retried chapters are no longer failures of the old batch.
         if let Some(old) = self.get_mut(id) {

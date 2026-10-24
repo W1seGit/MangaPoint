@@ -5,110 +5,12 @@
 //! or update (and restart).
 
 use super::widgets::{open_link, Icon, ProgressBar, Toggle};
+use mangapoint_ui::art::update_cat::UpdateCat;
 use crate::state::{AppState, UpdatePhase};
 use crate::updates::{self, Apply, Applied, Update};
 use dioxus::prelude::*;
-use std::sync::OnceLock;
 use std::time::Duration;
 use tracing::info;
-
-// ---- the cat ------------------------------------------------------------------
-
-/// The scene: a gray cat sitting beside a parcel, with an arrow over it that
-/// bobs up and down. Drawn as pixels, in an original sprite.
-const CAT_LEFT: [&str; 14] = [
-    "..g....", "..gg...", ".gpgggg", ".gggggg", ".ggeggg", ".gggggg", ".gggggp", "..ggggg",
-    "..ggggg", ".ggllll", ".ggllll", ".gggggg", ".ggggss", ".llg...",
-];
-const PARCEL: [&str; 9] = [
-    "DDDDDDDDDDDD",
-    "DbbbbttbbbbD",
-    "DbbbbttbbbbD",
-    "DbbbbttbbbbD",
-    "DbbbbttbbbbD",
-    "DbbbbttbbbbD",
-    "DbbbbttbbbbD",
-    "DbbbbttbbbbD",
-    "DDDDDDDDDDDD",
-];
-const ARROW: [&str; 8] = [
-    "...a...", "..aaa..", ".aaaaa.", "aaaaaaa", "..aaa..", "..aaa..", "..aaa..", "..aaa..",
-];
-
-fn hex(c: char) -> Option<&'static str> {
-    Some(match c {
-        'g' => "#b4b4b4",
-        's' => "#707070",
-        'l' => "#e8e8e8",
-        'p' => "#f0a3b3",
-        'e' => "#050505",
-        'D' => "#6e4a26",
-        'b' => "#a8733f",
-        't' => "#e8d9a0",
-        'a' => "#7fd18b",
-        'w' => "#f5f5f5",
-        _ => return None,
-    })
-}
-
-fn rects(rows: &[String], ox: usize, oy: usize) -> String {
-    let mut out = String::new();
-    for (y, row) in rows.iter().enumerate() {
-        for (x, c) in row.chars().enumerate() {
-            if let Some(fill) = hex(c) {
-                out.push_str(&format!(
-                    "<rect x=\"{}\" y=\"{}\" width=\"1\" height=\"1\" fill=\"{fill}\"/>",
-                    ox + x,
-                    oy + y
-                ));
-            }
-        }
-    }
-    out
-}
-
-fn mirrored(left: &[&str]) -> Vec<String> {
-    left.iter()
-        .map(|r| format!("{r}{}", r.chars().rev().collect::<String>()))
-        .collect()
-}
-
-fn scene_markup() -> &'static str {
-    static MARKUP: OnceLock<String> = OnceLock::new();
-    MARKUP.get_or_init(|| {
-        let cat = mirrored(&CAT_LEFT);
-        let parcel: Vec<String> = PARCEL.iter().map(|s| s.to_string()).collect();
-        let arrow: Vec<String> = ARROW.iter().map(|s| s.to_string()).collect();
-        // The tail, curling up behind the cat.
-        let tail: Vec<String> = ["..s", ".s.", ".s.", "ss.", "..."].iter().map(|s| s.to_string()).collect();
-        format!(
-            "<g>{}</g><g>{}</g><g>{}</g><g class=\"upd-arrow\">{}</g><g class=\"upd-spark\">{}</g>",
-            rects(&tail, 0, 12),
-            rects(&cat, 3, 8),
-            rects(&parcel, 21, 13),
-            rects(&arrow, 23, 3),
-            rects(&["w".to_string()], 21, 6)
-                + &rects(&["w".to_string()], 32, 4)
-                + &rects(&["w".to_string()], 19, 12)
-        )
-    })
-}
-
-/// A cat sitting by a parcel, for whatever is being brought up to date.
-#[component]
-pub fn UpdateCat() -> Element {
-    rsx! {
-        svg {
-            class: "upd-cat",
-            width: "180",
-            height: "110",
-            view_box: "0 0 36 22",
-            role: "img",
-            "aria-label": "A cat with a parcel",
-            dangerous_inner_html: "{scene_markup()}",
-        }
-    }
-}
 
 // ---- starting an update --------------------------------------------------------
 
@@ -157,7 +59,7 @@ fn start_update(state: AppState, update: Update) {
 /// Close the offer. With `skip`, this version is not offered again.
 fn close(state: AppState, version: &str, skip: bool) {
     if skip {
-        let mut settings = state.settings;
+        let mut settings = state.ui.settings;
         settings.write().update_skipped = version.to_string();
         state.save_settings();
         info!("Update {version} skipped");
@@ -293,7 +195,7 @@ pub fn UpdateDialogHost() -> Element {
 pub async fn check_at_startup(state: AppState) {
     tokio::time::sleep(Duration::from_secs(8)).await;
     {
-        let s = state.settings.peek();
+        let s = state.ui.settings.peek();
         if s.setup_step != library::SetupStep::Done
             || !updates::check_due(s.update_check, s.update_last_check, now_secs())
         {
@@ -302,14 +204,14 @@ pub async fn check_at_startup(state: AppState) {
     }
     match updates::check().await {
         Ok(found) => {
-            let mut settings = state.settings;
+            let mut settings = state.ui.settings;
             settings.write().update_last_check = now_secs();
             state.save_settings();
             let Some(update) = found else {
                 info!("Update check: this is the newest version");
                 return;
             };
-            if !updates::offer_unasked(&update.version, &state.settings.peek().update_skipped) {
+            if !updates::offer_unasked(&update.version, &state.ui.settings.peek().update_skipped) {
                 info!("Update check: {} is out, and was skipped", update.version);
                 return;
             }
@@ -318,7 +220,7 @@ pub async fn check_at_startup(state: AppState) {
             for _ in 0..40 {
                 let busy = state.queue.peek().running().is_some()
                     || state.job.peek().as_ref().is_some_and(|j| j.result.is_none())
-                    || state.settings.peek().setup_step != library::SetupStep::Done;
+                    || state.ui.settings.peek().setup_step != library::SetupStep::Done;
                 if !busy {
                     offer(state, update);
                     return;

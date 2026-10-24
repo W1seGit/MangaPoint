@@ -30,6 +30,28 @@ pub fn set_output(state: AppState, output: library::OutputFormat) {
     set_output_of(state, &ids, |_| output);
 }
 
+/// Make every series of the export colour (or, with `black_and_white`, gray
+/// pages) where its reader and format allow it, and draw the preview again.
+/// Series made as XTC or XTCH keep the choice but never use it.
+pub fn set_black_and_white(state: AppState, black_and_white: bool) {
+    let mut library = state.library;
+    for id in export_series_ids(state) {
+        let Some(series) = state.library.peek().find(&id).cloned() else {
+            continue;
+        };
+        let mut settings = series.settings.clone();
+        settings.black_and_white = black_and_white;
+        let preset = series
+            .preset_id
+            .as_ref()
+            .and_then(|p| state.presets.peek().find(p))
+            .map(|e| e.preset.settings);
+        library.write().set_settings(&id, settings, preset.as_ref());
+    }
+    state.save_library();
+    schedule_preview(state, 0);
+}
+
 /// The series on the Export screen.
 fn export_series_ids(state: AppState) -> Vec<String> {
     state
@@ -71,7 +93,11 @@ fn set_output_of(
 /// for a Kindle that takes only EPUB, say), switch it to the first thing the
 /// reader does. Returns whether anything was changed.
 pub fn fit_output_to_reader(state: AppState) -> bool {
-    let setup = state.settings.peek().reader_setup();
+    // A phone or tablet takes the pages as they are: there is no format to fit.
+    if device_profiles::is_original(&state.ui.settings.peek().device) {
+        return false;
+    }
+    let setup = state.ui.settings.peek().reader_setup();
     let listed = |o: library::OutputFormat| setup.formats.iter().any(|f| f.eq_ignore_ascii_case(o.label()));
     let Some(first) = library::OutputFormat::ALL.into_iter().find(|o| listed(*o)) else {
         return false;
@@ -124,7 +150,7 @@ pub fn delete_preset(state: AppState, id: String) {
                 }
             }
             state.save_library();
-            let mut settings = state.settings;
+            let mut settings = state.ui.settings;
             if settings.peek().default_preset_id.as_deref() == Some(&id) {
                 settings.write().default_preset_id = None;
                 state.save_settings();
@@ -156,7 +182,7 @@ pub fn PresetPicker(
     let mut naming = use_signal(|| false);
     let mut name = use_signal(String::new);
     let mut error = use_signal(|| None::<String>);
-    let advanced = state.settings.read().advanced_conversion;
+    let advanced = state.ui.settings.read().advanced_conversion;
 
     let entries = state.presets.read().all();
     let current = preset_id

@@ -2,30 +2,14 @@
 
 use std::rc::Rc;
 
+pub use mangapoint_ui::logic::preview::Zoom;
+
 /// A rendered page as a data URL.
 #[derive(Clone, PartialEq)]
 pub struct Shot {
     pub url: String,
     pub width: u32,
     pub height: u32,
-}
-
-/// How big the pages are drawn.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum Zoom {
-    /// As large as fits without scrolling.
-    #[default]
-    Fit,
-    /// As wide as the space allows; scroll down for the rest.
-    Width,
-    /// A percentage of the device's own size: 100 is one screen pixel for
-    /// each pixel of the reader.
-    Custom(u16),
-}
-
-impl Zoom {
-    pub const MIN_PERCENT: u16 = 25;
-    pub const MAX_PERCENT: u16 = 400;
 }
 
 /// Preview display choices that are not conversion settings.

@@ -50,6 +50,11 @@ pub struct DeviceProfile {
     /// of your own.
     #[cfg_attr(feature = "serde", serde(default))]
     pub maker: String,
+    /// The screen shows colour. Only an EPUB or CBZ can carry it to the reader
+    /// (XTC and XTCH are gray). Settings files from before this was known have
+    /// no such field, which means a gray screen.
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub color: bool,
     /// How many grays the screen shows: 4 on the Xteink readers, 16 on most others.
     #[cfg_attr(feature = "serde", serde(default = "default_grays"))]
     pub gray_levels: u8,
@@ -112,6 +117,8 @@ pub struct KnownInfo {
     pub crosspoint: bool,
     /// Something worth knowing about getting files onto it.
     pub note: &'static str,
+    /// Whether the screen shows colour (a Kaleido or Gallery panel).
+    pub color: bool,
 }
 
 struct Entry {
@@ -134,6 +141,7 @@ const fn entry(
     formats: &'static [&'static str],
     crosspoint: bool,
     note: &'static str,
+    color: bool,
 ) -> Entry {
     Entry {
         id,
@@ -148,6 +156,7 @@ const fn entry(
             formats,
             crosspoint,
             note,
+            color,
         },
     }
 }
@@ -155,35 +164,41 @@ const fn entry(
 /// The readers the app knows, with the screen sizes and densities their makers
 /// publish. The Xteink readers come first. Sizes are portrait, in pixels.
 const KNOWN: &[Entry] = &[
-    entry("xteink-x4-pro", "Xteink", "Xteink X4 Pro", (480, 800, 220, 4.3), 4, &["XTC", "XTCH", "EPUB"], true, ""),
-    entry("xteink-x4", "Xteink", "Xteink X4", (480, 800, 220, 4.3), 4, &["XTC", "XTCH", "EPUB"], true, ""),
-    entry("xteink-x3", "Xteink", "Xteink X3", (528, 792, 256, 3.7), 4, &["XTC", "XTCH", "EPUB"], true, ""),
-    entry("kindle-paperwhite-12", "Amazon", "Kindle Paperwhite (12th gen)", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kindle-paperwhite-11", "Amazon", "Kindle Paperwhite (11th gen)", (1236, 1648, 300, 6.8), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kindle-paperwhite-10", "Amazon", "Kindle Paperwhite (10th gen)", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kindle-11", "Amazon", "Kindle (11th gen, 2022)", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kindle-10", "Amazon", "Kindle (10th gen, 2019)", (600, 800, 167, 6.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kindle-oasis-3", "Amazon", "Kindle Oasis (3rd gen)", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kindle-scribe", "Amazon", "Kindle Scribe", (1860, 2480, 300, 10.2), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work."),
-    entry("kobo-clara-bw", "Rakuten Kobo", "Kobo Clara BW", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("kobo-clara-colour", "Rakuten Kobo", "Kobo Clara Colour", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("kobo-clara-2e", "Rakuten Kobo", "Kobo Clara 2E", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("kobo-libra-2", "Rakuten Kobo", "Kobo Libra 2", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("kobo-libra-colour", "Rakuten Kobo", "Kobo Libra Colour", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("kobo-sage", "Rakuten Kobo", "Kobo Sage", (1440, 1920, 300, 8.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("kobo-elipsa-2e", "Rakuten Kobo", "Kobo Elipsa 2E", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
-    entry("kobo-nia", "Rakuten Kobo", "Kobo Nia", (758, 1024, 212, 6.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("boox-palma", "Onyx Boox", "Boox Palma", (824, 1648, 300, 6.13), 16, &["EPUB", "CBZ"], false, ""),
-    entry("boox-go-6", "Onyx Boox", "Boox Go 6", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("boox-page", "Onyx Boox", "Boox Page", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("boox-go-10-3", "Onyx Boox", "Boox Go 10.3", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
-    entry("boox-note-air3", "Onyx Boox", "Boox Note Air3", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
-    entry("boox-tab-ultra", "Onyx Boox", "Boox Tab Ultra", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, ""),
-    entry("pocketbook-verse", "PocketBook", "PocketBook Verse", (758, 1024, 212, 6.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("pocketbook-verse-pro", "PocketBook", "PocketBook Verse Pro", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("pocketbook-era", "PocketBook", "PocketBook Era", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, ""),
-    entry("pocketbook-inkpad-4", "PocketBook", "PocketBook InkPad 4", (1404, 1872, 300, 7.8), 16, &["EPUB", "CBZ"], false, ""),
-    entry("remarkable-2", "reMarkable", "reMarkable 2", (1404, 1872, 226, 10.3), 16, &["EPUB"], false, ""),
+    entry("xteink-x4-pro", "Xteink", "Xteink X4 Pro", (480, 800, 220, 4.3), 4, &["XTC", "XTCH", "EPUB"], true, "", false),
+    entry("xteink-x4", "Xteink", "Xteink X4", (480, 800, 220, 4.3), 4, &["XTC", "XTCH", "EPUB"], true, "", false),
+    entry("xteink-x3", "Xteink", "Xteink X3", (528, 792, 256, 3.7), 4, &["XTC", "XTCH", "EPUB"], true, "", false),
+    entry("kindle-paperwhite-12", "Amazon", "Kindle Paperwhite (12th gen)", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", false),
+    entry("kindle-colorsoft", "Amazon", "Kindle Colorsoft", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", true),
+    entry("kindle-paperwhite-11", "Amazon", "Kindle Paperwhite (11th gen)", (1236, 1648, 300, 6.8), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", false),
+    entry("kindle-paperwhite-10", "Amazon", "Kindle Paperwhite (10th gen)", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", false),
+    entry("kindle-11", "Amazon", "Kindle (11th gen, 2022)", (1072, 1448, 300, 6.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", false),
+    entry("kindle-10", "Amazon", "Kindle (10th gen, 2019)", (600, 800, 167, 6.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", false),
+    entry("kindle-oasis-3", "Amazon", "Kindle Oasis (3rd gen)", (1264, 1680, 300, 7.0), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", false),
+    entry("kindle-scribe", "Amazon", "Kindle Scribe", (1860, 2480, 300, 10.2), 16, &["EPUB"], false, "Kindles open EPUB files sent with Send to Kindle (the app or e-mail); copying one over USB does not work.", false),
+    entry("kobo-clara-bw", "Rakuten Kobo", "Kobo Clara BW", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("kobo-clara-colour", "Rakuten Kobo", "Kobo Clara Colour", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, "", true),
+    entry("kobo-clara-2e", "Rakuten Kobo", "Kobo Clara 2E", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("kobo-libra-2", "Rakuten Kobo", "Kobo Libra 2", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("kobo-libra-colour", "Rakuten Kobo", "Kobo Libra Colour", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, "", true),
+    entry("kobo-sage", "Rakuten Kobo", "Kobo Sage", (1440, 1920, 300, 8.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("kobo-elipsa-2e", "Rakuten Kobo", "Kobo Elipsa 2E", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("kobo-nia", "Rakuten Kobo", "Kobo Nia", (758, 1024, 212, 6.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("boox-palma", "Onyx Boox", "Boox Palma", (824, 1648, 300, 6.13), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("boox-go-6", "Onyx Boox", "Boox Go 6", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("boox-page", "Onyx Boox", "Boox Page", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("boox-go-color-7-2", "Onyx Boox", "Boox Go Color 7 (Gen II)", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, "", true),
+    entry("boox-palma-2-pro", "Onyx Boox", "Boox Palma 2 Pro", (824, 1648, 300, 6.13), 16, &["EPUB", "CBZ"], false, "", true),
+    entry("boox-go-10-3", "Onyx Boox", "Boox Go 10.3", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("boox-note-air3", "Onyx Boox", "Boox Note Air3", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("boox-tab-ultra", "Onyx Boox", "Boox Tab Ultra", (1404, 1872, 227, 10.3), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("boox-tab-ultra-c-pro", "Onyx Boox", "Boox Tab Ultra C Pro", (1860, 2480, 300, 10.3), 16, &["EPUB", "CBZ"], false, "", true),
+    entry("boox-note-air3-c", "Onyx Boox", "Boox Note Air3 C", (1860, 2480, 300, 10.3), 16, &["EPUB", "CBZ"], false, "", true),
+    entry("pocketbook-verse", "PocketBook", "PocketBook Verse", (758, 1024, 212, 6.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("pocketbook-verse-pro", "PocketBook", "PocketBook Verse Pro", (1072, 1448, 300, 6.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("pocketbook-era", "PocketBook", "PocketBook Era", (1264, 1680, 300, 7.0), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("pocketbook-inkpad-4", "PocketBook", "PocketBook InkPad 4", (1404, 1872, 300, 7.8), 16, &["EPUB", "CBZ"], false, "", false),
+    entry("pocketbook-inkpad-color-3", "PocketBook", "PocketBook InkPad Color 3", (1404, 1872, 300, 7.8), 16, &["EPUB", "CBZ"], false, "", true),
+    entry("remarkable-2", "reMarkable", "reMarkable 2", (1404, 1872, 226, 10.3), 16, &["EPUB"], false, "", false),
 ];
 
 fn profile_of(e: &Entry) -> DeviceProfile {
@@ -207,6 +222,7 @@ fn profile_of(e: &Entry) -> DeviceProfile {
         ppi: e.ppi,
         maker: e.info.maker.into(),
         gray_levels: e.grays,
+        color: e.info.color,
         builtin: true,
         support,
     }
@@ -314,6 +330,7 @@ impl DeviceProfile {
             ppi: DEFAULT_PPI,
             maker: String::new(),
             gray_levels: 16,
+            color: false,
             builtin: false,
             support: SupportTable::UNKNOWN,
         };
@@ -365,9 +382,39 @@ impl DeviceProfile {
     }
 }
 
-/// Find one of the user's readers.
+/// Find one of the user's readers (or the built-in "phone or tablet", which is
+/// not a reader to make pages for but a way to keep them as they are).
 pub fn find(id: &str, custom: &[DeviceProfile]) -> Option<DeviceProfile> {
+    if id == PHONE_ORIGINAL_ID {
+        return Some(phone_original());
+    }
     all(custom).into_iter().find(|p| p.id == id)
+}
+
+/// The id of the built-in "Phone or tablet" entry in the list of readers.
+pub const PHONE_ORIGINAL_ID: &str = "phone-original";
+
+/// A phone or a tablet: files are made from the pages exactly as they were
+/// saved, in color, with no e-ink processing. It has no screen to make pages
+/// for, so the size is only a placeholder.
+pub fn phone_original() -> DeviceProfile {
+    DeviceProfile {
+        id: PHONE_ORIGINAL_ID.into(),
+        name: "Phone or tablet · original quality".into(),
+        width: 1080,
+        height: 1920,
+        ppi: 400,
+        maker: String::new(),
+        gray_levels: 255,
+        color: true,
+        builtin: true,
+        support: SupportTable::UNKNOWN,
+    }
+}
+
+/// Is this the "Phone or tablet · original quality" entry?
+pub fn is_original(id: &str) -> bool {
+    id == PHONE_ORIGINAL_ID
 }
 
 /// Every reader the user has.
@@ -496,6 +543,47 @@ mod tests {
     }
 
     #[test]
+    fn exactly_the_colour_readers_are_marked_as_colour() {
+        // Written out in full so that no edit can flip one without this failing.
+        let expected = [
+            "boox-go-color-7-2",
+            "boox-note-air3-c",
+            "boox-palma-2-pro",
+            "boox-tab-ultra-c-pro",
+            "kindle-colorsoft",
+            "kobo-clara-colour",
+            "kobo-libra-colour",
+            "pocketbook-inkpad-color-3",
+        ];
+        let mut found: Vec<String> = builtin().into_iter().filter(|p| p.color).map(|p| p.id).collect();
+        found.sort();
+        assert_eq!(found, expected);
+        for id in expected {
+            assert!(known_info(id).unwrap().color, "{id}");
+            // A colour reader opens at least one format that can carry colour.
+            let formats = known_info(id).unwrap().formats;
+            assert!(formats.contains(&"EPUB") || formats.contains(&"CBZ"), "{id}");
+        }
+        // The Xteink readers and the other makers' gray models are not.
+        for id in [X4_ID, X4_PRO_ID, X3_ID, "kindle-paperwhite-12", "kobo-clara-bw", "boox-palma", "pocketbook-era", "remarkable-2"] {
+            assert!(!known(id).unwrap().color, "{id}");
+        }
+        assert!(!DeviceProfile::custom(&[], "Mine", 600, 800).unwrap().color);
+    }
+
+    #[test]
+    fn the_new_colour_readers_have_the_sizes_their_makers_give() {
+        let size = |id: &str| known(id).map(|p| (p.width, p.height, p.ppi));
+        assert_eq!(size("kindle-colorsoft"), Some((1264, 1680, 300)));
+        assert_eq!(size("boox-go-color-7-2"), Some((1264, 1680, 300)));
+        assert_eq!(size("boox-palma-2-pro"), Some((824, 1648, 300)));
+        assert_eq!(size("boox-tab-ultra-c-pro"), Some((1860, 2480, 300)));
+        assert_eq!(size("boox-note-air3-c"), Some((1860, 2480, 300)));
+        assert_eq!(size("pocketbook-inkpad-color-3"), Some((1404, 1872, 300)));
+        assert_eq!(known_info("kindle-colorsoft").unwrap().formats, ["EPUB"]);
+    }
+
+    #[test]
     fn screens_are_described_in_inches() {
         let (w, h) = x4_pro().size_inches();
         assert_eq!((format!("{w:.2}"), format!("{h:.2}")), ("2.18".into(), "3.64".into()));
@@ -558,5 +646,14 @@ mod tests {
         assert_eq!(legacy_id("XteinkX4Pro"), Some(X4_PRO_ID));
         assert_eq!(legacy_id("XteinkX4"), Some(X4_ID));
         assert_eq!(legacy_id("other"), None);
+    }
+
+    #[test]
+    fn the_phone_entry_is_found_by_id_but_is_not_one_of_the_readers_to_add() {
+        let p = find(PHONE_ORIGINAL_ID, &[]).unwrap();
+        assert!(is_original(&p.id) && p.builtin);
+        assert!(p.name.contains("original quality"));
+        assert!(builtin().iter().all(|d| d.id != PHONE_ORIGINAL_ID));
+        assert!(all(&[]).is_empty());
     }
 }

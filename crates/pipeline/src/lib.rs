@@ -16,18 +16,22 @@ pub mod epub;
 pub mod error;
 pub mod export;
 pub mod fetch;
+pub mod import;
 pub mod limiter;
 pub mod options;
+pub mod original;
+pub mod pdf;
 pub mod plan;
 pub mod preview;
 pub mod probe;
 pub mod types;
 
 pub use compose::{export_series, sweep_spool, ExportJob, ExportOutcome, Grouping};
-pub use download::{download_chapters, DownloadOutcome};
+pub use download::{download_chapters, download_chapters_as, DownloadOutcome};
 pub use error::PipelineError;
 pub use export::{ExportTarget, ExportedFile};
 pub use fetch::RetryPolicy;
+pub use original::{OriginalExport, OriginalFormat};
 pub use limiter::Limiter;
 pub use options::{process_options, process_options_for};
 pub use plan::{
@@ -38,6 +42,7 @@ pub use preview::{
     render_source_whole,
 };
 pub use preview::{
+    color_to_preview, color_to_thumbnail, draw_color_page, prepare_chapter_color, ColorPageDraw,
     decode_page, levels_to_previews, prepare_chapter, render_gray, render_levels, render_original,
     render_page, render_planned, render_strip_original, sample_page, ChapterPreview,
     OriginalPreview, PreviewImage, RenderedPage,

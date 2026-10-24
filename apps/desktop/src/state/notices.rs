@@ -1,24 +1,7 @@
-//! Toasts and confirmation dialogs.
+//! Confirmation dialogs. (The toasts are shared with the website: `mangapoint_ui::host`.)
 
-use super::{spawn_forever, AppState};
+use super::AppState;
 use dioxus::prelude::*;
-
-#[derive(Clone, PartialEq, Debug)]
-pub struct Toast {
-    pub id: u64,
-    pub kind: ToastKind,
-    pub text: String,
-    /// On its way out: it slides off and is then taken away.
-    pub leaving: bool,
-}
-
-/// What a toast says: it worked, something to know, or it failed.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum ToastKind {
-    Success,
-    Warning,
-    Error,
-}
 
 /// What a confirmation dialog does when accepted.
 #[derive(Clone, PartialEq, Debug)]
@@ -90,77 +73,18 @@ pub struct Modal {
 impl AppState {
     /// Something worked.
     pub fn notify(&self, text: impl Into<String>) {
-        let text = text.into();
-        tracing::info!("{text}");
-        self.show_toast(ToastKind::Success, text);
+        self.ui.notify(text);
     }
 
     /// Something to know, that is not a failure.
     #[allow(dead_code)]
     pub fn warn(&self, text: impl Into<String>) {
-        let text = text.into();
-        tracing::warn!("{text}");
-        self.show_toast(ToastKind::Warning, text);
+        self.ui.warn(text);
     }
 
     /// Something failed.
     pub fn error(&self, text: impl Into<String>) {
-        let text = text.into();
-        tracing::warn!("{text}");
-        self.show_toast(ToastKind::Error, text);
-    }
-
-    /// Put a toast on the stack, and take it away again after a while (longer
-    /// for the ones that went wrong; never while the pointer is over them).
-    fn show_toast(&self, kind: ToastKind, text: String) {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let mut toasts = self.toasts;
-        {
-            let mut stack = toasts.write();
-            // The same message again replaces the one already there.
-            stack.retain(|t| !(t.text == text && t.kind == kind && !t.leaving));
-            stack.push(Toast {
-                id,
-                kind,
-                text,
-                leaving: false,
-            });
-            // Only the newest few are kept.
-            let extra = stack.len().saturating_sub(8);
-            stack.drain(..extra);
-        }
-        let seconds = match kind {
-            ToastKind::Success => 4,
-            ToastKind::Warning => 7,
-            ToastKind::Error => 10,
-        };
-        let this = *self;
-        spawn_forever(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
-            while *this.toasts_hovered.peek() {
-                tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-            }
-            this.dismiss_toast(id);
-        });
-    }
-
-    /// Slide a toast away, and remove it once it has gone.
-    pub fn dismiss_toast(&self, id: u64) {
-        let mut toasts = self.toasts;
-        {
-            let mut stack = toasts.write();
-            match stack.iter_mut().find(|t| t.id == id) {
-                Some(t) if !t.leaving => t.leaving = true,
-                _ => return,
-            }
-        }
-        let this = *self;
-        spawn_forever(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(340)).await;
-            let mut toasts = this.toasts;
-            toasts.write().retain(|t| t.id != id);
-        });
+        self.ui.error(text);
     }
 
     pub fn ask(&self, modal: Modal) {

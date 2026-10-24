@@ -17,6 +17,8 @@ pub struct ExportOpts {
     pub grouping: GroupingChoice,
     /// The "N" of "every N chapters", as typed.
     pub every_n: String,
+    /// What a phone or tablet gets: a CBZ or a PDF of the pages as they are.
+    pub original_format: pipeline::OriginalFormat,
 }
 
 impl Default for ExportOpts {
@@ -25,6 +27,7 @@ impl Default for ExportOpts {
             target: TargetChoice::Folder,
             grouping: GroupingChoice::Single,
             every_n: "10".into(),
+            original_format: pipeline::OriginalFormat::Cbz,
         }
     }
 }

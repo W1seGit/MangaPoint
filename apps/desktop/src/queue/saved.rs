@@ -23,6 +23,10 @@ pub(super) struct SavedBatch {
     failed: Vec<String>,
     added_at: u64,
     finished_at: u64,
+    #[serde(default)]
+    quality: Option<library::PageQuality>,
+    #[serde(default)]
+    replace: bool,
 }
 
 /// The queue as it is kept on disk, so a restart does not lose it.
@@ -58,6 +62,8 @@ impl DownloadQueue {
                     failed: b.failed.clone(),
                     added_at: b.added_at,
                     finished_at: b.finished_at,
+                    quality: b.quality,
+                    replace: b.replace,
                 })
                 .collect(),
             next_id: self.next_id,
@@ -98,6 +104,8 @@ impl DownloadQueue {
                 batch.skipped = b.skipped;
                 batch.failed = b.failed;
                 batch.finished_at = b.finished_at;
+                batch.quality = b.quality;
+                batch.replace = b.replace;
                 batch
             })
             .collect::<Vec<_>>();

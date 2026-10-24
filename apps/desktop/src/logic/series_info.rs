@@ -7,9 +7,26 @@ const COVER_MAX: (u32, u32) = (540, 810);
 /// Covers larger than this are shrunk when they are next read.
 pub const COVER_KEEP_BYTES: usize = 160 * 1024;
 
+/// The most bytes and pixels a picture may have to be shrunk into a cover (the
+/// pixel limit is the one the converter applies to pages): a bomb of a picture
+/// is refused from its header, before anything is allocated for it.
+const COVER_MAX_BYTES: usize = 64 * 1024 * 1024;
+const COVER_MAX_PIXELS: u64 = pipeline::import::MAX_PAGE_PIXELS;
+
 /// A cover as a small JPEG, to keep on disk instead of what the source sent.
-/// `None` if the bytes are not an image.
+/// `None` if the bytes are not an image, or are too large to be one.
 pub fn small_cover(bytes: &[u8]) -> Option<Vec<u8>> {
+    if bytes.len() > COVER_MAX_BYTES {
+        return None;
+    }
+    let (w, h) = image::ImageReader::new(std::io::Cursor::new(bytes))
+        .with_guessed_format()
+        .ok()?
+        .into_dimensions()
+        .ok()?;
+    if u64::from(w) * u64::from(h) > COVER_MAX_PIXELS {
+        return None;
+    }
     let img = image::load_from_memory(bytes).ok()?;
     let img = if img.width() > COVER_MAX.0 || img.height() > COVER_MAX.1 {
         img.resize(
@@ -153,5 +170,44 @@ mod tests {
             png.len()
         );
         assert!(small_cover(b"not an image").is_none());
+    }
+
+    /// A PNG that says it is `w` x `h` and has little else of a picture.
+    fn png_header_only(w: u32, h: u32) -> Vec<u8> {
+        fn crc32(data: &[u8]) -> u32 {
+            let mut crc = 0xffff_ffffu32;
+            for &byte in data {
+                crc ^= u32::from(byte);
+                for _ in 0..8 {
+                    crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+                }
+            }
+            !crc
+        }
+        let chunk = |kind: &[u8; 4], data: &[u8]| {
+            let mut out = (data.len() as u32).to_be_bytes().to_vec();
+            let mut body = kind.to_vec();
+            body.extend_from_slice(data);
+            out.extend_from_slice(&body);
+            out.extend(crc32(&body).to_be_bytes());
+            out
+        };
+        let mut ihdr = w.to_be_bytes().to_vec();
+        ihdr.extend(h.to_be_bytes());
+        ihdr.extend([8, 0, 0, 0, 0]);
+        let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+        out.extend(chunk(b"IHDR", &ihdr));
+        out.extend(chunk(b"IDAT", &[0x78, 0x9c]));
+        out
+    }
+
+    #[test]
+    fn a_picture_too_large_to_be_a_cover_is_refused_from_its_header() {
+        // 400 megapixels: it would be a gigabyte of pixels to decode for a thumbnail.
+        assert!(small_cover(&png_header_only(20_000, 20_000)).is_none());
+        // Over the byte limit, whatever it says it is.
+        let mut heavy = png_header_only(4, 4);
+        heavy.resize(COVER_MAX_BYTES + 1, 0);
+        assert!(small_cover(&heavy).is_none());
     }
 }

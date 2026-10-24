@@ -119,6 +119,13 @@ pub struct ConversionSettings {
     /// of the saved file while off, like `orientation`.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub guide_arrows: bool,
+    /// An EPUB or CBZ for a colour reader is made in colour unless this is
+    /// set: the user chose black and white. Kept (and ignored) when the book
+    /// is an XTC or XTCH, or the reader is not colour, so choosing those and
+    /// coming back does not lose it. Left out of the saved file while off, so
+    /// files from before colour existed load as "colour where it can be".
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub black_and_white: bool,
 }
 
 impl Default for ConversionSettings {
@@ -147,6 +154,7 @@ impl Default for ConversionSettings {
             zoom: PageZoom::Fit,
             zoom_mode: ZoomMode::Tile,
             guide_arrows: false,
+            black_and_white: false,
         }
     }
 }
@@ -222,6 +230,21 @@ impl ConversionSettings {
         self.epub || self.cbz
     }
 
+    /// Whether the colour choice applies at all: the book is an EPUB or CBZ
+    /// (the only formats that carry colour) and `device` shows colour. The
+    /// Export screen offers "Black & white | Color" exactly then.
+    pub fn offers_color(&self, device: &DeviceProfile) -> bool {
+        device.color && self.pictures()
+    }
+
+    /// Whether the pages of this book are kept in colour on `device`. This is
+    /// the one place that decides it, for the preview and the export alike:
+    /// never for an XTC or XTCH, never for a gray screen, and otherwise unless
+    /// the user chose black and white.
+    pub fn keeps_color(&self, device: &DeviceProfile) -> bool {
+        self.offers_color(device) && !self.black_and_white
+    }
+
     /// The settings in which `self` and `other` differ.
     pub fn differing(&self, other: &ConversionSettings) -> Vec<ConversionField> {
         ConversionField::ALL
@@ -292,6 +315,9 @@ pub struct DownloadLimits {
     /// Ask every source that has a chapter at once and keep the first to
     /// finish. `pages` is then the allowance of each source.
     pub race_sources: bool,
+    /// Keep a page's colour when it is shrunk to save space (an RGB JPEG
+    /// instead of a gray one). Pages kept as downloaded are untouched either way.
+    pub keep_color: bool,
 }
 
 impl DownloadLimits {
@@ -320,6 +346,11 @@ pub struct DownloadSettings {
     /// finish. Fastest per chapter, and chapters can then come from different
     /// translations. Off unless the user turns it on, in any speed.
     pub race_sources: bool,
+    /// Keep colour in the pages that are shrunk to save space ("Save" and
+    /// "Ultra save"), so a colour reader can show them in colour. Off, they
+    /// are saved as gray JPEGs, which are smaller. A page already saved gray
+    /// cannot get its colour back; download it again.
+    pub keep_color: bool,
 }
 
 impl Default for DownloadSettings {
@@ -330,6 +361,7 @@ impl Default for DownloadSettings {
             custom_pages: 24,
             spread_sources: false,
             race_sources: false,
+            keep_color: false,
         }
     }
 }
@@ -357,6 +389,7 @@ impl DownloadSettings {
             pages,
             spread_sources: self.spread_sources,
             race_sources: self.race_sources,
+            keep_color: self.keep_color,
         }
     }
 }
@@ -518,6 +551,11 @@ pub struct Settings {
     /// of the user's own. Files from before that did not have them yet.
     #[serde(default = "not_yet")]
     pub readers_listed: bool,
+    /// Whether the readers copied from the list of known ones were checked for
+    /// a colour screen, once. Readers added before colour was known have no
+    /// such mark, though the list says that (say) the Kobo Libra Colour has one.
+    #[serde(default = "not_yet")]
+    pub color_screens_checked: bool,
     /// The preset a device starts from, by device id.
     pub device_presets: BTreeMap<String, String>,
     pub firmware: Firmware,
@@ -539,6 +577,8 @@ pub struct Settings {
     pub update_skipped: String,
     /// Clean (fades, one part after another) or snappy (pages just appear).
     pub animations: Animations,
+    /// The reader's bars (chapter, settings, title) stay on screen instead of hiding while reading.
+    pub reader_bars_always: bool,
     /// How each reader receives files, by device id.
     pub reader_setups: BTreeMap<String, ReaderSetup>,
     /// How many chapters and pages to download at once.
@@ -588,6 +628,7 @@ impl Default for Settings {
             custom_devices: Vec::new(),
             setup_step: SetupStep::Engine,
             readers_listed: true,
+            color_screens_checked: true,
             device_presets: BTreeMap::new(),
             firmware: Firmware::CrossPoint,
             advanced_conversion: false,
@@ -600,6 +641,7 @@ impl Default for Settings {
             update_last_check: 0,
             update_skipped: String::new(),
             animations: Animations::Clean,
+            reader_bars_always: false,
             reader_setups: BTreeMap::new(),
             download: DownloadSettings::default(),
             library_dir: None,
@@ -633,9 +675,41 @@ impl Settings {
         device_profiles::all(&self.custom_devices)
     }
 
+    /// Readers the user added before colour screens were known are copies of
+    /// the list's readers without the mark: give a colour one its mark, once.
+    /// After that the mark is the user's to change (a reader form checkbox).
+    pub fn mark_color_readers(&mut self) {
+        if self.color_screens_checked {
+            return;
+        }
+        for device in &mut self.custom_devices {
+            if device_profiles::known(&device.id).is_some_and(|k| k.color) {
+                device.color = true;
+            }
+        }
+        self.color_screens_checked = true;
+    }
+
+    /// Whether new downloads keep the colour of the pages they shrink: the
+    /// user turned it on, or the reader in use has a colour screen (so Color
+    /// export is not silently gray with the default settings).
+    pub fn keeps_color_in_downloads(&self) -> bool {
+        self.download.keep_color || self.device_profile().color
+    }
+
+    /// What a download may do at once, with colour kept as
+    /// [`Settings::keeps_color_in_downloads`] says.
+    pub fn download_limits(&self) -> DownloadLimits {
+        DownloadLimits {
+            keep_color: self.keeps_color_in_downloads(),
+            ..self.download.limits()
+        }
+    }
+
     /// Settings from before readers were all the user's own: the three that
     /// used to be built in become theirs, once.
     pub fn list_old_readers(&mut self) {
+        self.mark_color_readers();
         if self.readers_listed {
             return;
         }
@@ -706,6 +780,117 @@ mod tests {
         let mut other = ConversionSettings::default();
         other.copy_field(&c, ConversionField::GuideArrows);
         assert!(other.guide_arrows);
+    }
+
+    #[test]
+    fn colour_is_offered_for_pictures_on_a_colour_screen_and_black_and_white_is_the_choice_not_to() {
+        let colour = device_profiles::known("kobo-libra-colour").unwrap();
+        let mono = device_profiles::known("kobo-libra-2").unwrap();
+        let xteink = device_profiles::x4_pro();
+        let mut c = ConversionSettings::default();
+        assert!(!c.black_and_white && !serde_json::to_string(&c).unwrap().contains("black"));
+        for (output, pictures) in [
+            (OutputFormat::Xtc, false),
+            (OutputFormat::Xtch, false),
+            (OutputFormat::Epub, true),
+            (OutputFormat::Cbz, true),
+        ] {
+            c.set_output(output);
+            // Colour by default, on a colour screen, in a format that carries it.
+            assert_eq!(c.offers_color(&colour), pictures, "{output:?}");
+            assert_eq!(c.keeps_color(&colour), pictures, "{output:?}");
+            // Never on a gray screen.
+            assert!(!c.offers_color(&mono) && !c.keeps_color(&mono), "{output:?}");
+            assert!(!c.keeps_color(&xteink), "{output:?}");
+        }
+        // Choosing black and white is kept when the format changes and back.
+        c.set_output(OutputFormat::Epub);
+        c.black_and_white = true;
+        assert!(c.offers_color(&colour) && !c.keeps_color(&colour));
+        c.set_output(OutputFormat::Xtc);
+        assert!(!c.keeps_color(&colour));
+        assert!(c.black_and_white, "the choice is ignored, not deleted");
+        c.set_output(OutputFormat::Cbz);
+        assert!(!c.keeps_color(&colour));
+        let saved = serde_json::to_string(&c).unwrap();
+        assert!(saved.contains("\"black_and_white\":true"), "{saved}");
+        let back: ConversionSettings = serde_json::from_str(&saved).unwrap();
+        assert!(back.black_and_white);
+        // Settings from before colour existed load as "colour where it can be".
+        let old: ConversionSettings = serde_json::from_str("{\"contrast\":60,\"epub\":true}").unwrap();
+        assert!(!old.black_and_white && old.keeps_color(&colour));
+    }
+
+    #[test]
+    fn settings_written_before_colour_still_load_and_known_colour_readers_are_marked_once() {
+        // A reader of the user's own, written before it had a colour mark.
+        let old = r#"{"device":"kobo-libra-colour","custom_devices":[
+            {"id":"kobo-libra-colour","name":"Kobo Libra Colour","width":1264,"height":1680,"ppi":300,"maker":"Rakuten Kobo","gray_levels":16},
+            {"id":"custom-mine","name":"Mine","width":600,"height":800}]}"#;
+        let mut s: Settings = serde_json::from_str(old).unwrap();
+        assert!(s.custom_devices.iter().all(|d| !d.color), "no mark in an old file means gray");
+        assert!(!s.color_screens_checked);
+        s.list_old_readers();
+        let by_id = |s: &Settings, id: &str| s.custom_devices.iter().find(|d| d.id == id).unwrap().color;
+        assert!(by_id(&s, "kobo-libra-colour"), "the list says it is a colour screen");
+        assert!(!by_id(&s, "custom-mine"), "a reader of the user's own is theirs to mark");
+        // Once: unticking the box is not undone at the next start.
+        s.custom_devices.iter_mut().find(|d| d.id == "kobo-libra-colour").unwrap().color = false;
+        s.list_old_readers();
+        assert!(!by_id(&s, "kobo-libra-colour"));
+        // The mark is saved and read back; new settings need no check.
+        s.custom_devices.iter_mut().find(|d| d.id == "custom-mine").unwrap().color = true;
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        let marks = |s: &Settings| s.custom_devices.iter().map(|d| (d.id.clone(), d.color)).collect::<Vec<_>>();
+        assert_eq!(marks(&back), marks(&s));
+        assert!(Settings::default().color_screens_checked);
+        // And a file with none of the new fields at all.
+        let bare: Settings = serde_json::from_str("{\"language\":\"ja\"}").unwrap();
+        assert!(!bare.download.keep_color && !bare.conversion.black_and_white);
+    }
+
+    #[test]
+    fn downloads_keep_colour_when_asked_or_while_a_colour_reader_is_in_use() {
+        let mut s = Settings::default();
+        // Nobody chosen: the fallback reader is gray, and the switch is off.
+        assert!(!s.keeps_color_in_downloads() && !s.download_limits().keep_color);
+        let add = |s: &mut Settings, id: &str| {
+            let reader = device_profiles::known(id).unwrap();
+            s.custom_devices.push(reader);
+            s.device = id.to_string();
+        };
+        add(&mut s, "kobo-libra-2");
+        assert!(!s.keeps_color_in_downloads(), "a gray reader keeps the switch's value");
+        add(&mut s, "kobo-libra-colour");
+        assert!(s.keeps_color_in_downloads() && s.download_limits().keep_color);
+        assert!(!s.download.keep_color, "the switch itself is not changed");
+        // Back to a gray reader: off again, unless the switch is on.
+        s.device = "kobo-libra-2".into();
+        assert!(!s.keeps_color_in_downloads());
+        s.download.keep_color = true;
+        assert!(s.keeps_color_in_downloads() && s.download_limits().keep_color);
+        // The rest of the limits are the usual ones.
+        let plain = DownloadSettings::default().limits();
+        let mut mine = Settings::default();
+        mine.download.keep_color = true;
+        assert_eq!((mine.download_limits().chapters, mine.download_limits().pages), (plain.chapters, plain.pages));
+        // A colour reader the user unmarked is a gray reader.
+        add(&mut s, "kobo-clara-colour");
+        s.download.keep_color = false;
+        s.custom_devices.last_mut().unwrap().color = false;
+        assert!(!s.keeps_color_in_downloads());
+    }
+
+    #[test]
+    fn keeping_colour_in_downloads_is_off_by_default_and_reaches_the_download_limits() {
+        let mut d = DownloadSettings::default();
+        assert!(!d.keep_color && !d.limits().keep_color);
+        let old: DownloadSettings = serde_json::from_str("{\"speed\":\"Fast\"}").unwrap();
+        assert!(!old.keep_color);
+        d.keep_color = true;
+        assert!(d.limits().keep_color);
+        let back: DownloadSettings = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+        assert!(back.keep_color);
     }
 
     #[test]
@@ -785,6 +970,7 @@ mod tests {
             pages,
             spread_sources: false,
             race_sources: false,
+            keep_color: false,
         };
         let mut d = DownloadSettings::default();
         assert_eq!(

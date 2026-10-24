@@ -212,7 +212,7 @@ pub fn ensure_sample(state: AppState) -> String {
     }
     if state.library.peek().find(&id).is_none() {
         let (defaults, preset) = {
-            let s = state.settings.peek();
+            let s = state.ui.settings.peek();
             (s.conversion.clone(), s.default_preset_id.clone())
         };
         let chapter = DownloadedChapter {
@@ -224,6 +224,7 @@ pub fn ensure_sample(state: AppState) -> String {
             pages: pages.len(),
             bytes,
             downloaded_at: now_secs(),
+            quality: None,
         };
         let mut library = state.library;
         {

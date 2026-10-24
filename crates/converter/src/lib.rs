@@ -21,7 +21,7 @@ pub mod xtc;
 pub const CONVERTER_REV: u32 = 1;
 
 pub use dither::{quantize, Dither};
-pub use gray::{Depth, GrayImage, ImageError, LevelImage};
+pub use gray::{ColorImage, Depth, GrayImage, ImageError, LevelImage};
 pub use plan::{ChapterPlan, PlannedPage, Prepared, Source};
 pub use process::{
     crop_bounds, process_page, CropMode, Layout, Margins, ProcessOptions, SpreadMode, StripCut,
@@ -29,3 +29,5 @@ pub use process::{
 
 #[cfg(test)]
 mod reference;
+#[cfg(test)]
+mod color_tests;

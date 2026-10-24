@@ -3,7 +3,7 @@
 use super::{active_series, Panel};
 use crate::logic::{self, TargetChoice};
 use crate::state::{AppState, GroupingChoice};
-use crate::ui::devices::ReaderPicker;
+use crate::ui::readers::ReaderPicker;
 use crate::ui::presets;
 use crate::ui::widgets::{pick_folder, Help, Icon};
 use dioxus::prelude::*;
@@ -22,7 +22,7 @@ fn adopt_found(state: AppState, found: &[pipeline::export::Drive], chosen_is_the
     }
     if let Some(drive) = found.first() {
         let mount = drive.mount.clone();
-        let mut settings = state.settings;
+        let mut settings = state.ui.settings;
         settings.write().update_reader_setup(|r| r.reader_dir = Some(mount));
         state.save_settings();
     }
@@ -36,7 +36,7 @@ async fn look_for_reader(
     mut drives: Signal<Vec<pipeline::export::Drive>>,
     mut place_there: Signal<bool>,
 ) {
-    let chosen = state.settings.peek().reader_setup().reader_dir.clone();
+    let chosen = state.ui.settings.peek().reader_setup().reader_dir.clone();
     let looked = tokio::task::spawn_blocking(move || {
         let there = chosen.as_ref().is_some_and(|d| d.exists());
         (removable_drives(), there, chosen.is_none())
@@ -100,6 +100,14 @@ fn format_help(output: OutputFormat) -> &'static str {
     }
 }
 
+/// What a format of the pages-as-they-are books is.
+fn original_format_help(format: pipeline::OriginalFormat) -> &'static str {
+    match format {
+        pipeline::OriginalFormat::Cbz => "A comic book archive of the pages exactly as downloaded, in color, with the series, author, genres, reading direction and chapters. Comic readers on phones and tablets open it.",
+        pipeline::OriginalFormat::Pdf => "One PDF of the pages exactly as downloaded, in color, each page the size of its picture, with a list of chapters. Any phone, tablet or computer opens it. JPEG pages go in untouched.",
+    }
+}
+
 #[component]
 pub(super) fn SendPanel() -> Element {
     let state = use_context::<AppState>();
@@ -119,7 +127,7 @@ pub(super) fn SendPanel() -> Element {
         }
     });
     // A new place chosen for the reader is checked at once, not at the next look.
-    let chosen_place = use_memo(move || state.settings.read().reader_setup().reader_dir.clone());
+    let chosen_place = use_memo(move || state.ui.settings.read().reader_setup().reader_dir.clone());
     use_effect(move || {
         let _ = chosen_place();
         if matches!(state.export_opts.peek().target, TargetChoice::Usb) {
@@ -129,7 +137,7 @@ pub(super) fn SendPanel() -> Element {
     let mut testing = use_signal(|| false);
     let mut choosing = use_signal(|| false);
     let opts = state.export_opts.read().clone();
-    let settings = state.settings.read().clone();
+    let settings = state.ui.settings.read().clone();
     let mut export_opts = state.export_opts;
     let folder = settings
         .export
@@ -158,14 +166,14 @@ pub(super) fn SendPanel() -> Element {
     // loaded with a preset made for another reader), it switches to the first
     // that is.
     use_effect(move || {
-        let _ = state.settings.read().reader_setup().formats.len();
+        let _ = state.ui.settings.read().reader_setup().formats.len();
         let _ = state.export_plan.read().items.len();
         let _ = state.library.read();
         presets::fit_output_to_reader(state);
     });
     // Another reader may not take the way that was chosen: follow what it does take.
     use_effect(move || {
-        let setup = state.settings.read().reader_setup();
+        let setup = state.ui.settings.read().reader_setup();
         let target = state.export_opts.read().target.clone();
         let fixed = match target {
             TargetChoice::Usb if !setup.usb => Some(TargetChoice::WiFi),
@@ -183,6 +191,12 @@ pub(super) fn SendPanel() -> Element {
     // What the book is made as, and which of the three the reader lists.
     let current_output = active_series(state).map_or(OutputFormat::Xtc, |s| s.settings.output());
     let reader_formats = setup.formats.clone();
+    // "Black & white | Color": only for a colour reader and an EPUB or CBZ.
+    let color_choice = active_series(state)
+        .and_then(|s| logic::color_choice(&s.settings, &state.ui.settings.read().device_profile()));
+    // A phone or tablet takes the pages as they are, in a CBZ or a PDF.
+    let phone = device_profiles::is_original(&settings.device);
+    let phone_format = opts.original_format;
 
     rsx! {
         Panel { title: "Send to", icon: "file-down", id: "send", height: 740,
@@ -214,7 +228,7 @@ pub(super) fn SendPanel() -> Element {
                             let start = Some(folder.clone());
                             spawn(async move {
                                 if let Some(dir) = pick_folder("Where should the files go?", start).await {
-                                    let mut s = state.settings;
+                                    let mut s = state.ui.settings;
                                     s.write().export.output_dir = Some(dir);
                                     state.save_settings();
                                 }
@@ -269,7 +283,7 @@ pub(super) fn SendPanel() -> Element {
                                                     button {
                                                         key: "{label}", class: "menu-item",
                                                         onclick: move |_| {
-                                                            let mut s = state.settings;
+                                                            let mut s = state.ui.settings;
                                                             s.write().update_reader_setup(|r| r.reader_dir = Some(mount.clone()));
                                                             state.save_settings();
                                                             choosing.set(false);
@@ -290,7 +304,7 @@ pub(super) fn SendPanel() -> Element {
                                                 let start = reader_dir.clone();
                                                 spawn(async move {
                                                     if let Some(dir) = pick_folder("Where is your reader?", start).await {
-                                                        let mut s = state.settings;
+                                                        let mut s = state.ui.settings;
                                                         s.write().update_reader_setup(|r| r.reader_dir = Some(dir));
                                                         state.save_settings();
                                                     }
@@ -324,7 +338,7 @@ pub(super) fn SendPanel() -> Element {
                                         class: "grow", r#type: "text", placeholder: "http://192.168.3.3", value: "{wifi_url}",
                                         onchange: move |e| {
                                             let v = e.value().trim().to_string();
-                                            let mut settings = state.settings;
+                                            let mut settings = state.ui.settings;
                                             settings.write().update_reader_setup(|r| r.wifi_url = (!v.is_empty()).then_some(v));
                                             state.save_settings();
                                         },
@@ -358,7 +372,7 @@ pub(super) fn SendPanel() -> Element {
                             onchange: move |e| {
                                 let v = e.value().trim().to_string();
                                 if !v.is_empty() {
-                                    let mut settings = state.settings;
+                                    let mut settings = state.ui.settings;
                                     settings.write().update_reader_setup(|r| r.folder = v);
                                     state.save_settings();
                                 }
@@ -372,6 +386,20 @@ pub(super) fn SendPanel() -> Element {
             // three if it lists none, so there is always something to pick). Each
             // has its explanation behind a question mark.
             div { class: "px-label", style: "margin-top: 16px", "Format" }
+            if phone {
+                div { class: "seg", id: "original-format", role: "group", "aria-label": "Format",
+                    for format in pipeline::OriginalFormat::ALL {
+                        button {
+                            key: "{format.label()}", id: "original-format-{format.extension()}",
+                            class: if format == phone_format { "on" } else { "" },
+                            "aria-pressed": "{format == phone_format}",
+                            onclick: move |_| export_opts.write().original_format = format,
+                            "{format.label()}"
+                            Help { text: original_format_help(format) }
+                        }
+                    }
+                }
+            } else {
             div { class: "seg",
                 for output in OutputFormat::ALL
                     .into_iter()
@@ -387,6 +415,31 @@ pub(super) fn SendPanel() -> Element {
                                 Help { text: format_help(output) }
                             }
                         }
+                    }
+                }
+            }
+            }
+
+            if let Some(in_color) = color_choice {
+                div { class: "px-label", style: "margin-top: 16px",
+                    "Pages"
+                    Help { text: "Color keeps each page in color, resized to your reader's screen with no tone changes, dithering or sharpening: the reader does the rest. Black & white makes the usual high-contrast gray pages. The preview shows the pages in color too. Pages saved earlier in black and white stay black and white; download them again to get color." }
+                }
+                div { class: "seg", role: "group", aria_label: "Page colors",
+                    button {
+                        class: if !in_color { "on" } else { "" },
+                        onclick: move |_| presets::set_black_and_white(state, true),
+                        "Black & white"
+                    }
+                    button {
+                        class: if in_color { "on" } else { "" },
+                        onclick: move |_| presets::set_black_and_white(state, false),
+                        "Color"
+                    }
+                }
+                if in_color {
+                    div { class: "muted small", style: "margin-top: 6px",
+                        "Pages saved earlier in black and white stay black and white. Download them again to get color."
                     }
                 }
             }

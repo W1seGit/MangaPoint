@@ -9,7 +9,7 @@ use crate::error::{PipelineError, Result};
 use converter::decode::decode_to_gray;
 use converter::process::resize;
 use converter::{
-    crop_bounds, process_page, ChapterPlan, GrayImage, LevelImage, PlannedPage, Prepared,
+    ColorImage, crop_bounds, process_page, ChapterPlan, GrayImage, LevelImage, PlannedPage, Prepared,
     ProcessOptions,
 };
 use image::{
@@ -653,5 +653,149 @@ fn shrunk_png(raw: GrayImage) -> PreviewImage {
         mime: "image/png",
         width: shown.width,
         height: shown.height,
+    }
+}
+
+// ---- Preview in colour -------------------------------------------------------
+//
+// When the export keeps colour (`ProcessOptions::color`), the preview draws the
+// same pages with `render_page_color`, so what is shown is what is written (the
+// export then saves them as JPEGs; here they are JPEGs too, at a quality that
+// is light enough to keep many on screen). Nothing here touches the gray
+// preview above.
+
+/// JPEG quality of the colour preview pages and thumbnails.
+const COLOR_PREVIEW_QUALITY: u8 = 88;
+
+fn color_jpeg(img: &ColorImage) -> PreviewImage {
+    let mut out = Vec::new();
+    JpegEncoder::new_with_quality(&mut out, COLOR_PREVIEW_QUALITY)
+        .write_image(&img.rgb, img.width, img.height, ExtendedColorType::Rgb8)
+        .expect("encoding an in-memory colour image cannot fail");
+    PreviewImage {
+        bytes: out,
+        mime: "image/jpeg",
+        width: img.width,
+        height: img.height,
+    }
+}
+
+/// The three channels of a colour picture, resized alike.
+fn resize_color(img: &ColorImage, w: u32, h: u32) -> ColorImage {
+    let channel = |k: usize| {
+        let pixels = img.rgb.as_chunks::<3>().0.iter().map(|p| p[k]).collect();
+        resize(&GrayImage::from_pixels(img.width, img.height, pixels).expect("sizes match"), w, h)
+    };
+    let (r, g, b) = (channel(0), channel(1), channel(2));
+    let mut rgb = Vec::with_capacity(r.pixels.len() * 3);
+    for ((r, g), b) in r.pixels.iter().zip(&g.pixels).zip(&b.pixels) {
+        rgb.extend([*r, *g, *b]);
+    }
+    ColorImage { width: w, height: h, rgb }
+}
+
+/// A converted colour page as the preview shows it.
+pub fn color_to_preview(img: &ColorImage) -> PreviewImage {
+    color_jpeg(img)
+}
+
+/// A small navigator image of a colour page, 160 pixels tall like the gray one.
+pub fn color_to_thumbnail(img: &ColorImage) -> PreviewImage {
+    let height = 160;
+    let width = (img.width as f64 * height as f64 / img.height as f64).round().max(1.0) as u32;
+    color_jpeg(&resize_color(img, width, height))
+}
+
+/// A source picture in colour, shrunk the way the gray ones are.
+fn shrunk_color(raw: ColorImage) -> PreviewImage {
+    let scale = (ORIGINAL_MAX_WIDTH as f64 / raw.width as f64)
+        .min(ORIGINAL_MAX_HEIGHT as f64 / raw.height as f64)
+        .min(1.0);
+    if scale < 1.0 {
+        let w = (raw.width as f64 * scale).round().max(1.0) as u32;
+        let h = (raw.height as f64 * scale).round().max(1.0) as u32;
+        color_jpeg(&resize_color(&raw, w, h))
+    } else {
+        color_jpeg(&raw)
+    }
+}
+
+/// Prepare and plan a chapter from its saved page files, in colour, the way the
+/// export does. The pages are decoded on a few threads and handed to the
+/// preparation, which lets each go as soon as its cut copy exists; nothing
+/// is kept but the prepared chapter, so the caller holds one chapter's three
+/// planes at most.
+pub fn prepare_chapter_color(
+    files: &[std::path::PathBuf],
+    opts: &ProcessOptions,
+    threads: usize,
+) -> Result<ChapterPreview> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+    type Planes = (GrayImage, [GrayImage; 2]);
+    let slots: Vec<Mutex<Option<Result<Planes>>>> = files.iter().map(|_| Mutex::new(None)).collect();
+    let next = AtomicUsize::new(0);
+    std::thread::scope(|scope| {
+        for _ in 0..threads.clamp(1, files.len().max(1)) {
+            scope.spawn(|| loop {
+                let i = next.fetch_add(1, Ordering::Relaxed);
+                let Some(path) = files.get(i) else { break };
+                let made = std::fs::read(path)
+                    .map_err(|e| PipelineError::Io(path.clone(), e))
+                    .and_then(|bytes| {
+                        converter::decode::decode_to_ycc(&bytes)
+                            .map_err(|e| PipelineError::Decode(e.to_string()))
+                    });
+                *slots[i].lock().expect("no panic holds the lock") = Some(made);
+            });
+        }
+    });
+    let mut planes = Vec::with_capacity(files.len());
+    for slot in slots {
+        planes.push(slot.into_inner().expect("no panic holds the lock").expect("every page was read")?);
+    }
+    let prepared = Arc::new(
+        converter::plan::prepare_owned_color(planes, opts, &|| false).expect("nothing cancels it"),
+    );
+    let plan = converter::plan::plan(&prepared, opts);
+    Ok(ChapterPreview { prepared, plan })
+}
+
+/// What the preview shows for one planned page of a colour chapter.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ColorPageDraw {
+    /// The converted page in full size, when asked for.
+    pub converted: Option<PreviewImage>,
+    pub thumbnail: PreviewImage,
+    /// The downloaded picture, whole, and where this page lies on it.
+    pub original: Option<(PreviewImage, Option<converter::plan::SourceRegion>)>,
+    /// The section of the picture a manual crop is measured on.
+    pub piece: Option<PreviewImage>,
+}
+
+/// Draw one page of a colour chapter, once, for everything the preview shows
+/// of it: `render_page_color` (with the manual `crop`) gives the thumbnail and,
+/// when `full`, the page itself; the source panes are the planes of the
+/// prepared chapter, in colour.
+pub fn draw_color_page(
+    prepared: &Prepared,
+    page: &PlannedPage,
+    opts: &ProcessOptions,
+    crop: [f32; 4],
+    full: bool,
+    want_original: bool,
+    want_piece: bool,
+) -> ColorPageDraw {
+    let drawn = converter::plan::render_page_color(prepared, page, opts, crop);
+    ColorPageDraw {
+        thumbnail: color_to_thumbnail(&drawn),
+        converted: full.then(|| color_to_preview(&drawn)),
+        original: want_original.then(|| {
+            (
+                shrunk_color(converter::plan::whole_source_color(prepared, page)),
+                converter::plan::source_region(prepared, page, opts),
+            )
+        }),
+        piece: want_piece.then(|| shrunk_color(converter::plan::page_source_color(prepared, page))),
     }
 }

@@ -23,7 +23,7 @@ pub fn SourcesPage() -> Element {
 
     let installed = use_resource(move || async move {
         let _ = state.sources_version.read();
-        let lang = state.settings.read().language.clone();
+        let lang = state.ui.settings.read().language.clone();
         let client = state.client()?;
         SourceManager::new(&*client).installed(&lang).await.ok()
     });
@@ -31,7 +31,7 @@ pub fn SourcesPage() -> Element {
     let now = now_secs();
     let health = state.health.read().clone();
     let testing = state.testing.read().clone();
-    let browser_on = state.settings.read().browser_support;
+    let browser_on = state.ui.settings.read().browser_support;
 
     let rows: Vec<Element> = match &*installed.read() {
         Some(Some(list)) => list
@@ -124,7 +124,7 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
     let mut filter = use_signal(String::new);
     let installed = use_resource(move || async move {
         let _ = state.sources_version.read();
-        let lang = state.settings.read().language.clone();
+        let lang = state.ui.settings.read().language.clone();
         let client = state.client()?;
         SourceManager::new(&*client).installed(&lang).await.ok()
     });
@@ -133,7 +133,7 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
         let client = state.client()?;
         client.fetch_extensions().await.ok()
     });
-    let lang = state.settings.read().language.clone();
+    let lang = state.ui.settings.read().language.clone();
     let query = filter.read().trim().to_lowercase();
     let candidates: Vec<catalog::Extension> = match &*available.read() {
         Some(Some(all)) if query.len() >= 2 => all
@@ -196,7 +196,7 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
                                         button {
                                             class: "btn primary small",
                                             onclick: move |_| {
-                                                if needs_browser && !state.settings.read().browser_support {
+                                                if needs_browser && !state.ui.settings.read().browser_support {
                                                     ask_enable_browser(state, Some(id.to_string()));
                                                 } else {
                                                     spawn_forever(async move {
@@ -447,7 +447,7 @@ fn log_test(name: &str, record: &library::TestRecord) {
 fn retest_all(state: AppState) {
     spawn_forever(async move {
         let Some(client) = state.client() else { return };
-        let lang = state.settings.read().language.clone();
+        let lang = state.ui.settings.read().language.clone();
         let Ok(installed) = SourceManager::new(&*client).installed(&lang).await else {
             return;
         };
