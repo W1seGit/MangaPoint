@@ -22,6 +22,8 @@ Do not copy a shared implementation into an app to change it.
 | `apps/web` | Browser shell/routes, library/import/export adapters, browser settings and bridge |
 | `web/js` | IndexedDB/OPFS, archive import, page URL lifetime, reader events, workers and browser APIs |
 
+The look (palette, type, figures, the dock and the corner bar) is described in [design.md](design.md).
+
 Browser adapters are named `Browser*` to distinguish them from shared components and
 from the native adapters. A structural check rejects duplicate app component names.
 
