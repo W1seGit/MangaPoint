@@ -25,20 +25,21 @@
 @keyframes m-lit { 0% { opacity: 1; } 33% { opacity: 0; } }
 .m-drop { animation: m-drop 4.5s ease-in-out infinite; }
 @keyframes m-drop { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(4px); } }
-/* Walking: one foot, then the other, a pixel up with each step; the road and the hills go by. */
-.m-step.two { opacity: 0; }
-.m-step.one { animation: m-step-one 1.4s steps(1, end) infinite; }
-.m-step.two { animation: m-step-two 1.4s steps(1, end) infinite; }
-@keyframes m-step-one { 0% { opacity: 1; } 50% { opacity: 0; } }
-@keyframes m-step-two { 0% { opacity: 0; } 50% { opacity: 1; } }
-.m-bob { animation: m-bob 0.7s steps(1, end) infinite; }
-@keyframes m-bob { 0% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+/* Walking, seen from the side: one leg forward, the legs passing, the other leg forward, passing again; the road
+   and the hills go by. */
+.m-step.pass, .m-step.two { opacity: 0; }
+.m-step.one { animation: m-step-one 2.8s steps(1, end) infinite; }
+.m-step.pass { animation: m-step-pass 2.8s steps(1, end) infinite; }
+.m-step.two { animation: m-step-two 2.8s steps(1, end) infinite; }
+@keyframes m-step-one { 0% { opacity: 1; } 25% { opacity: 0; } }
+@keyframes m-step-pass { 0% { opacity: 0; } 25% { opacity: 1; } 50% { opacity: 0; } 75% { opacity: 1; } }
+@keyframes m-step-two { 0% { opacity: 0; } 50% { opacity: 1; } 75% { opacity: 0; } }
 .m-road { animation: m-road 2.8s steps(14) infinite; }
 @keyframes m-road { from { transform: translateX(0); } to { transform: translateX(-14px); } }
 .m-hills { animation: m-hills 64s steps(128) infinite; }
 @keyframes m-hills { from { transform: translateX(0); } to { transform: translateX(-128px); } }
 @media (prefers-reduced-motion: reduce) {
-  .m-head, .m-steam, .m-glass, .m-window .m-lit, .m-drop, .m-step, .m-bob, .m-road, .m-hills, .look-open, .look-blink, .m-orbit, .m-orbit .mascot { animation: none; }
+  .m-head, .m-steam, .m-glass, .m-window .m-lit, .m-drop, .m-step, .m-road, .m-hills, .look-open, .look-blink, .m-orbit, .m-orbit .mascot { animation: none; }
   .m-steam.s0 { opacity: 0.8; }
   .look-blink { opacity: 0; }
 }

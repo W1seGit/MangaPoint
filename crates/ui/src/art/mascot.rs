@@ -6,7 +6,7 @@
 //! slow CSS (`art.css`): a one-pixel nod every few seconds, drifting steam, a glass that tilts. It uses the
 //! app's own palette, so the pictures sit in the pages as if they were part of them.
 
-use super::sprite::{BODY, EYES_CLOSED, HALF, NECK};
+use super::sprite::{BODY, EYES_CLOSED, HALF, NECK, SIDE_PASS, SIDE_STRIDE, SIDE_STRIDE_FAR};
 use dioxus::prelude::*;
 use std::fmt::Write;
 use std::sync::OnceLock;
@@ -313,36 +313,16 @@ fn walking() -> String {
         rect(&mut s, i * 14, 38, 7, 1, FUR);
     }
     s.push_str("</g>");
-    // The mascot, at its small size, one foot and then the other, bobbing a pixel with each step.
-    let closed = pixels_markup(&[(6, 8), (7, 8), (14, 8), (15, 8)], LINE);
-    let mut open = String::new();
-    rect(&mut open, 6, 7, 1, 2, LINE);
-    rect(&mut open, 15, 7, 1, 2, LINE);
-    let (left, right) = (half_step(true), half_step(false));
+    // The mascot from the side, going along the road: one leg forward, the legs passing (a pixel higher), the
+    // other leg forward, passing again.
     let _ = write!(
         s,
-        "<g transform=\"translate(53 7)\"><g class=\"m-bob\"><g class=\"m-step one\">{}</g><g class=\"m-step two\">{}</g><g class=\"m-head m-walk\">{}<g class=\"look-open\">{open}</g><g class=\"look-blink\">{closed}</g></g></g></g>",
-        rows_markup(&left, 17, HALF.len()),
-        rows_markup(&right, 17, HALF.len()),
-        rows_markup(&HALF, 0, 17),
+        "<g transform=\"translate(52 5)\"><g class=\"m-step one\">{}</g><g class=\"m-step pass\" transform=\"translate(0 -1)\">{}</g><g class=\"m-step two\">{}</g></g>",
+        rows_markup(&SIDE_STRIDE, 0, SIDE_STRIDE.len()),
+        rows_markup(&SIDE_PASS, 0, SIDE_PASS.len()),
+        rows_markup(&SIDE_STRIDE_FAR, 0, SIDE_STRIDE_FAR.len()),
     );
     s
-}
-
-/// The small drawing with one foot lifted: on that side the feet move up a pixel.
-fn half_step(left: bool) -> Vec<String> {
-    let mut rows: Vec<Vec<u8>> = HALF.iter().map(|r| r.as_bytes().to_vec()).collect();
-    let cols = if left { 0..8 } else { 14..22 };
-    let last = rows.len() - 1;
-    for y in 24..=last {
-        for x in cols.clone() {
-            rows[y - 1][x] = rows[y][x];
-        }
-    }
-    for x in cols {
-        rows[last][x] = b'.';
-    }
-    rows.into_iter().map(|r| String::from_utf8(r).unwrap_or_default()).collect()
 }
 
 /// Holding a magnifying glass up to the websites it goes through, while the sources are looked at.
@@ -453,14 +433,14 @@ pub fn UpdateScene() -> Element {
     }
 }
 
-/// The mascot walking down a road, at its small size, for the first start.
+/// The mascot walking along a road, seen from the side, for the first start.
 #[component]
 pub fn Walking() -> Element {
     static M: OnceLock<String> = OnceLock::new();
     let markup = cached(&M, walking);
     rsx! {
         div { class: "walker",
-            svg { class: "mascot scene walk", view_box: "0 0 128 44", role: "img", "aria-label": "The mascot walking down a road",
+            svg { class: "mascot scene walk", view_box: "0 0 128 44", role: "img", "aria-label": "The mascot walking along a road",
                 dangerous_inner_html: "{markup}",
             }
         }
@@ -619,7 +599,7 @@ mod tests {
             ("waiting", waiting(), &["m-steam s0", "m-steam s2"][..]),
             ("browsing", browsing(), &["m-window w2", "m-lit"][..]),
             ("updating", updating(), &["m-drop"][..]),
-            ("walking", walking(), &["m-road", "m-hills", "m-step two", "m-bob"][..]),
+            ("walking", walking(), &["m-road", "m-hills", "m-step one", "m-step pass", "m-step two"][..]),
         ] {
             for class in classes {
                 assert!(svg.contains(&format!("class=\"{class}\"")) || svg.contains(class), "{name}: {class}");
