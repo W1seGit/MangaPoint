@@ -34,12 +34,12 @@ fn rect(out: &mut String, x: i32, y: i32, w: i32, h: i32, fill: &str) {
 }
 
 /// Rows of colour letters (`from..to`), one path for each colour.
-fn rows_markup(rows: &[&str], from: usize, to: usize) -> String {
+fn rows_markup<R: AsRef<str>>(rows: &[R], from: usize, to: usize) -> String {
     let mut out = String::new();
     for letter in ['k', 'f', 'c', 'd', 'e'] {
         let mut d = String::new();
         for (y, row) in rows.iter().enumerate().take(to).skip(from) {
-            let bytes = row.as_bytes();
+            let bytes = row.as_ref().as_bytes();
             let mut x = 0;
             while x < bytes.len() {
                 if bytes[x] as char == letter {
@@ -138,7 +138,8 @@ fn ring(out: &mut String, cx: f32, cy: f32, inner: f32, outer: f32, fill: &str) 
     }
 }
 
-/// A magnifying glass, its lens centred on (`cx`, `cy`) and its handle running down to the left.
+/// A magnifying glass, its lens centred on (`cx`, `cy`) and its handle running down to the left, to about
+/// (`cx - 16`, `cy + 18`).
 fn glass(cx: i32, cy: i32) -> String {
     let mut s = String::new();
     // The handle first, so the rim is drawn over its end.
@@ -155,24 +156,87 @@ fn glass(cx: i32, cy: i32) -> String {
     s
 }
 
-/// A hand with its forearm, eight pixels across, closed round whatever it holds. `(x, y)` is its top left corner.
-fn hand(out: &mut String, x: i32, y: i32) {
-    // The forearm, running down to the sleeve.
-    rect(out, x + 1, y + 7, 6, 6, LINE);
-    rect(out, x + 2, y + 7, 4, 6, FUR);
-    rect(out, x + 1, y, 6, 8, LINE);
-    rect(out, x, y + 1, 8, 6, LINE);
-    rect(out, x + 1, y + 1, 6, 6, FUR);
-    // A line for the thumb.
-    rect(out, x + 2, y + 2, 3, 1, CHEEK);
+// ---- arms -------------------------------------------------------------------------------------------------
+
+/// Which of the arms that hang at the mascot's sides a scene draws reaching for something instead.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Lift {
+    Right,
+    Both,
 }
 
-/// The magnifying glass held in the mascot's right hand, which sways it a little about the hand.
-fn held_glass(cx: i32, cy: i32) -> String {
-    let (hx, hy) = (cx - 19, cy + 15);
-    let mut s = glass(cx, cy);
-    hand(&mut s, hx, hy);
-    format!("<g class=\"m-glass\" style=\"transform-origin: {}px {}px\">{s}</g>", hx + 4, hy + 4)
+/// The drawing with the lifted arms taken out of it: where they hung is the belly's fur.
+fn lifted(lift: Lift) -> Vec<String> {
+    BODY.iter()
+        .enumerate()
+        .map(|(y, row)| {
+            let mut row = row.as_bytes().to_vec();
+            if y >= 46 {
+                row[29..36].fill(b'f');
+                if lift == Lift::Both {
+                    row[8..15].fill(b'f');
+                }
+            }
+            String::from_utf8(row).unwrap_or_default()
+        })
+        .collect()
+}
+
+/// An arm from the shoulder `a` to the paw `b`, in the drawing's pixels: fur in a black outline, ending in
+/// a dark paw like the ones the mascot sits on. The outline stops at the shoulder, so the arm grows out of
+/// the body.
+fn arm(a: (f32, f32), b: (f32, f32)) -> String {
+    const WIDTH: f32 = 2.6;
+    const PAW: f32 = 3.2;
+    let dist = |p: (f32, f32), q: (f32, f32)| ((p.0 - q.0).powi(2) + (p.1 - q.1).powi(2)).sqrt();
+    let to_arm = |p: (f32, f32)| {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let t = (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+        dist(p, (a.0 + t * dx, a.1 + t * dy))
+    };
+    let (mut line, mut fur, mut paw) = (Vec::new(), Vec::new(), Vec::new());
+    for y in (a.1.min(b.1) - 6.0) as i32..(a.1.max(b.1) + 6.0) as i32 {
+        for x in (a.0.min(b.0) - 6.0) as i32..(a.0.max(b.0) + 6.0) as i32 {
+            let p = (x as f32 + 0.5, y as f32 + 0.5);
+            let (d, dp) = (to_arm(p), dist(p, b));
+            if dp <= PAW {
+                paw.push((x, y));
+            } else if d <= WIDTH {
+                fur.push((x, y));
+            } else if (d <= WIDTH + 1.0 || dp <= PAW + 1.0) && dist(p, a) > WIDTH + 2.5 {
+                line.push((x, y));
+            }
+        }
+    }
+    format!("{}{}{}", pixels_markup(&line, LINE), pixels_markup(&fur, FUR), pixels_markup(&paw, CHEEK))
+}
+
+/// An arm, from the shoulder to the paw, in the drawing's pixels.
+type Reach = ((f32, f32), (f32, f32));
+
+/// The mascot at (`x`, `y`) with its `lift`ed arms reaching from the shoulder to the paws in `arms` (in the
+/// drawing's pixels). `props` are drawn between the mascot and its arms, so the paws close over them.
+fn posed(x: i32, y: i32, eyes: Eyes, lift: Lift, arms: &[Reach], props: &str) -> String {
+    let rows = lifted(lift);
+    let reach: String = arms.iter().map(|&(a, b)| arm(a, b)).collect();
+    format!(
+        "<g transform=\"translate({x} {y})\"><g class=\"m-body\">{}</g><g class=\"m-head\">{}{}</g></g>{props}<g transform=\"translate({x} {y})\">{reach}</g>",
+        rows_markup(&rows, NECK, rows.len()),
+        rows_markup(&rows, 0, NECK),
+        eyes_markup(eyes),
+    )
+}
+
+/// The right shoulder, where a lifted right arm starts.
+const RIGHT_SHOULDER: (f32, f32) = (31.5, 44.0);
+
+/// The magnifying glass held up in the right paw, at (`px`, `py`) in the drawing's pixels. It tilts a
+/// little about the paw.
+fn holding_glass(x: i32, y: i32, px: f32, py: f32, eyes: Eyes, before: &str) -> String {
+    let (gx, gy) = (x as f32 + px, y as f32 + py);
+    let lens = glass(gx as i32 + 16, gy as i32 - 18);
+    let props = format!("{before}<g class=\"m-glass\" style=\"transform-origin: {gx}px {gy}px\">{lens}</g>");
+    posed(x, y, eyes, Lift::Right, &[(RIGHT_SHOULDER, (px, py))], &props)
 }
 
 fn cached(cell: &'static OnceLock<String>, make: fn() -> String) -> &'static str {
@@ -190,58 +254,53 @@ fn rest() -> String {
     s
 }
 
-/// Asleep behind the edge of an empty bookshelf, for a Library with nothing in it.
+/// Asleep with its paws on the edge of an empty bookshelf, for a Library with nothing in it.
 fn shelf() -> String {
-    let mut s = mascot(22, 6, Eyes::Smiling);
     // The shelf: a board with the mascot's chest behind it, and the empty room below.
-    rect(&mut s, 2, 52, 84, 2, FUR);
-    rect(&mut s, 2, 54, 84, 4, CHEEK);
-    rect(&mut s, 2, 58, 84, 14, DARK);
-    rect(&mut s, 2, 58, 3, 14, WOOD);
-    rect(&mut s, 83, 58, 3, 14, WOOD);
-    rect(&mut s, 2, 71, 84, 3, WOOD);
+    let mut board = String::new();
+    rect(&mut board, 2, 52, 84, 2, FUR);
+    rect(&mut board, 2, 54, 84, 4, CHEEK);
+    rect(&mut board, 2, 58, 84, 14, DARK);
+    rect(&mut board, 2, 58, 3, 14, WOOD);
+    rect(&mut board, 83, 58, 3, 14, WOOD);
+    rect(&mut board, 2, 71, 84, 3, WOOD);
     // One book, leaning on the board's end.
-    rect(&mut s, 70, 40, 7, 12, CHEEK);
-    rect(&mut s, 70, 40, 1, 12, LINE);
-    rect(&mut s, 76, 40, 1, 12, LINE);
-    rect(&mut s, 70, 40, 7, 1, LINE);
-    rect(&mut s, 72, 43, 3, 1, FUR);
-    rect(&mut s, 72, 45, 3, 1, FUR);
+    rect(&mut board, 70, 40, 7, 12, CHEEK);
+    rect(&mut board, 70, 40, 1, 12, LINE);
+    rect(&mut board, 76, 40, 1, 12, LINE);
+    rect(&mut board, 70, 40, 7, 1, LINE);
+    rect(&mut board, 72, 43, 3, 1, FUR);
+    rect(&mut board, 72, 45, 3, 1, FUR);
+    let arms = [((10.5, 42.0), (10.5, 46.5)), ((33.5, 42.0), (33.5, 46.5))];
+    let mut s = posed(22, 6, Eyes::Smiling, Lift::Both, &arms, &board);
     z(&mut s, 68, 20, "m-z z1");
     z(&mut s, 74, 12, "m-z z2");
     s
 }
 
-/// Looking through a magnifying glass, for a search with nothing in it yet.
+/// Holding up a magnifying glass, for a search with nothing in it yet.
 fn search() -> String {
-    let mut s = mascot(4, 8, Eyes::Open);
-    s.push_str(&held_glass(62, 34));
-    s
+    holding_glass(4, 8, 47.0, 36.0, Eyes::Open, "")
 }
 
-/// With a cup of tea, for a page where the work has not begun.
+/// Holding up a cup of tea, for a page where the work has not begun.
 fn waiting() -> String {
-    let mut s = mascot(4, 8, Eyes::Smiling);
-    // The cup: a black outline round a fur-coloured body with a darker rim, a handle, a saucer.
-    rect(&mut s, 52, 42, 15, 15, LINE);
-    rect(&mut s, 53, 43, 13, 13, FUR);
-    rect(&mut s, 53, 43, 13, 2, CHEEK);
-    rect(&mut s, 52, 55, 1, 2, "none");
-    rect(&mut s, 66, 46, 5, 2, LINE);
-    rect(&mut s, 70, 46, 2, 8, LINE);
-    rect(&mut s, 66, 52, 5, 2, LINE);
-    rect(&mut s, 49, 57, 21, 2, LINE);
-    rect(&mut s, 50, 58, 19, 1, CHEEK);
-    // The hand round it.
-    hand(&mut s, 45, 47);
+    // The cup: a black outline round a fur-coloured body with the tea at its brim, and a handle.
+    let mut cup = String::new();
+    rect(&mut cup, 52, 40, 15, 15, LINE);
+    rect(&mut cup, 53, 41, 13, 13, FUR);
+    rect(&mut cup, 53, 41, 13, 2, CHEEK);
+    rect(&mut cup, 66, 44, 5, 2, LINE);
+    rect(&mut cup, 70, 44, 2, 8, LINE);
+    rect(&mut cup, 66, 50, 5, 2, LINE);
     // Steam, rising and fading one after another.
-    for (i, x) in [56, 60, 64].into_iter().enumerate() {
-        let _ = write!(s, "<g class=\"m-steam s{i}\">");
-        rect(&mut s, x, 34, 1, 3, FUR);
-        rect(&mut s, x + 1, 37, 1, 3, FUR);
-        s.push_str("</g>");
+    for (i, x) in [56, 59, 62].into_iter().enumerate() {
+        let _ = write!(cup, "<g class=\"m-steam s{i}\">");
+        rect(&mut cup, x, 30, 1, 3, FUR);
+        rect(&mut cup, x + 1, 33, 1, 3, FUR);
+        cup.push_str("</g>");
     }
-    s
+    posed(4, 8, Eyes::Smiling, Lift::Right, &[(RIGHT_SHOULDER, (49.0, 40.0))], &cup)
 }
 
 /// The mascot going on its way, with the ground slipping by, for the first start.
@@ -264,37 +323,35 @@ fn walking(day: bool) -> String {
     s
 }
 
-/// Going through websites with a magnifying glass, while the sources are looked at.
+/// Holding a magnifying glass up to the websites it goes through, while the sources are looked at.
 fn browsing() -> String {
-    let mut s = mascot(4, 6, Eyes::Open);
+    let mut windows = String::new();
     for (i, y) in [4, 22, 40].into_iter().enumerate() {
-        let _ = write!(s, "<g class=\"m-window w{i}\">");
-        rect(&mut s, 74, y, 44, 15, LINE);
-        rect(&mut s, 75, y + 1, 42, 13, WOOD);
-        rect(&mut s, 75, y + 1, 42, 3, CHEEK);
-        rect(&mut s, 77, y + 2, 1, 1, FUR);
-        rect(&mut s, 79, y + 2, 1, 1, FUR);
-        rect(&mut s, 77, y + 6, 20, 1, CHEEK);
-        rect(&mut s, 77, y + 9, 30, 1, CHEEK);
-        s.push_str("<g class=\"m-lit\">");
-        rect(&mut s, 77, y + 6, 20, 1, FUR);
-        rect(&mut s, 77, y + 9, 30, 1, FUR);
-        s.push_str("</g></g>");
+        let _ = write!(windows, "<g class=\"m-window w{i}\">");
+        rect(&mut windows, 78, y, 44, 15, LINE);
+        rect(&mut windows, 79, y + 1, 42, 13, WOOD);
+        rect(&mut windows, 79, y + 1, 42, 3, CHEEK);
+        rect(&mut windows, 81, y + 2, 1, 1, FUR);
+        rect(&mut windows, 83, y + 2, 1, 1, FUR);
+        rect(&mut windows, 81, y + 6, 20, 1, CHEEK);
+        rect(&mut windows, 81, y + 9, 30, 1, CHEEK);
+        windows.push_str("<g class=\"m-lit\">");
+        rect(&mut windows, 81, y + 6, 20, 1, FUR);
+        rect(&mut windows, 81, y + 9, 30, 1, FUR);
+        windows.push_str("</g></g>");
     }
-    s.push_str(&held_glass(58, 34));
-    s
+    holding_glass(4, 6, 45.0, 37.0, Eyes::Open, &windows)
 }
 
-/// Next to a parcel with an arrow going down onto it, while the app is brought up to date.
+/// With a paw on a parcel and an arrow going down onto it, while the app is brought up to date.
 fn updating() -> String {
-    let mut s = mascot(4, 6, Eyes::Smiling);
     // The parcel.
-    rect(&mut s, 50, 40, 26, 22, LINE);
-    rect(&mut s, 51, 41, 24, 20, CHEEK);
-    rect(&mut s, 61, 41, 4, 20, FUR);
-    rect(&mut s, 51, 49, 24, 1, LINE);
-    // A hand on it.
-    hand(&mut s, 45, 46);
+    let mut parcel = String::new();
+    rect(&mut parcel, 50, 40, 26, 22, LINE);
+    rect(&mut parcel, 51, 41, 24, 20, CHEEK);
+    rect(&mut parcel, 61, 41, 4, 20, FUR);
+    rect(&mut parcel, 51, 49, 24, 1, LINE);
+    let mut s = posed(4, 6, Eyes::Smiling, Lift::Right, &[(RIGHT_SHOULDER, (48.0, 33.5))], &parcel);
     // The arrow that brings the new version.
     s.push_str("<g class=\"m-drop\">");
     rect(&mut s, 60, 8, 6, 10, FUR);
@@ -324,7 +381,7 @@ pub fn Resting() -> Element {
 pub fn ShelfScene() -> Element {
     static M: OnceLock<String> = OnceLock::new();
     rsx! {
-        svg { class: "mascot scene shelf", view_box: "0 0 88 76", role: "img", "aria-label": "The mascot, asleep beside an empty shelf",
+        svg { class: "mascot scene shelf", view_box: "0 0 88 76", role: "img", "aria-label": "The mascot, asleep on an empty shelf",
             dangerous_inner_html: "{cached(&M, shelf)}",
         }
     }
@@ -357,7 +414,7 @@ pub fn WaitingScene() -> Element {
 pub fn BrowsingScene() -> Element {
     static M: OnceLock<String> = OnceLock::new();
     rsx! {
-        svg { class: "mascot scene browse", view_box: "0 0 122 66", role: "img", "aria-label": "The mascot looking through websites",
+        svg { class: "mascot scene browse", view_box: "0 0 126 66", role: "img", "aria-label": "The mascot looking through websites",
             dangerous_inner_html: "{cached(&M, browsing)}",
         }
     }

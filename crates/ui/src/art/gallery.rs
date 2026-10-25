@@ -12,18 +12,18 @@ fn gallery() {
     };
     let toast = |look: &str, mark: &str| format!("<span class=\"toast-mascot {look}\"><svg class=\"mascot\" viewBox=\"0 0 22 29\">{}</svg><span class=\"toast-badge\">{mark}</span></span> ", half_markup());
     let cards = [
-        ("empty page", scene("rest", "0 0 64 66", rest_markup())),
-        ("empty library", scene("shelf", "0 0 88 76", shelf_markup())),
-        ("search", scene("search", "0 0 84 72", search_markup())),
-        ("waiting (tasks)", scene("waiting", "0 0 76 72", waiting_markup())),
-        ("looking at sources", scene("browse", "0 0 122 66", browsing_markup())),
-        ("update", scene("update", "0 0 82 68", updating_markup())),
-        ("first start, night", format!("<div class=\"walker\">{}</div>", scene("walk", "0 0 90 68", walking_markup(false)))),
-        ("first start, day", format!("<div class=\"walker\">{}</div>", scene("walk", "0 0 90 68", walking_markup(true)))),
-        ("loading", loader(120)),
-        ("loading, small", loader(56)),
-        ("toasts", format!("{}{}{}", toast("success", "✓"), toast("warning", "!"), toast("error", "×"))),
-        ("a cover that is missing", format!("<div style=\"width:150px\">{}</div>", super::placeholder::svg())),
+        ("Asleep: every other empty page (reader, series, chapters, downloads, sources, export preview; web book and reader)", scene("rest", "0 0 64 66", rest_markup())),
+        ("Paws on the shelf: an empty Library and Plan (desktop and web)", scene("shelf", "0 0 88 76", shelf_markup())),
+        ("Magnifying glass: Search with no results", scene("Magnifying glass: Search with no results", "0 0 84 72", search_markup())),
+        ("Tea: Tasks with nothing to do", scene("waiting", "0 0 76 72", waiting_markup())),
+        ("Glass over websites: first start, Choose your sources", scene("browse", "0 0 126 66", browsing_markup())),
+        ("Paw on the parcel: the update dialog (desktop and web)", scene("Paw on the parcel: the update dialog (desktop and web)", "0 0 82 68", updating_markup())),
+        ("Walking: the splash while the app opens, and the first start", format!("<div class=\"walker\">{}</div>", scene("walk", "0 0 90 68", walking_markup(false)))),
+        ("Walking by day: the first start, last step", format!("<div class=\"walker\">{}</div>", scene("walk", "0 0 90 68", walking_markup(true)))),
+        ("Nodding with dots: every loading spinner (search, reader, sources, chapters, import)", loader(120)),
+        ("Small: a cover still loading, Loading chapters", loader(56)),
+        ("Toasts: done, warning, failed", format!("{}{}{}", toast("success", "✓"), toast("warning", "!"), toast("error", "×"))),
+        ("A series with no cover", format!("<div style=\"width:150px\">{}</div>", super::placeholder::svg())),
     ];
     let mut html = format!(
         "<!doctype html><meta charset=utf-8><style>{}</style><body style=\"background:#1e1916;color:#aa8d7e;font:14px sans-serif;display:flex;flex-wrap:wrap;gap:18px;padding:18px\">",
