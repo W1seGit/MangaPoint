@@ -406,6 +406,8 @@
 @media (max-width: 640px) { .modal.add-sources { height: 92vh; padding: 16px; } .as-row { flex-wrap: wrap; } }
 .as-tabs button { white-space: nowrap; flex: 0 0 auto; }
 .rise-in > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* The bar for ticked chapters must come up from below without losing its centring (a kept transform would). */
+.rise-in > .action-bar.action-bar { animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
 .src-list > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .rise-in > :nth-child(2) { animation-delay: 40ms; }
 .rise-in > :nth-child(3) { animation-delay: 80ms; }
