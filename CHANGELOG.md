@@ -14,7 +14,7 @@ All notable changes to MangaPoint are written down here. The format follows [Kee
 - **Keep colour** in EPUB and CBZ exports for colour e-readers, with a colour preview.
 - **Original quality** exports for phones and tablets, as CBZ or PDF, with the pages exactly as they were downloaded.
 - **Pause an export** and resume it later, even after closing the app. The running task shows in the corner bar with the series cover.
-- **A new Library**: smaller cards with a tick and a menu, a selection bar in the bottom left, an Information sheet for each series, and Esc goes back from an open series.
+- **A new Library**: smaller cards with a tick and a menu, a title and views that stay at the top while you scroll, a selection bar in the bottom left, an Information sheet for each series, and Esc goes back from an open series.
 - **Your places travel**: the app saves and loads the same reading-state file as the website.
 
 ### Changes
@@ -28,6 +28,8 @@ All notable changes to MangaPoint are written down here. The format follows [Kee
 - Importing can be cancelled, is all-or-nothing, and is safe against deleted, renamed and oversized files.
 - Pressing Pause near the end of an export holds the exports waiting behind it, and deleting a paused series moves the next export up.
 - Menus open above everything on the page, and dialogs cover the dock.
+- A series page lists the chapters on this computer even when none of its sources answers.
+- Install all recommended installs the recommended sources again when the catalog engine has lost them, instead of saying they are installed.
 
 ### Changes under the hood
 
