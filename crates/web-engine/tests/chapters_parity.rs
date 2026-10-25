@@ -305,6 +305,12 @@ fn a_folder_is_a_book_of_chapters_or_one_chapter() {
         &items(&[".hidden/1.jpg", "a/b/c/d/e/f/g/h/i/1.jpg", "a/b/c/d/e/f/g/h/1.jpg", "ok/.secret.jpg", "ok/1.jpg", "ok/2.jpg"]),
     );
     check_folder("folder-non-ascii", "月刊 Ünï 4", &items(&["第1話/1.jpg", "第10話/1.jpg", "第2話/1.jpg"]));
+    // A series folder from a MangaPoint library: chapters by their keys, pages as `.img`, a `cover.img`.
+    check_folder(
+        "folder-mangapoint-library",
+        "solo-leveling-75931860",
+        &items(&["c10/00001.img", "c2/00002.img", "c2/00001.img", "c2_5/00001.img", "u77/00001.img", "c2/source.txt", "cover.img"]),
+    );
     check_folder("folder-nothing", "Empty", &items(&["readme.txt"]));
     check_folder("folder-only-cover", "Pics", &items(&["cover.jpg", "1.jpg"]));
 }

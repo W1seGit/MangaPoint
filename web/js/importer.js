@@ -400,7 +400,8 @@ export async function analyze(items, onStatus = () => {}) {
       failures.push(failure(name, `${UNSUPPORTED[ext]} files are not supported on the web yet. Use the MangaPoint desktop app, or save the book as CBZ.`));
     } else if (ARCHIVES.includes(ext)) {
       archives.push(it);
-    } else if (isImageName(name)) {
+    } else if (isImageName(name) || (ext === 'img' && it.path.includes('/'))) {
+      // (`.img` inside a picked folder is a page as MangaPoint keeps it in its own library folder.)
       const slash = it.path.indexOf('/');
       const top = slash > 0 ? it.path.slice(0, slash) : '';
       if (!groups.has(top)) groups.set(top, []);

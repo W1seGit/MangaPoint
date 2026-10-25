@@ -159,6 +159,37 @@ fn a_page_that_is_not_a_picture_is_skipped_and_the_rest_close_the_gap() {
 }
 
 #[test]
+fn a_series_folder_of_manga_points_own_library_comes_back_with_its_chapters_and_cover() {
+    let dir = temp("own-library");
+    let root = dir.join("solo-leveling-75931860");
+    for (chapter, shades) in [("c10", vec![30u8, 40]), ("c2", vec![10, 20, 25]), ("c2_5", vec![7]), ("u77", vec![9])] {
+        std::fs::create_dir_all(root.join(chapter)).unwrap();
+        for (i, shade) in shades.iter().enumerate() {
+            std::fs::write(root.join(chapter).join(format!("{:05}.img", i + 1)), png(*shade)).unwrap();
+        }
+        std::fs::write(root.join(chapter).join("source.txt"), "mangadex").unwrap();
+    }
+    std::fs::write(root.join("cover.img"), png(222)).unwrap();
+    let result = scan(std::slice::from_ref(&root));
+    assert!(result.failures.is_empty(), "{:?}", result.failures);
+    let book = &result.books[0];
+    assert_eq!(book.meta.title, "Solo Leveling");
+    let chapters: Vec<_> = book.chapters.iter().map(|c| (c.number, c.name.as_str(), c.pages.len())).collect();
+    assert_eq!(
+        chapters,
+        [(Some(2.0), "Chapter 2", 3), (Some(2.5), "Chapter 2.5", 1), (Some(10.0), "Chapter 10", 2), (None, "Chapter", 1)]
+    );
+    assert!(book.cover.is_some(), "cover.img is the cover, not a page");
+    assert_eq!(book.page_count(), 7);
+
+    let lib = lib("own-library-lib");
+    let outcome = commit_all(book, &lib);
+    assert_eq!(outcome.chapters.len(), 4);
+    assert_eq!(shades_on_disk(&lib, "series", "c2"), [10, 20, 25]);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_folder_of_archives_is_a_series_with_a_chapter_in_each() {
     let dir = temp("archives");
     let root = dir.join("One Piece");

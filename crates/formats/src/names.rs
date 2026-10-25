@@ -268,6 +268,51 @@ pub fn plain(n: f64) -> String {
     }
 }
 
+// ---- MangaPoint's own library folders ---------------------------------------------------------
+
+/// The title of a series from the name of its folder in a MangaPoint library (`solo-leveling-3fa9c2e1`
+/// is "Solo Leveling"). `None` when the name does not end in the eight-digit hash such a folder has.
+/// The title's words are what the folder's name was made from, so a series imported back gets the id
+/// it had.
+pub fn mangapoint_title(folder: &str) -> Option<String> {
+    let (slug, hash) = folder.rsplit_once('-')?;
+    if hash.len() != 8 || !hash.chars().all(|c| c.is_ascii_hexdigit()) || slug.is_empty() {
+        return None;
+    }
+    let words: Vec<String> = slug
+        .split('-')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut chars = w.chars();
+            chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+        })
+        .collect();
+    (!words.is_empty()).then(|| words.join(" "))
+}
+
+/// The number and name of a chapter from the name of its folder in a MangaPoint library: `c12` is
+/// chapter 12, `c12_5` is 12.5, and `u123` is a chapter without a number. `None` for any other name.
+pub fn mangapoint_chapter(folder: &str) -> Option<(Option<f64>, String)> {
+    let digits = |t: &str| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit());
+    if folder.strip_prefix('u').is_some_and(digits) {
+        return Some((None, "Chapter".to_string()));
+    }
+    let rest = folder.strip_prefix('c')?;
+    let (whole, part) = match rest.split_once('_') {
+        Some((w, p)) => (w, Some(p)),
+        None => (rest, None),
+    };
+    if !digits(whole) || part.is_some_and(|p| !digits(p)) {
+        return None;
+    }
+    let text = match part {
+        Some(p) => format!("{whole}.{p}"),
+        None => whole.to_string(),
+    };
+    let number: f64 = text.parse().ok()?;
+    Some((Some(number), format!("Chapter {}", plain(number))))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,4 +371,19 @@ mod tests {
         assert_eq!(chapter_name("", None), "Chapter");
         assert_eq!(plain(7.0), "7");
     }
+
+    #[test]
+    fn a_mangapoint_library_folder_gives_its_title_and_chapters() {
+        assert_eq!(mangapoint_title("solo-leveling-75931860").as_deref(), Some("Solo Leveling"));
+        assert_eq!(mangapoint_title("one-piece-0000abcd").as_deref(), Some("One Piece"));
+        assert_eq!(mangapoint_title("My Comic"), None);
+        assert_eq!(mangapoint_title("solo-leveling"), None);
+        assert_eq!(mangapoint_chapter("c12"), Some((Some(12.0), "Chapter 12".to_string())));
+        assert_eq!(mangapoint_chapter("c12_5"), Some((Some(12.5), "Chapter 12.5".to_string())));
+        assert_eq!(mangapoint_chapter("u991"), Some((None, "Chapter".to_string())));
+        assert_eq!(mangapoint_chapter("c"), None);
+        assert_eq!(mangapoint_chapter("cover"), None);
+        assert_eq!(mangapoint_chapter("Chapter 1"), None);
+    }
 }
+

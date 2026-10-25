@@ -2,7 +2,7 @@
 //! folders of pictures is a series of chapters, and a folder of archives is a
 //! series with one chapter in each.
 
-use super::names::{chapter_name, chapter_number, clean_name, natural_cmp};
+use super::names::{chapter_name, chapter_number, clean_name, mangapoint_chapter, mangapoint_title, natural_cmp};
 use super::{
     extension, fail, scan_file, tiff_in, BookSource, Format, ImportBook, ImportChapter, PageRef,
     MAX_ENTRIES, MAX_PAGE_BYTES, PAGE_EXTENSIONS,
@@ -60,7 +60,8 @@ fn walk(root: &Path, rel: &str, depth: usize, tree: &mut Tree, cancel: &CancelFl
             subdirs.push(name);
         } else if kind.is_some_and(|k| k.is_file()) {
             let ext = extension(&path);
-            if PAGE_EXTENSIONS.contains(&ext.as_str()) {
+            // (`.img` is a page as MangaPoint keeps it in its own library folder.)
+            if PAGE_EXTENSIONS.contains(&ext.as_str()) || ext == "img" {
                 pictures.push(name);
             } else if BOOK_EXTENSIONS.contains(&ext.as_str()) {
                 tree.books.push(path);
@@ -173,6 +174,18 @@ pub(crate) fn scan_dir(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
     tree.books.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
     let mut book = ImportBook::new(label.clone(), Format::Folder, BookSource::Dir(path.to_path_buf()));
     book.meta.title = clean_name(&label);
+    // A series folder of MangaPoint's own library: `c12/00001.img` and a `cover.img`. Its chapters
+    // are numbered by their folders, and the folder's name gives the title.
+    let own_library = tree.pictures.iter().any(|(rel, _)| !rel.is_empty())
+        && tree
+            .pictures
+            .iter()
+            .all(|(rel, _)| rel.is_empty() || (!rel.contains('/') && mangapoint_chapter(rel).is_some()));
+    if own_library {
+        if let Some(title) = mangapoint_title(&label) {
+            book.meta.title = title;
+        }
+    }
 
     let only_root = tree.pictures.len() == 1 && tree.pictures[0].0.is_empty();
     let mut cover_rel: Option<String> = None;
@@ -196,8 +209,14 @@ pub(crate) fn scan_dir(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
             continue;
         }
         let last = rel.rsplit('/').next().unwrap_or(rel);
-        let number = chapter_number(last);
-        let name = if only_root {
+        let own = if own_library && !in_root { mangapoint_chapter(last) } else { None };
+        let number = match &own {
+            Some((n, _)) => *n,
+            None => chapter_number(last),
+        };
+        let name = if let Some((_, name)) = own {
+            name
+        } else if only_root {
             chapter_name(&label, chapter_number(&label))
         } else if in_root {
             "Loose pages".to_string()

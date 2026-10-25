@@ -43,7 +43,7 @@ use std::collections::HashSet;
 use formats::{comicinfo, names};
 
 pub use comicinfo::{ComicInfo, InfoPage};
-pub use names::{chapter_name, chapter_number, clean_name, natural_cmp, plain, series_title};
+pub use names::{chapter_name, chapter_number, clean_name, mangapoint_chapter, mangapoint_title, natural_cmp, plain, series_title};
 
 /// The pictures a page can be (the importer's list).
 pub const PAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff"];
@@ -417,7 +417,9 @@ fn folder(label: &str, entries: &[Entry]) -> Result<Guess, String> {
         if !dir.is_empty() && dir.split('/').count() > MAX_DEPTH {
             continue;
         }
-        if size_of(e) == 0 || !PAGE_EXTENSIONS.contains(&extension(&file).as_str()) {
+        // (`.img` is a page as MangaPoint keeps it in its own library folder.)
+        let ext = extension(&file);
+        if size_of(e) == 0 || !(PAGE_EXTENSIONS.contains(&ext.as_str()) || ext == "img") {
             continue;
         }
         match tree.iter_mut().find(|(d, _)| *d == dir) {
@@ -434,6 +436,16 @@ fn folder(label: &str, entries: &[Entry]) -> Result<Guess, String> {
         title: clean_name(label),
         ..Guess::default()
     };
+    // A series folder of MangaPoint's own library: `c12/00001.img` and a `cover.img`.
+    let own_library = tree.iter().any(|(rel, _)| !rel.is_empty())
+        && tree
+            .iter()
+            .all(|(rel, _)| rel.is_empty() || (!rel.contains('/') && names::mangapoint_chapter(rel).is_some()));
+    if own_library {
+        if let Some(title) = names::mangapoint_title(label) {
+            out.title = title;
+        }
+    }
     let only_root = tree.len() == 1 && tree[0].0.is_empty();
     let mut cover: Option<usize> = None;
     let apart_ok = tree.len() > 1;
@@ -452,8 +464,14 @@ fn folder(label: &str, entries: &[Entry]) -> Result<Guess, String> {
             continue;
         }
         let last = rel.rsplit('/').next().unwrap_or(rel);
-        let number = chapter_number(last);
-        let name = if only_root {
+        let own = if own_library && !in_root { names::mangapoint_chapter(last) } else { None };
+        let number = match &own {
+            Some((n, _)) => *n,
+            None => chapter_number(last),
+        };
+        let name = if let Some((_, name)) = own {
+            name
+        } else if only_root {
             chapter_name(label, chapter_number(label))
         } else if in_root {
             "Loose pages".to_string()
