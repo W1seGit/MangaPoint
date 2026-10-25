@@ -1,6 +1,6 @@
 """A static file server for the built website, with the right content types.
 
-    python tools/serve-web.py [--dir web/dist] [--port 8080]
+    python tools/serve-web.py [--dir apps/web/dist] [--port 8080]
 
 Python's own server already knows most types; the ones a WebAssembly site
 needs are set here so the result matches a real static host. Files are served
@@ -42,7 +42,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dir", default="web/dist")
+    parser.add_argument("--dir", default="apps/web/dist")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--host", default="127.0.0.1")
     args = parser.parse_args()

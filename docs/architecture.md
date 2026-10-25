@@ -20,7 +20,7 @@ Do not copy a shared implementation into an app to change it.
 | `crates/web-engine` | Browser engine API, state merge/fingerprints, chapter guessing and export orchestration; calls `formats` |
 | `apps/desktop` | Native shell, engine supervisor, queue runner, OS integration, desktop screens and adapters |
 | `apps/web` | Browser shell/routes, library/import/export adapters, browser settings and bridge |
-| `web/js` | IndexedDB/OPFS, archive import, page URL lifetime, reader events, workers and browser APIs |
+| `apps/web/js` | IndexedDB/OPFS, archive import, page URL lifetime, reader events, workers and browser APIs |
 
 The look (palette, type, figures, the dock and the corner bar) is described in [design.md](design.md).
 
@@ -69,7 +69,7 @@ The web engine retains its memory limits and worker cancellation boundary.
 `crates/ui/css/ORDER` lists every shared stylesheet once, in cascade order. A build
 script exposes their text as `mangapoint_ui::CSS`; both web build scripts concatenate
 the same list into `css/ui.css`. Desktop adds `apps/desktop/css/desktop.css`.
-The browser adds `web/css/ORDER` as `css/web.css`: safe areas, dynamic viewport,
+The browser adds `apps/web/css/ORDER` as `css/web.css`: safe areas, dynamic viewport,
 touch targets, narrow layouts and browser-only screens. Shared selector overrides
 must be responsive rules or explain the browser requirement in a comment.
 

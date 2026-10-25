@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the website into web/dist (any static host can serve that folder).
+# Builds the website into apps/web/dist (any static host can serve that folder).
 #
 #   tools/build-web.sh              the page + the converter
 #   tools/build-web.sh --no-engine  only the page (no export; faster)
@@ -20,7 +20,7 @@ for arg in "$@"; do
 done
 
 target="${CARGO_TARGET_DIR:-$root/target}"
-dist="$root/web/dist"
+dist="$root/apps/web/dist"
 
 want="0.2.129"
 have="$(wasm-bindgen --version 2>/dev/null | awk '{print $2}' || true)"
@@ -53,14 +53,14 @@ if command -v wasm-opt >/dev/null 2>&1; then
 fi
 
 echo "== site files =="
-cp "$root/web/index.html" "$root/web/manifest.webmanifest" "$dist/"
+cp "$root/apps/web/assets/index.html" "$root/apps/web/assets/manifest.webmanifest" "$dist/"
 # Hosts that show a page for unknown addresses (GitHub Pages) show the app at /export and the rest.
-cp "$root/web/index.html" "$dist/404.html"
-cp -r "$root/web/js" "$dist/js"
+cp "$root/apps/web/assets/index.html" "$dist/404.html"
+cp -r "$root/apps/web/js" "$dist/js"
 rm -rf "$dist/js/test"
-cp -r "$root/web/icons" "$dist/icons"
+cp -r "$root/apps/web/assets/icons" "$dist/icons"
 # The style sheets, each folder's files in the order of its ORDER file: css/ui.css is the look shared
-# with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (web/css).
+# with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (apps/web/css).
 join_css() {
   : > "$2"
   while IFS= read -r name; do
@@ -68,7 +68,7 @@ join_css() {
   done < "$1/ORDER"
 }
 join_css "$root/crates/ui/css" "$dist/css/ui.css"
-join_css "$root/web/css" "$dist/css/web.css"
+join_css "$root/apps/web/css" "$dist/css/web.css"
 
 # The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.
 mkdir -p "$dist/js/ui"

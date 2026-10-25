@@ -1,6 +1,6 @@
 name: Web
 
-# The website (apps/web, crates/web-engine, web/). Pull requests that touch it
+# The website (apps/web, crates/web-engine). Pull requests that touch it
 # build the WebAssembly and run the tests. NOTHING is deployed automatically:
 # publishing to GitHub Pages is a manual run of this workflow ("Run workflow").
 
@@ -9,7 +9,6 @@ on:
     paths:
       - "apps/web/**"
       - "crates/web-engine/**"
-      - "web/**"
       - "tools/*web*"
       - "tools/web-e2e/**"
       - "tools/check-architecture.mjs"
@@ -69,12 +68,12 @@ jobs:
         run: bash tools/build-web.sh
 
       - name: JavaScript tests (ZIP reader, importer with the real engine)
-        run: node --test web/js/test/*.test.js
+        run: node --test apps/web/js/test/*.test.js
 
       - name: Keep the built site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: web/dist
+          path: apps/web/dist
 
   deploy:
     name: Deploy to GitHub Pages (manual)

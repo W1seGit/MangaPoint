@@ -7,8 +7,8 @@ Node 22 (built-in `WebSocket` and `fetch`) and Python (for the static server).
 ## Run
 
 ```
-tools\build-web.ps1                      # or tools/build-web.sh; builds web/dist
-node --test web/js/test                  # unit tests (ZIP reader, importer with the real engine)
+tools\build-web.ps1                      # or tools/build-web.sh; builds apps/web/dist
+node --test apps/web/js/test                 # unit tests (ZIP reader, importer with the real engine)
 node tools/web-e2e/run-all.mjs           # every suite at desktop, tablet and phone sizes
 node tools/web-e2e/e2e-read.mjs phone    # one suite at one size
 ```

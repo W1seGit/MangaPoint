@@ -2,7 +2,7 @@
 
     python tools/web-icons.py
 
-Writes web/icons/: icon-192.png, icon-512.png, icon-maskable-512.png (the mascot
+Writes apps/web/assets/icons/: icon-192.png, icon-512.png, icon-maskable-512.png (the mascot
 inside the safe zone on the app's black), apple-touch-icon.png (180) and
 favicon-32.png. The icon is pixel art, so it is scaled with nearest-neighbour
 steps to stay crisp.
@@ -13,7 +13,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "apps" / "desktop" / "assets" / "icon.png"
-OUT = ROOT / "web" / "icons"
+OUT = ROOT / "apps" / "web" / "assets" / "icons"
 BACKGROUND = (0, 0, 0, 255)  # --bg of style.css
 
 

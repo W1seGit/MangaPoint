@@ -48,7 +48,7 @@ Step 'web engine parity with the desktop' { $env:CARGO_TARGET_DIR = $desk; cargo
 if (-not $Quick) {
     if (-not $SkipWeb) {
         Step 'website build' { $env:CARGO_TARGET_DIR = $web; powershell -NoProfile -File (Join-Path $PSScriptRoot 'build-web.ps1') }
-        Step 'browser JavaScript tests' { node --test (Join-Path $root 'web/js/test/*.test.js') }
+        Step 'browser JavaScript tests' { node --test (Join-Path $root 'apps/web/js/test/*.test.js') }
         Step 'website browser tests (every suite, three sizes)' { node (Join-Path $PSScriptRoot 'web-e2e/run-all.mjs') }
     }
     if (-not $SkipDesktop) {

@@ -1,5 +1,5 @@
 <#
-Builds the website into web/dist (any static host can serve that folder).
+Builds the website into apps/web/dist (any static host can serve that folder).
 
   tools\build-web.ps1               the page + the converter
   tools\build-web.ps1 -NoEngine     only the page (no export; faster)
@@ -14,7 +14,7 @@ $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
 Set-Location $root
 $target = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $root 'target' }
-$dist = Join-Path $root 'web\dist'
+$dist = Join-Path $root 'apps\web\dist'
 
 $want = '0.2.129'
 $have = $null
@@ -31,7 +31,7 @@ function Run($exe, [string[]]$arguments) {
 # Only ever delete inside the project.
 if (Test-Path $dist) {
     $resolved = (Resolve-Path $dist).Path
-    if (-not $resolved.StartsWith($root.Path, [StringComparison]::OrdinalIgnoreCase) -or -not $resolved.EndsWith('web\dist')) {
+    if (-not $resolved.StartsWith($root.Path, [StringComparison]::OrdinalIgnoreCase) -or -not $resolved.EndsWith('apps\web\dist')) {
         throw "Refusing to delete $resolved"
     }
     Remove-Item -Recurse -Force $resolved
@@ -59,21 +59,21 @@ if (Get-Command wasm-opt -ErrorAction SilentlyContinue) {
 }
 
 Write-Host '== site files =='
-Copy-Item (Join-Path $root 'web\index.html'), (Join-Path $root 'web\manifest.webmanifest') $dist
+Copy-Item (Join-Path $root 'apps\web\assets\index.html'), (Join-Path $root 'apps\web\assets\manifest.webmanifest') $dist
 # Hosts that show a page for unknown addresses (GitHub Pages) show the app at /export and the rest.
-Copy-Item (Join-Path $root 'web\index.html') (Join-Path $dist '404.html')
-Copy-Item -Recurse (Join-Path $root 'web\js') (Join-Path $dist 'js')
+Copy-Item (Join-Path $root 'apps\web\assets\index.html') (Join-Path $dist '404.html')
+Copy-Item -Recurse (Join-Path $root 'apps\web\js') (Join-Path $dist 'js')
 Remove-Item -Recurse -Force (Join-Path $dist 'js\test') -ErrorAction SilentlyContinue
-Copy-Item -Recurse (Join-Path $root 'web\icons') (Join-Path $dist 'icons')
+Copy-Item -Recurse (Join-Path $root 'apps\web\assets\icons') (Join-Path $dist 'icons')
 # The style sheets, each folder's files in the order of its ORDER file: css/ui.css is the look shared
-# with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (web/css).
+# with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (apps/web/css).
 function Join-Css([string]$Folder, [string]$Out) {
     $names = Get-Content (Join-Path $Folder 'ORDER') | Where-Object { $_.Trim() }
     $text = ($names | ForEach-Object { [IO.File]::ReadAllText((Join-Path $Folder $_.Trim())) }) -join "`n"
     [IO.File]::WriteAllText($Out, $text, (New-Object System.Text.UTF8Encoding $false))
 }
 Join-Css (Join-Path $root 'crates\ui\css') (Join-Path $dist 'css\ui.css')
-Join-Css (Join-Path $root 'web\css') (Join-Path $dist 'css\web.css')
+Join-Css (Join-Path $root 'apps\web\css') (Join-Path $dist 'css\web.css')
 
 # The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.
 New-Item -ItemType Directory -Force (Join-Path $dist 'js\ui') | Out-Null

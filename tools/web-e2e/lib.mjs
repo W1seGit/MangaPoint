@@ -42,8 +42,8 @@ async function freePort() {
   });
 }
 
-/** Serve web/dist (or `dir`) with the repository's static server. */
-export async function startServer(dir = join(ROOT, 'web', 'dist'), port = 0) {
+/** Serve apps/web/dist (or `dir`) with the repository's static server. */
+export async function startServer(dir = join(ROOT, 'apps', 'web', 'dist'), port = 0) {
   port = port || (await freePort());
   const py = process.env.MP_PYTHON || 'python';
   const child = spawn(py, [join(ROOT, 'tools', 'serve-web.py'), '--dir', dir, '--port', String(port)], { stdio: 'ignore' });

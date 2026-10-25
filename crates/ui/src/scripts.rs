@@ -1,7 +1,7 @@
 //! The page scripts both apps run, one copy each (`crates/ui/js`). Every script registers
 //! `window.MP.<name>` with a `start(args)`; loading a script twice changes nothing. The desktop
 //! app runs [`call`] in its web view; the website's build copies the files to `js/ui/` and loads
-//! one by name the first time it is asked for (`web/js/mp.js`, `run_script`).
+//! one by name the first time it is asked for (`apps/web/js/mp.js`, `run_script`).
 
 /// Each script by the name it registers, and its source.
 pub const SCRIPTS: [(&str, &str); 8] = [

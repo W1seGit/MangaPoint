@@ -1,5 +1,5 @@
 <#
-Serves web/dist on http://127.0.0.1:8080 with the right content types
+Serves apps/web/dist on http://127.0.0.1:8080 with the right content types
 (application/wasm, text/javascript for modules), the way any static host
 would. Nothing else: no uploads, no API.
 
@@ -10,7 +10,7 @@ would. Nothing else: no uploads, no API.
 param([int]$Port = 8080, [string]$Dir = '')
 $ErrorActionPreference = 'Stop'
 $root = Resolve-Path (Join-Path $PSScriptRoot '..')
-if (-not $Dir) { $Dir = Join-Path $root 'web\dist' }
+if (-not $Dir) { $Dir = Join-Path $root 'apps\web\dist' }
 if (-not (Test-Path (Join-Path $Dir 'index.html'))) {
     throw "No site in $Dir. Build it first: tools\build-web.ps1"
 }

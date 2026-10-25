@@ -1,4 +1,4 @@
-//! The calls into the page's JavaScript (`web/js/mp.js`) and the events it
+//! The calls into the page's JavaScript (`apps/web/js/mp.js`) and the events it
 //! sends back. Everything crosses as JSON text.
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};

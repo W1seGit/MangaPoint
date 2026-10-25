@@ -1,5 +1,5 @@
-// Run with: node --test web/js/test
-// The importer with the real engine WebAssembly (skipped when web/dist is not built).
+// Run with: node --test apps/web/js/test
+// The importer with the real engine WebAssembly (skipped when apps/web/dist is not built).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
@@ -24,7 +24,7 @@ test('natural order', () => {
   assert.deepEqual(names, ['1.jpg', '2.jpg', '10.jpg', 'a/3.jpg']);
 });
 
-test('analyze: chapters, bad files and unsupported types, with the real engine', { skip: !built && 'build web/dist first' }, async () => {
+test('analyze: chapters, bad files and unsupported types, with the real engine', { skip: !built && 'build apps/web/dist first' }, async () => {
   const wasm = await import(`file:///${join(dist, 'web_engine.js').replaceAll('\\', '/')}`);
   wasm.initSync({ module: readFileSync(join(dist, 'web_engine_bg.wasm')) });
   engine.fingerprint = (size, head, tail) => wasm.book_fingerprint_head_tail(size, head, tail);

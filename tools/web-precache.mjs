@@ -1,8 +1,8 @@
 // Fills in the service worker: lists every file of the built site, hashes them,
-// and writes web/dist/sw.js (the template web/sw.js with __VERSION__ and
-// __PRECACHE__ replaced) and web/dist/precache.json.
+// and writes apps/web/dist/sw.js (the template apps/web/assets/sw.js with __VERSION__ and
+// __PRECACHE__ replaced) and apps/web/dist/precache.json.
 //
-//     node tools/web-precache.mjs [web/dist]
+//     node tools/web-precache.mjs [apps/web/dist]
 //
 // The version is a hash of every file's path and content, so any change to the
 // site gives a new cache name, and an unchanged site gives the same one.
@@ -12,7 +12,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const dist = resolve(process.argv[2] || join(root, 'web', 'dist'));
+const dist = resolve(process.argv[2] || join(root, 'apps', 'web', 'dist'));
 
 // Files that are not part of the app shell.
 const SKIP = new Set(['sw.js', 'precache.json']);
@@ -43,8 +43,8 @@ const version = createHash('sha256')
 
 // "index.html" doubles as the address of the app itself.
 const precache = entries.map((e) => e.path);
-const template = readFileSync(join(root, 'web', 'sw.js'), 'utf8');
-if (!template.includes("'__VERSION__'") || !template.includes('__PRECACHE__')) throw new Error('web/sw.js lost its placeholders');
+const template = readFileSync(join(root, 'apps', 'web', 'assets', 'sw.js'), 'utf8');
+if (!template.includes("'__VERSION__'") || !template.includes('__PRECACHE__')) throw new Error('apps/web/assets/sw.js lost its placeholders');
 writeFileSync(join(dist, 'sw.js'), template.replace("'__VERSION__'", JSON.stringify(version)).replace('__PRECACHE__', JSON.stringify(precache, null, 2)));
 writeFileSync(join(dist, 'precache.json'), JSON.stringify({ version, files: entries }, null, 2));
 

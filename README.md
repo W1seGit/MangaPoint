@@ -305,7 +305,7 @@ app, and back.
 <img src="docs/screenshots/web-phone.jpg" alt="The website on a phone: the Library, a book's page with its chapters, and the reader" width="780" />
 </div>
 
-Build it with `tools/build-web.ps1` (or `tools/build-web.sh`) and serve `web/dist` from any
+Build it with `tools/build-web.ps1` (or `tools/build-web.sh`) and serve `apps/web/dist` from any
 static host. Details, limits and the reading-state file are in [docs/web.md](docs/web.md).
 
 ## Build from source

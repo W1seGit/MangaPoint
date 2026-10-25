@@ -1,5 +1,5 @@
 //! The reader: a long strip, with keys, taps and pinch. The page pictures are
-//! filled in by the browser's glue (`web/js/reader.js`) only while they are near
+//! filled in by the browser's glue (`apps/web/js/reader.js`) only while they are near
 //! the screen.
 
 use super::widgets::{EmptyState, Icon};

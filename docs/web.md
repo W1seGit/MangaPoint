@@ -102,11 +102,11 @@ A small JSON file (a few hundred bytes per book, no pictures). The engine
 | `apps/web` | the page: Rust, Dioxus 0.7 (`wasm32`), `model.rs` (library, state, sorting), `review.rs` (import review), `ui/*` (screens), `bridge.rs` (calls into the browser) |
 | `crates/ui` (`mangapoint-ui`) | what the website and the desktop app share: the art, the small widgets, the chapter table, and the logic behind the screens (reader keys and zoom, chapter sorting and ranges, the page editor's layout, number and date wording) |
 | `crates/ui/css/*.css` | the look shared with the desktop app, one file per screen, joined in the order of `crates/ui/css/ORDER` into `css/ui.css` at build time |
-| `web/css/*.css` | only what a browser and a phone add (safe areas, 44 px targets, bottom tab bar under 800 px, no sideways scroll), joined in the order of `web/css/ORDER` into `css/web.css` |
+| `apps/web/css/*.css` | only what a browser and a phone add (safe areas, 44 px targets, bottom tab bar under 800 px, no sideways scroll), joined in the order of `apps/web/css/ORDER` into `css/web.css` |
 | `crates/formats` | shared CBZ/EPUB/PDF byte writers, original-quality page helpers, ComicInfo and filename readers; desktop streams to files, browser writes to memory |
 | `crates/web-engine` | the engine: chapter guessing, fingerprints, state file, devices, options (`core`, linked into the page) and the converter/writers (`convert`, its own `.wasm`, loaded only by the export worker) |
-| `web/js` | browser glue as plain ES modules: `zip.js` (lazy ZIP reader), `store.js` (IndexedDB/OPFS), `importer.js`, `pages.js` (blob URL lifecycle), `reader.js` (tiles, keys, touch), `fsa.js`, `export-worker.js`, `mp.js` (the bridge) |
-| `web/sw.js`, `web/manifest.webmanifest`, `web/icons` | service worker template, manifest, icons (`tools/web-icons.py` makes them from the desktop icon) |
+| `apps/web/js` | browser glue as plain ES modules: `zip.js` (lazy ZIP reader), `store.js` (IndexedDB/OPFS), `importer.js`, `pages.js` (blob URL lifecycle), `reader.js` (tiles, keys, touch), `fsa.js`, `export-worker.js`, `mp.js` (the bridge) |
+| `apps/web/assets/sw.js`, `apps/web/assets/manifest.webmanifest`, `apps/web/assets/icons` | service worker template, manifest, icons (`tools/web-icons.py` makes them from the desktop icon) |
 
 ## Build
 
@@ -115,24 +115,24 @@ Needs Rust with `wasm32-unknown-unknown`, `wasm-bindgen-cli` **0.2.129**
 18+ and Python (server, icons).
 
 ```
-tools\build-web.ps1            # or tools/build-web.sh   -> web/dist
+tools\build-web.ps1            # or tools/build-web.sh   -> apps/web/dist
 tools\build-web.ps1 -NoEngine  # page only (no export), faster
 tools\serve-web.ps1            # http://127.0.0.1:8080/
 ```
 
-`web/dist` is the whole site. The build compiles `mangapoint-web` and
-`web-engine` for `wasm32`, runs `wasm-bindgen --target web`, copies `web/` and
+`apps/web/dist` is the whole site. The build compiles `mangapoint-web` and
+`web-engine` for `wasm32`, runs `wasm-bindgen --target web`, copies `apps/web/assets`, `apps/web/js`, `apps/web/css` and
 the desktop style sheets, then `tools/web-precache.mjs` hashes every file and
 writes `sw.js` with a versioned precache list (the version is a hash of all
 files, so any change is a new cache and the old one is deleted).
 
 Tests: `cargo test -p formats -p mangapoint-ui -p mangapoint-web -p web-engine`,
-`node --test web/js/test`,
+`node --test apps/web/js/test`,
 and the real-browser suites in `tools/web-e2e/` (see its README).
 
 ## Hosting
 
-Any static host works: copy `web/dist` to it. Requirements: serve `.wasm` as
+Any static host works: copy `apps/web/dist` to it. Requirements: serve `.wasm` as
 `application/wasm` and `.js` as a JavaScript type; HTTPS (or `localhost`) so the
 service worker and OPFS are available. All URLs are relative, so a sub-path
 such as `https://user.github.io/MangaPoint/` works. No special headers are

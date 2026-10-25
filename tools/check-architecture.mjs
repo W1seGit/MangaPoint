@@ -22,14 +22,14 @@ const components = app => {
 };
 const desktop = components('desktop'), web = components('web');
 for (const [name, p] of desktop) if (web.has(name)) failures.push(`${name} defined in ${p} and ${web.get(name)}`);
-for (const dir of ['crates/ui/css', 'web/css']) {
+for (const dir of ['crates/ui/css', 'apps/web/css']) {
   const order = read(`${dir}/ORDER`).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const onDisk = readdirSync(join(root, dir)).filter(n => n.endsWith('.css')).sort();
   if (new Set(order).size !== order.length || JSON.stringify([...order].sort()) !== JSON.stringify(onDisk)) failures.push(`${dir}/ORDER must list every stylesheet exactly once`);
 }
 for (const name of ['export-split', 'preview-editor', 'zoom-scrub', 'tooltip']) {
   if (!existsSync(join(root, `crates/ui/js/${name}.js`))) failures.push(`Missing shared ${name}.js`);
-  for (const path of [`web/js/${name}.js`, `apps/desktop/src/js/${name}.js`]) if (existsSync(join(root, path))) failures.push(`Copied script remains: ${path}`);
+  for (const path of [`apps/web/js/${name}.js`, `apps/desktop/src/js/${name}.js`]) if (existsSync(join(root, path))) failures.push(`Copied script remains: ${path}`);
 }
 for (const name of ['cbz', 'epub', 'pdf', 'original']) {
   if (existsSync(join(root, `crates/web-engine/src/export/${name}.rs`))) failures.push(`Copied writer remains: ${name}`);
@@ -68,7 +68,7 @@ function selectors(text) {
   result.push(current.trim()); return result;
 }
 const sharedSelectors = new Set(files('crates/ui/css', '.css').flatMap(p => cssRules(read(p)).flatMap(r => selectors(r.selector))));
-for (const p of files('web/css', '.css')) {
+for (const p of files('apps/web/css', '.css')) {
   for (const rule of cssRules(read(p))) {
     if (rule.responsive || rule.comment) continue;
     for (const selector of selectors(rule.selector)) {

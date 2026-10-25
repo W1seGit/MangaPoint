@@ -1,4 +1,4 @@
-// Run with: node --test web/js/test
+// Run with: node --test apps/web/js/test
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { openZip, ZipError, LIMITS, safePath } from '../zip.js';
