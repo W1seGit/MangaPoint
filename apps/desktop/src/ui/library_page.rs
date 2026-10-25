@@ -161,46 +161,60 @@ pub fn LibraryPage() -> Element {
     };
 
     rsx! {
-        div { class: "q-head",
-            div { class: "grow",
-                h1 { "Library" }
-                p { class: "muted",
-                    if series.is_empty() {
-                        "Series you keep, to read now or later."
-                    } else {
-                        "{downloaded_count} downloaded · {human_bytes(total)} on this computer"
-                        if saved_count > 0 { " · {saved_count} saved for later" }
+        // The title and the views stay at the top while the cards scroll under them.
+        div { class: "lib-top",
+            div { class: "q-head",
+                div { class: "grow",
+                    h1 { "Library" }
+                    p { class: "muted",
+                        if series.is_empty() {
+                            "Series you keep, to read now or later."
+                        } else {
+                            "{downloaded_count} downloaded · {human_bytes(total)} on this computer"
+                            if saved_count > 0 { " · {saved_count} saved for later" }
+                        }
                     }
                 }
-            }
-            button {
-                class: "btn", title: "Open the folder the downloads are kept in",
-                onclick: move |_| {
-                    let root = library_files().root().to_path_buf();
-                    let _ = std::fs::create_dir_all(&root);
-                    open_folder(&root);
-                },
-                Icon { name: "folder-open", size: 16 } "Open folder"
-            }
-            div { class: "menu-anchor import-anchor",
                 button {
-                    class: "btn", title: "Bring in comics, books and pictures you already have",
-                    onclick: move |_| import_menu.set(!import_menu()),
-                    Icon { name: "file-up", size: 16 } "Import"
+                    class: "btn", title: "Open the folder the downloads are kept in",
+                    onclick: move |_| {
+                        let root = library_files().root().to_path_buf();
+                        let _ = std::fs::create_dir_all(&root);
+                        open_folder(&root);
+                    },
+                    Icon { name: "folder-open", size: 16 } "Open folder"
                 }
-                if import_menu() {
-                    div { class: "menu-scrim", onclick: move |_| import_menu.set(false) }
-                    div { class: "menu down",
-                        button { class: "menu-item",
-                            onclick: move |_| { import_menu.set(false); start_import(state, None, false); },
-                            Icon { name: "file-up", size: 15 } "Choose files…"
-                        }
-                        button { class: "menu-item",
-                            onclick: move |_| { import_menu.set(false); start_import(state, None, true); },
-                            Icon { name: "folder-open", size: 15 } "Choose a folder…"
-                        }
-                        div { class: "menu-note muted small", "Or drop files and folders anywhere on this page." }
+                div { class: "menu-anchor import-anchor",
+                    button {
+                        class: "btn", title: "Bring in comics, books and pictures you already have",
+                        onclick: move |_| import_menu.set(!import_menu()),
+                        Icon { name: "file-up", size: 16 } "Import"
                     }
+                    if import_menu() {
+                        div { class: "menu-scrim", onclick: move |_| import_menu.set(false) }
+                        div { class: "menu down",
+                            button { class: "menu-item",
+                                onclick: move |_| { import_menu.set(false); start_import(state, None, false); },
+                                Icon { name: "file-up", size: 15 } "Choose files…"
+                            }
+                            button { class: "menu-item",
+                                onclick: move |_| { import_menu.set(false); start_import(state, None, true); },
+                                Icon { name: "folder-open", size: 15 } "Choose a folder…"
+                            }
+                            div { class: "menu-note muted small", "Or drop files and folders anywhere on this page." }
+                        }
+                    }
+                }
+            }
+
+            if !series.is_empty() {
+                LibraryTools {
+                    views: LibraryView::ALL.iter().map(|v| (v.label(), *v == view())).collect(),
+                    on_view: move |i| view.set(LibraryView::ALL[i]),
+                    filter: filter(),
+                    on_filter: move |text| filter.set(text),
+                    sorts: LibrarySort::ALL.iter().map(|o| (o.key(), o.label(), *o == sort())).collect(),
+                    on_sort: move |key: String| sort.set(LibrarySort::from_key(&key)),
                 }
             }
         }
@@ -214,14 +228,6 @@ pub fn LibraryPage() -> Element {
                 button { class: "btn", onclick: move |_| start_import(state, None, false), Icon { name: "file-up", size: 16 } "Import files" }
             }
         } else {
-            LibraryTools {
-                views: LibraryView::ALL.iter().map(|v| (v.label(), *v == view())).collect(),
-                on_view: move |i| view.set(LibraryView::ALL[i]),
-                filter: filter(),
-                on_filter: move |text| filter.set(text),
-                sorts: LibrarySort::ALL.iter().map(|o| (o.key(), o.label(), *o == sort())).collect(),
-                on_sort: move |key: String| sort.set(LibrarySort::from_key(&key)),
-            }
             if order.is_empty() && rows.is_empty() {
                 if !filter.read().trim().is_empty() {
                     EmptyState {

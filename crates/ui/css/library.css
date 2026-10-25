@@ -12,6 +12,11 @@
 
 /* ---- the tools above the cards ---- */
 .lib-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 30px; }
+/* The Library's title and views stay at the top while the cards scroll under them: the block reaches over the
+   page's padding, so nothing shows above or beside it. */
+.lib-top { position: sticky; top: -28px; z-index: 20; margin: -28px -36px 16px; padding: 28px 36px 14px; background: var(--bg); }
+.lib-top .lib-tools { margin-bottom: 0; }
+.lib-top:has(.menu-scrim) { z-index: 55; }
 .lib-tools .pillrow { display: flex; gap: 10px; flex: 1; flex-wrap: wrap; }
 .lib-filter { width: 240px; }
 .lib-sort { width: auto; }

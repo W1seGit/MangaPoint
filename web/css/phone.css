@@ -37,6 +37,10 @@
   .lib-tools .pillrow .pill { flex: none; padding-left: 14px; padding-right: 14px; }
   .lib-filter { flex: 1 1 0; width: auto; min-width: 0; }
   .lib-sort { flex: none; max-width: 48%; }
+  .lib-top {
+    top: calc(-14px - var(--sat)); margin: calc(-14px - var(--sat)) calc(-1 * max(14px, var(--sar))) 14px calc(-1 * max(14px, var(--sal)));
+    padding: calc(14px + var(--sat)) max(14px, var(--sar)) 12px max(14px, var(--sal));
+  }
   .poster-grid { grid-template-columns: repeat(auto-fill, minmax(min(150px, 40%), 1fr)); gap: 22px 14px; }
 
   /* Dialogs fill the screen */

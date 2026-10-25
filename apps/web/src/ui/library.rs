@@ -75,36 +75,50 @@ pub fn BrowserLibraryPage() -> Element {
     let chosen_books: Vec<String> = chosen.iter().filter(|id| lib.find(id).is_some_and(|b| !b.needs_file)).cloned().collect();
 
     rsx! {
-        div { class: "q-head",
-            div { class: "grow",
-                h1 { "Library" }
-                p { class: "muted",
-                    if empty {
-                        "Your own comics and books, kept on this device."
-                    } else {
-                        "{plural(count, \"book\")} \u{b7} {human_bytes(total_bytes)} on this device"
+        // The title and the views stay at the top while the cards scroll under them.
+        div { class: "lib-top",
+            div { class: "q-head",
+                div { class: "grow",
+                    h1 { "Library" }
+                    p { class: "muted",
+                        if empty {
+                            "Your own comics and books, kept on this device."
+                        } else {
+                            "{plural(count, \"book\")} \u{b7} {human_bytes(total_bytes)} on this device"
+                        }
+                    }
+                }
+                div { class: "menu-anchor import-anchor",
+                    button {
+                        class: "btn", id: "import-button", title: "Bring in comics, books and pictures you already have",
+                        onclick: move |_| import_menu.set(!import_menu()),
+                        Icon { name: "file-up", size: 16 } "Import"
+                    }
+                    if import_menu() {
+                        div { class: "menu-scrim", onclick: move |_| import_menu.set(false) }
+                        div { class: "menu down", id: "import-menu",
+                            button { class: "menu-item", id: "import-files",
+                                onclick: move |_| { import_menu.set(false); pick_files(); },
+                                Icon { name: "file-up", size: 15 } "Choose files\u{2026}"
+                            }
+                            button { class: "menu-item", id: "import-folder",
+                                onclick: move |_| { import_menu.set(false); pick_folder(); },
+                                Icon { name: "folder-open", size: 15 } "Choose a folder\u{2026}"
+                            }
+                            div { class: "menu-note muted small", "Or drop files and folders anywhere on this page." }
+                        }
                     }
                 }
             }
-            div { class: "menu-anchor import-anchor",
-                button {
-                    class: "btn", id: "import-button", title: "Bring in comics, books and pictures you already have",
-                    onclick: move |_| import_menu.set(!import_menu()),
-                    Icon { name: "file-up", size: 16 } "Import"
-                }
-                if import_menu() {
-                    div { class: "menu-scrim", onclick: move |_| import_menu.set(false) }
-                    div { class: "menu down", id: "import-menu",
-                        button { class: "menu-item", id: "import-files",
-                            onclick: move |_| { import_menu.set(false); pick_files(); },
-                            Icon { name: "file-up", size: 15 } "Choose files\u{2026}"
-                        }
-                        button { class: "menu-item", id: "import-folder",
-                            onclick: move |_| { import_menu.set(false); pick_folder(); },
-                            Icon { name: "folder-open", size: 15 } "Choose a folder\u{2026}"
-                        }
-                        div { class: "menu-note muted small", "Or drop files and folders anywhere on this page." }
-                    }
+
+            if !empty {
+                LibraryTools {
+                    views: LibraryView::ALL.iter().map(|v| (v.label(), *v == view())).collect(),
+                    on_view: move |i| view.set(LibraryView::ALL[i]),
+                    filter: filter(),
+                    on_filter: move |text| filter.set(text),
+                    sorts: LibrarySort::ALL.iter().map(|o| (o.key(), o.label(), *o == sort())).collect(),
+                    on_sort: move |key: String| sort.set(LibrarySort::from_key(&key)),
                 }
             }
         }
@@ -123,14 +137,6 @@ pub fn BrowserLibraryPage() -> Element {
                 }
             }
         } else {
-            LibraryTools {
-                views: LibraryView::ALL.iter().map(|v| (v.label(), *v == view())).collect(),
-                on_view: move |i| view.set(LibraryView::ALL[i]),
-                filter: filter(),
-                on_filter: move |text| filter.set(text),
-                sorts: LibrarySort::ALL.iter().map(|o| (o.key(), o.label(), *o == sort())).collect(),
-                on_sort: move |key: String| sort.set(LibrarySort::from_key(&key)),
-            }
             if order.is_empty() && waiting.is_empty() && rows.is_empty() {
                 EmptyState {
                     title: "Nothing matches",

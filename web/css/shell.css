@@ -21,6 +21,8 @@ body { -webkit-tap-highlight-color: transparent; }
 /* The window: dvh follows the phone's moving address bar. */
 .app { height: 100vh; height: 100dvh; min-width: 0; min-height: 0; } /* the desktop window's minimum size does not apply */
 .content { padding-left: max(28px, var(--sal)); padding-right: max(28px, var(--sar)); }
+/* The Library's sticky top reaches over this padding. */
+.lib-top { margin-left: calc(-1 * max(28px, var(--sal))); margin-right: calc(-1 * max(28px, var(--sar))); padding-left: max(28px, var(--sal)); padding-right: max(28px, var(--sar)); }
 /* The first-run and failure screens fill the dynamic viewport too. */
 .splash { height: 100vh; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: auto; }
 

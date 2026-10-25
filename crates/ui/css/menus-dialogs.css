@@ -49,6 +49,6 @@
    corner bar stay over it. (The animations that bring blocks in end with `backwards`, so they leave no layer
    of their own behind that would hold the menu under the blocks after them.) */
 .menu-anchor:has(> .menu-scrim), .bar-menu:has(> .menu-scrim) { z-index: 55; }
-.overview-body > :has(.menu-scrim), .keep.lib > :has(.menu-scrim):not(.action-bar), .rise-in > :has(.menu-scrim):not(.action-bar) { position: relative; z-index: 55; }
+.overview-body > :has(.menu-scrim), .keep.lib > :has(.menu-scrim):not(.action-bar, .lib-top), .rise-in > :has(.menu-scrim):not(.action-bar) { position: relative; z-index: 55; }
 .menu-anchor .menu { min-width: 260px; white-space: nowrap; }
 .menu-sep { height: 1px; margin: 5px 6px; background: var(--line); }
