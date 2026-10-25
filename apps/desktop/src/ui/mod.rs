@@ -245,8 +245,8 @@ fn Shell() -> Element {
         CornerBar {
             items: vec![tasks, BarItem::new("settings", "Settings", "gear", owner == Page::Settings)],
             on_pick: move |id| pick_with_exit(state, id, leaving),
+            task_chip::TaskChip { on_open: move |_| pick_with_exit(state, "tasks", leaving) }
         }
-        task_chip::TaskChip { on_open: move |_| pick_with_exit(state, "tasks", leaving) }
         }
         main { class: "content",
             div { class: if leaving() { "page leaving" } else { "page" },

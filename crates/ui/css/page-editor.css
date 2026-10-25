@@ -15,41 +15,32 @@
 
 .device figcaption { color: var(--muted); font-size: 0.82rem; margin-bottom: 6px; }
 
-/* The bar for the ticked cards is the bottom bar grown to the left: the count, then the buttons, and the
-   dock at its right end, all in one row. */
+/* The bar for the ticked cards: a dark bar in the bottom left corner, like the navbar's, with the count
+   and then the buttons. */
 .action-bar {
-  --dock-gap: 276px;
-  position: fixed; right: calc(50% - var(--dock-gap) / 2); bottom: 0; z-index: 59; box-sizing: border-box;
-  width: min(1100px, calc(50vw + var(--dock-gap) / 2 - 12px)); min-height: 76px;
-  display: flex; align-items: center; gap: 16px; padding: 0 calc(var(--dock-gap) + 6px) 0 30px;
-  background: var(--dark); border: 1px solid #292929; border-bottom: 0; border-radius: 40px 40px 0 0;
+  position: fixed; left: 0; bottom: 0; z-index: 59; box-sizing: border-box; width: min(760px, calc(50vw - 150px)); height: 76px;
+  display: flex; align-items: center; gap: 14px; padding: 0 34px 0 30px; container-type: inline-size;
+  background: var(--dark); border: 1px solid #292929; border-left: 0; border-bottom: 0; border-radius: 0 40px 0 0;
   animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 .action-bar .bar-left { flex: none; display: flex; align-items: center; gap: 12px; min-width: 0; }
-.action-bar .bar-right { flex: 1; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px; padding: 8px 0; min-width: 0; }
-/* The dock shares the bar's background, so the two look like one piece. */
-.dock { transition: background-color 0.3s ease, border-color 0.3s ease; }
-.app:has(.action-bar) .dock { background: transparent; border-color: transparent; }
-/* The Library gives its children a rise that would keep the bar off its place. */
+.action-bar .bar-right { flex: 1; display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap; gap: 10px; min-width: 0; }
+.action-bar .btn { flex: none; white-space: nowrap; }
 .keep.lib:not(.gone) > #action-bar { animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
 @keyframes bar-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .action-bar .bar-count { display: flex; flex-direction: column; line-height: 1.25; margin-right: 6px; }
 /* Nothing ever wraps onto a second line: the less room the bar has, the less it says. */
-.action-bar { container-type: inline-size; }
-.action-bar .bar-right { flex-wrap: nowrap; }
-.action-bar .btn { flex: none; white-space: nowrap; }
-@container (max-width: 940px) {
+@container (max-width: 700px) {
   .action-bar .bar-right .btn { font-size: 0; gap: 0; padding-left: 12px; padding-right: 12px; }
   .action-bar .bar-right .btn .fig, .action-bar .bar-right .btn svg { font-size: 1rem; }
 }
-@container (max-width: 560px) {
+@container (max-width: 440px) {
   #bar-select-all, .action-bar .bar-count .muted { display: none; }
 }
 /* A narrow window: the bar sits on top of the dock instead, joined to its top edge. */
 @media (max-width: 760px) {
-  .action-bar { left: 0; right: 0; width: auto; flex-wrap: nowrap; gap: 8px; bottom: 64px; z-index: 61; padding: 12px 16px 20px; border-radius: 28px 28px 0 0; }
+  .action-bar { right: 0; width: auto; height: auto; min-height: 0; gap: 8px; bottom: 64px; z-index: 61; padding: 12px 16px 20px; border-radius: 28px 28px 0 0; }
   .action-bar .bar-right { flex: 1; justify-content: flex-end; padding: 0; }
-  .app:has(.action-bar) .dock { background: var(--dark); border-color: #292929; }
 }
 .bar-menu { position: relative; }
 .controls.compact .field { grid-template-columns: 1fr; gap: 4px; }
