@@ -34,7 +34,8 @@
 .bar-link:hover { color: var(--text); }
 /* Nothing ever wraps onto a second line: the buttons keep only their icons unless the window is wide. */
 @media (max-width: 1699px) {
-  .action-bar .bar-right .btn { font-size: 0; gap: 0; padding-left: 12px; padding-right: 12px; }
+  /* (Only a button with an icon: one with only words, like Cancel, keeps them.) */
+  .action-bar .bar-right .btn:has(svg, .fig) { font-size: 0; gap: 0; padding-left: 12px; padding-right: 12px; }
   .action-bar .bar-right .btn .fig, .action-bar .bar-right .btn svg { font-size: 1rem; }
 }
 /* A narrower window (a tablet, a phone, a half-screen window): beside the dock there is not room for the
