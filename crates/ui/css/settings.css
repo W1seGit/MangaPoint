@@ -54,3 +54,9 @@
 .sx-note { color: var(--muted); font-size: 0.84rem; margin: 6px 0 0; }
 
 .sx-note.warn { color: var(--warn); }
+
+/* No reader yet: a short welcome and the button to add the first one. */
+.reader-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; max-width: 460px; margin: 0; padding: 40px 32px; border-radius: 25px; background: var(--panel-2, #2a211d); }
+.reader-empty h2 { margin: 0; }
+.reader-empty p { margin: 0; line-height: 1.5; }
+.reader-empty-art { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; background: var(--icon); color: var(--dark); }

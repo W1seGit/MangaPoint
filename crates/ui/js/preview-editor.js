@@ -24,7 +24,10 @@
        // page: measured on the screen it would change as the page scrolls, and the
        // viewer would grow every time it was scrolled.
        const fit = () => {
-        const top = scroller.getBoundingClientRect().top - page.getBoundingClientRect().top + page.scrollTop;
+        // (By layout, not by where it is drawn: the page rises into place when it opens, and measuring that
+        // would leave the viewer a pixel off until something measured it again.)
+        const layoutTop = (el) => { let t = 0; for (let e = el; e; e = e.offsetParent) t += e.offsetTop; return t; };
+        const top = layoutTop(scroller) - layoutTop(page);
         const bar = root.querySelector('.editor-bottom');
         const below = (bar ? bar.offsetHeight : 0) + (parseFloat(getComputedStyle(page).paddingBottom) || 0) + 8;
         set('--canvas-height', Math.max(240, Math.round(page.clientHeight - top - below)) + 'px');

@@ -80,14 +80,35 @@ pub fn ReadersEditor() -> Element {
             }
         }
     };
-    rsx! {
-        // With no reader chosen to edit there is no name above them: the readers come first.
-        if devices_empty || phone_chosen { {pick.clone()} }
+    // The original-quality choice has no settings to show: the first reader is picked, so the page is never blank.
+    let first = s.devices().first().map(|d| d.id.clone());
+    use_effect(move || {
         if phone_chosen {
-            p { class: "sx-note", "\"Phone or tablet · original quality\" is chosen on the Export screen. Pick one of your readers above to change its settings." }
+            if let Some(id) = first.clone() {
+                state.leave(crate::host::Leave::Reader(id), false);
+            }
         }
-        if devices_empty && !phone_chosen {
-            p { class: "sx-note", "No reader yet. Add one so pages are made at the right size for it." }
+    });
+    rsx! {
+        if devices_empty {
+            div { class: "reader-empty", id: "reader-empty",
+                div { class: "reader-empty-art", Icon { name: "book-open", size: 40 } }
+                h2 { "Add your first reader" }
+                p { class: "muted",
+                    "MangaPoint makes every page the right size for your e-reader, so tell it which one you read on. "
+                    "Pick it from the list or enter its screen size yourself."
+                }
+                if adding() {
+                    ReaderAdder {
+                        on_added: move |_| adding.set(false),
+                        on_close: move |_| adding.set(false),
+                    }
+                } else {
+                    button { class: "btn primary", id: "reader-empty-add", onclick: move |_| adding.set(true),
+                        Icon { name: "plus", size: 16 } "Add a reader"
+                    }
+                }
+            }
         }
         // Keyed, so choosing another reader (or saving) starts the form afresh.
         if !devices_empty && !phone_chosen {

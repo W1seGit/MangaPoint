@@ -141,8 +141,8 @@ pub fn BrowserLibraryPage() -> Element {
             div {
                 class: if selecting { "poster-grid selecting" } else { "poster-grid" },
                 onmounted: move |_| ctx.ui.host().run_script("flip_grid", String::new()),
-                for (i, leaving) in rows.iter().copied() {
-                    {
+                // Each card is a keyed root of its own, so a card is never reused for another one.
+                {rows.iter().copied().map(|(i, leaving)| {
                         let b = lib.books[i].clone();
                         let gone_id = b.id.clone();
                         let on_gone = { let f = fading.clone(); move |_| f.gone(&gone_id) };
@@ -251,8 +251,7 @@ pub fn BrowserLibraryPage() -> Element {
                                 on_button: move |_| super::reader::open_reader(ctx, &read_pick, None),
                             }
                         }
-                    }
-                }
+                })}
                 for w in waiting.iter() {
                     {
                         let fp = w.fingerprint.clone();

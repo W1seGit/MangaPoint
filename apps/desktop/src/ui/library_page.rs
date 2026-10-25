@@ -245,8 +245,9 @@ pub fn LibraryPage() -> Element {
             div {
                 class: if selecting { "poster-grid selecting" } else { "poster-grid" },
                 onmounted: move |_| state.ui.host().run_script("flip_grid", String::new()),
-                for (i, leaving) in rows.iter().copied() {
-                    {
+                // Each card is a keyed root of its own: with a block in between the list was matched by place,
+                // and a card that was left went on to show the next one's cover for a moment.
+                {rows.iter().copied().map(|(i, leaving)| {
                         let s = series[i];
                         let gone_id = s.id.clone();
                         let on_gone = { let f = fading.clone(); move |_| f.gone(&gone_id) };
@@ -426,8 +427,7 @@ pub fn LibraryPage() -> Element {
                                 },
                             }
                         }
-                    }
-                }
+                })}
             }
         }
 
