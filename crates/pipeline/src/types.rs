@@ -127,7 +127,7 @@ pub struct SourceUse {
 
 /// Lets the UI stop a running download or export.
 #[derive(Clone, Debug, Default)]
-pub struct CancelFlag(Arc<AtomicBool>);
+pub struct CancelFlag(Arc<AtomicBool>, Arc<AtomicBool>);
 
 impl CancelFlag {
     pub fn new() -> Self {
@@ -135,6 +135,22 @@ impl CancelFlag {
     }
     pub fn cancel(&self) {
         self.0.store(true, Ordering::SeqCst);
+    }
+    /// Hold the job where it is (at the next chapter) until [`resume`](Self::resume); nothing is lost.
+    pub fn pause(&self) {
+        self.1.store(true, Ordering::SeqCst);
+    }
+    pub fn resume(&self) {
+        self.1.store(false, Ordering::SeqCst);
+    }
+    pub fn is_paused(&self) -> bool {
+        self.1.load(Ordering::SeqCst)
+    }
+    /// Returns at once unless paused; then waits for a resume or a cancel.
+    pub async fn wait_while_paused(&self) {
+        while self.is_paused() && !self.is_cancelled() {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
     }
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::SeqCst)

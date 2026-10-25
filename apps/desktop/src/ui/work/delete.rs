@@ -61,6 +61,7 @@ pub(super) async fn stop_work_for(state: AppState, series_ids: &[String]) -> boo
                 && series_ids.contains(&view.series_id)
             {
                 view.paused = false;
+                view.cancel.cancel();
                 view.result = Some(Err("Cancelled: the series was deleted.".to_string()));
                 super::export::forget_export_plan();
             }

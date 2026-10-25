@@ -576,6 +576,7 @@ pub async fn export_series(
                 &budget,
             );
             async move {
+                cancel.wait_while_paused().await;
                 if cancel.is_cancelled() {
                     return (group, ci, Err(PipelineError::Cancelled));
                 }
@@ -622,6 +623,7 @@ pub async fn export_series(
     while let Some((group, ci, images)) = converted.next().await {
         let (images, cached) = images?;
         cached_chapters += usize::from(cached);
+        cancel.wait_while_paused().await;
         if cancel.is_cancelled() {
             return Err(PipelineError::Cancelled);
         }
@@ -1687,6 +1689,24 @@ mod tests {
             Err(PipelineError::Cancelled)
         ));
         assert!(folder_files(&root).is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn a_paused_export_waits_and_then_goes_on_without_starting_over() {
+        let (root, files, series) = fixture("paused", 2, 3);
+        let job = folder_job(&root, &series);
+        let cancel = CancelFlag::new();
+        cancel.pause();
+        let run = export_series(&files, &job, None, &cancel);
+        let later = async {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            assert!(folder_files(&root).is_empty(), "nothing is made while it is held");
+            cancel.resume();
+        };
+        let (result, ()) = futures_util::future::join(run, later).await;
+        assert!(result.is_ok(), "{result:?}");
+        assert!(!folder_files(&root).is_empty());
         let _ = fs::remove_dir_all(root);
     }
 

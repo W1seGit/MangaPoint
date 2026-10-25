@@ -119,6 +119,10 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
                 describe_target(&target)
             );
             run_export(state, series, export, target.clone(), cancel).await;
+            // Given up while held: the one that took its place is paused, so nothing goes on.
+            if !job.peek().as_ref().is_some_and(|v| v.series_id == item.series_id) {
+                return;
+            }
             let paused = job
                 .peek()
                 .as_ref()
@@ -156,9 +160,10 @@ pub fn pause_export(state: AppState) {
     let mut guard = job.write();
     if let Some(view) = guard.as_mut() {
         if view.result.is_none() && !view.paused {
+            // Held where it is: what is under way finishes, nothing new starts, and Resume
+            // lets it go on with the same run, so nothing starts over.
             view.paused = true;
-            view.cancel.cancel();
-            view.progress.stopping = true;
+            view.cancel.pause();
         }
     }
 }
@@ -169,6 +174,13 @@ pub fn pause_export(state: AppState) {
 pub fn resume_export(state: AppState) {
     let paused = state.job.peek().as_ref().is_some_and(|v| v.paused);
     if !paused {
+        return;
+    }
+    // A run that is only being held (the app was not closed) just goes on.
+    let mut job = state.job;
+    if let Some(view) = job.write().as_mut().filter(|v| v.cancel.is_paused()) {
+        view.cancel.resume();
+        view.paused = false;
         return;
     }
     let saved = JsonFile::<SavedExport>::new(paths().export_job_file()).load();
@@ -232,6 +244,10 @@ pub fn resume_export_unchecked(state: AppState) {
 /// place (paused, so nothing starts by itself).
 pub fn drop_paused_export(state: AppState) {
     let mut job = state.job;
+    // A run that is only being held ends; it does not go on to the next one by itself.
+    if let Some(view) = job.peek().as_ref() {
+        view.cancel.cancel();
+    }
     job.set(None);
     let mut saved = JsonFile::<SavedExport>::new(paths().export_job_file()).load();
     if saved.next < saved.items.len() {

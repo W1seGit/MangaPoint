@@ -221,6 +221,7 @@ pub async fn export_original(
     for (group, range) in group_ranges(total, job.grouping).into_iter().enumerate() {
         let mut open: Option<(Book, Volume, u64)> = None;
         for ci in range {
+            cancel.wait_while_paused().await;
             if cancel.is_cancelled() {
                 return Err(PipelineError::Cancelled);
             }
