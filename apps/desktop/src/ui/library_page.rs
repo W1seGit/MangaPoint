@@ -215,7 +215,7 @@ pub fn LibraryPage() -> Element {
                 sorts: LibrarySort::ALL.iter().map(|o| (o.key(), o.label(), *o == sort())).collect(),
                 on_sort: move |key: String| sort.set(LibrarySort::from_key(&key)),
             }
-            if order.is_empty() {
+            if order.is_empty() && rows.is_empty() {
                 if !filter.read().trim().is_empty() {
                     EmptyState {
                         title: "Nothing matches",

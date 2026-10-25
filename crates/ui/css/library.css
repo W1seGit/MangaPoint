@@ -30,6 +30,9 @@
 .poster.on { outline: 3px solid var(--icon); outline-offset: 3px; }
 /* A card that is leaving the view (another view was chosen) fades away, then is taken out. */
 .poster-grid > .poster.leaving { pointer-events: none; animation: poster-out 0.3s ease forwards; animation-delay: 0s; }
+/* Without motion a card still has to leave: its animation only gets shorter. */
+.app[data-motion="snappy"] .poster-grid > .poster.leaving { animation: poster-out 0.05s ease forwards; }
+@media (prefers-reduced-motion: reduce) { .poster-grid > .poster.leaving { animation: poster-out 0.01s forwards; } }
 @keyframes poster-out { to { opacity: 0; transform: scale(0.88); } }
 .poster-art { position: relative; z-index: 2; aspect-ratio: 238 / 337; overflow: hidden; cursor: pointer; background: var(--sub); }
 .poster > .poster-art:first-child { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }

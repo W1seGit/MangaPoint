@@ -131,7 +131,7 @@ pub fn BrowserLibraryPage() -> Element {
                 sorts: LibrarySort::ALL.iter().map(|o| (o.key(), o.label(), *o == sort())).collect(),
                 on_sort: move |key: String| sort.set(LibrarySort::from_key(&key)),
             }
-            if order.is_empty() && waiting.is_empty() {
+            if order.is_empty() && waiting.is_empty() && rows.is_empty() {
                 EmptyState {
                     title: "Nothing matches",
                     message: "No book in this view has that in its name. Try fewer letters or another view.",

@@ -26,10 +26,17 @@ pub fn next_sort(current: (SortKey, bool), clicked: SortKey) -> (SortKey, bool) 
 ///
 /// `numbers` holds each chapter's number (`None` for unnumbered ones, which
 /// text can never select). A bare number selects that chapter, `a-b` selects
-/// the inclusive range and `a-` selects from `a` to the end.
+/// the inclusive range and `a-` selects from `a` to the end. A part that starts with `!` (`!`, `!.`)
+/// leaves out the chapters numbered with a point (12.1, 12.5: extras and notices): `1-20, !` is the
+/// whole-numbered chapters of 1 to 20, and `!` alone is every whole-numbered chapter.
 pub fn select_by_text(text: &str, numbers: &[Option<f64>]) -> Result<Vec<usize>, String> {
     let mut wanted: Vec<(f64, f64)> = Vec::new();
+    let mut whole_only = false;
     for part in text.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+        if part.starts_with('!') {
+            whole_only = true;
+            continue;
+        }
         let parse = |s: &str| {
             s.trim()
                 .parse::<f64>()
@@ -50,6 +57,9 @@ pub fn select_by_text(text: &str, numbers: &[Option<f64>]) -> Result<Vec<usize>,
             }
         }
     }
+    if wanted.is_empty() && whole_only {
+        wanted.push((f64::NEG_INFINITY, f64::INFINITY));
+    }
     if wanted.is_empty() {
         return Err("type chapter numbers such as 1-10, 15".into());
     }
@@ -58,22 +68,15 @@ pub fn select_by_text(text: &str, numbers: &[Option<f64>]) -> Result<Vec<usize>,
         .enumerate()
         .filter_map(|(i, n)| {
             let n = (*n)?;
+            if whole_only && (n - n.round()).abs() >= 0.0005 {
+                return None;
+            }
             wanted
                 .iter()
                 .any(|&(a, b)| n >= a - 0.0005 && n <= b + 0.0005)
                 .then_some(i)
         })
         .collect())
-}
-
-/// Like `select_by_text`, and with `whole_only` the chapters numbered 12.1 or 12.5 (extras and
-/// notices) are left out: only 12 itself can be picked.
-pub fn select_range(text: &str, numbers: &[Option<f64>], whole_only: bool) -> Result<Vec<usize>, String> {
-    if !whole_only {
-        return select_by_text(text, numbers);
-    }
-    let whole: Vec<Option<f64>> = numbers.iter().map(|n| n.filter(|n| (n - n.round()).abs() < 0.0005)).collect();
-    select_by_text(text, &whole)
 }
 
 #[cfg(test)]
@@ -85,11 +88,12 @@ mod tests {
     }
 
     #[test]
-    fn a_range_can_skip_the_numbers_with_a_point() {
+    fn an_exclamation_mark_leaves_out_the_numbers_with_a_point() {
         let numbers = vec![Some(1.0), Some(1.5), Some(2.0), Some(2.1), Some(3.0), None];
-        assert_eq!(select_range("1-3", &numbers, false).unwrap(), vec![0, 1, 2, 3, 4]);
-        assert_eq!(select_range("1-3", &numbers, true).unwrap(), vec![0, 2, 4]);
-        assert_eq!(select_range("1.5", &numbers, true).unwrap(), Vec::<usize>::new());
+        assert_eq!(select_by_text("1-3", &numbers).unwrap(), vec![0, 1, 2, 3, 4]);
+        assert_eq!(select_by_text("1-3, !", &numbers).unwrap(), vec![0, 2, 4]);
+        assert_eq!(select_by_text("!.", &numbers).unwrap(), vec![0, 2, 4]);
+        assert_eq!(select_by_text("2-, !1", &numbers).unwrap(), vec![2, 4]);
     }
 
     #[test]

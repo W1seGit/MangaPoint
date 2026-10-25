@@ -222,7 +222,7 @@ fn ExportJobRow() -> Element {
                         None if job.paused => rsx! { Chip { text: "paused", kind: Some("warn".to_string()) } },
                         None if job.progress.writing.is_some() => rsx! { Chip { text: "writing", kind: Some("accent".to_string()) } },
                         None => rsx! { Chip { text: "exporting", kind: Some("accent".to_string()) } },
-                        Some(Ok(_)) => rsx! { Chip { text: "done", kind: Some("ok".to_string()) } },
+                        Some(Ok(_)) => rsx! { span { class: "done-tick", title: "Done", "aria-label": "Done", Icon { name: "check", size: 14 } } },
                         Some(Err(_)) => rsx! { Chip { text: "stopped", kind: Some("bad".to_string()) } },
                     }
                 }
@@ -586,7 +586,13 @@ fn BatchRow(id: u64) -> Element {
                         onclick: move |_| open_series_from_library(state, &open_id),
                         "{batch.title}"
                     }
-                    if let Some((text, kind)) = status_chip { Chip { text: text.to_string(), kind: Some(kind.to_string()) } }
+                    if let Some((text, kind)) = status_chip {
+                        if text == "done" {
+                            span { class: "done-tick", title: "Done", "aria-label": "Done", Icon { name: "check", size: 14 } }
+                        } else {
+                            Chip { text: text.to_string(), kind: Some(kind.to_string()) }
+                        }
+                    }
                     if batch.choice != pipeline::SourceChoice::Adaptive { Chip { text: "one source" } }
                 }
                 if running {

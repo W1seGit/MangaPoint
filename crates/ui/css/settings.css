@@ -2,7 +2,7 @@
 
 .page:has(.settings) { max-width: none; }
 .settings { width: 100%; margin: 0 auto; padding-top: clamp(8px, 11vh, 120px); display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 625px) minmax(180px, 1fr); align-items: start; min-width: 0; }
-.settings-nav { grid-column: 1; grid-row: 1; justify-self: end; align-self: start; margin-right: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 0; border: 0; }
+.settings-nav { position: sticky; top: 36px; grid-column: 1; grid-row: 1; justify-self: end; align-self: start; margin-right: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 0; border: 0; }
 .settings-nav .nav-item {
   position: relative; padding: 0 10px; border: 0; border-radius: var(--radius-lg); background: transparent; color: var(--icon);
   font: 400 24px/normal var(--font-pixel); text-align: left; cursor: pointer; white-space: nowrap;
@@ -24,7 +24,7 @@
 .pill.add { color: var(--muted); background: transparent; box-shadow: inset 0 0 0 2px var(--third); }
 @media (max-width: 1100px) {
   .settings { grid-template-columns: 1fr; padding-top: 0; }
-  .settings-nav { flex-direction: row; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 22px; }
+  .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 22px; }
   .settings-content { grid-column: 1; max-width: none; }
 }
 

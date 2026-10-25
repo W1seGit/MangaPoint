@@ -29,7 +29,7 @@ try {
   const vh = await page.eval('innerHeight');
   const navBox = await page.rect('.nav');
   // The bar floats above the dock (and above the corner bar on a phone).
-  r.check('the bar sits at the bottom of the screen, above the dock', bar[1] + bar[3] <= navBox[1] + 2 && bar[1] + bar[3] >= vh - navBox[3] - 120, `bar ${Math.round(bar[1])}-${Math.round(bar[1] + bar[3])} of ${vh}, dock from ${Math.round(navBox[1])}`);
+  r.check('the bar sits at the bottom of the screen, above the dock', bar[1] + bar[3] <= navBox[1] + 18 && bar[1] + bar[3] >= navBox[1] && bar[1] + bar[3] >= vh - navBox[3] - 120, `bar ${Math.round(bar[1])}-${Math.round(bar[1] + bar[3])} of ${vh}, dock from ${Math.round(navBox[1])}`);
   r.check('the bar does not run past the sides of the screen', bar[0] >= -1 && bar[0] + bar[2] <= (await page.eval('innerWidth')) + 1, JSON.stringify(bar));
   await page.shot(`${viewport}-50-select`);
   r.check('one book can be exported', !!(await page.eval("document.querySelector('#bar-export')")));

@@ -246,7 +246,7 @@ pub fn SearchPage() -> Element {
                                 span { class: "src-pill fil-pill", key: "{label}", "{label}" }
                             }
                             button {
-                                class: if open() { "pill-btn is-open" } else { "pill-btn" }, r#type: "button",
+                                class: if open() { "pill-btn src-btn is-open" } else { "pill-btn src-btn" }, r#type: "button",
                                 title: "Choose which sources to search",
                                 disabled: total == 0,
                                 onclick: move |_| { if open() { close_panel() } else { filters_open.set(false); open.set(true) } },

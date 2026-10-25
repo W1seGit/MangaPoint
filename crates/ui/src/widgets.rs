@@ -105,17 +105,6 @@ pub fn Help(text: String) -> Element {
     }
 }
 
-/// The tick box beside a chapter range: pick only the whole-numbered chapters.
-#[component]
-pub fn WholeOnly(on: bool, on_change: EventHandler<bool>) -> Element {
-    rsx! {
-        label { class: "whole-only", title: "Leave out chapters numbered 12.1, 12.5 and the like (extras and notices)",
-            input { r#type: "checkbox", checked: on, onchange: move |e| on_change.call(e.checked()) }
-            span { "Whole numbers only" }
-        }
-    }
-}
-
 #[component]
 pub fn Chip(text: String, kind: Option<String>) -> Element {
     let class = format!("chip {}", kind.unwrap_or_default());

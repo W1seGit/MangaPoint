@@ -110,6 +110,9 @@
 .pill-btn:disabled { opacity: 0.45; cursor: default; }
 .src-pill { max-width: 230px; }
 .fil-btn, .fil-pill { }
+/* The sources are a darker tone than the filters, so which is which can be seen at once. */
+.pill-btn.src-btn, .src-pill:not(.fil-pill) { background: #2a211d; color: var(--icon); }
+.pill-btn.src-btn:hover:not(:disabled) { background: #362b26; color: #fff; }
 /* Folded: the pills shrink away, one after another reflowing into the first row,
    while the dropdown grows in. Expanded: the other way round. */
 .pill-btn { max-width: 0; opacity: 0; padding-left: 0; padding-right: 0; margin-right: -14px; pointer-events: none; }
@@ -338,6 +341,7 @@
 .sources-head h1 { margin: 0; }
 .sources-head p { margin: 4px 0 0; }
 .sources-head .btn { margin-top: 4px; }
+.done-tick { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(120, 200, 140, 0.16); color: var(--ok); }
 .src-list { display: flex; flex-direction: column; gap: 10px; }
 .src-card { display: flex; gap: 14px; align-items: flex-start; padding: 14px 16px; background: var(--sub); border-radius: 18px; transition: background-color 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.45, 0.64, 1); }
 .src-card:hover { background: #413530; transform: translateY(-2px); }
@@ -387,8 +391,9 @@
 .as-search { display: flex; align-items: center; gap: 10px; padding: 0 16px; margin-bottom: 10px; border: 0; border-radius: 999px; background: var(--third); color: var(--muted); }
 .as-search input, .as-search input:focus { flex: 1; height: 42px; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; }
 .as-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; }
-.as-filter { white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: var(--third); color: var(--icon); font-size: 0.85rem; cursor: pointer; transition: background-color 0.18s ease, color 0.18s ease; }
-.as-filter select { width: auto; padding: 2px 4px; border: 0; background: transparent; color: inherit; font: inherit; box-shadow: none; }
+.as-filter { flex: none; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: var(--third); color: var(--icon); font-size: 0.85rem; cursor: pointer; transition: background-color 0.18s ease, color 0.18s ease; }
+.as-filter:hover { background: #4d3d34; }
+.as-filter select { cursor: pointer; width: auto; padding: 2px 4px; border: 0; background: transparent; color: inherit; font: inherit; box-shadow: none; }
 .as-filter select option { background: var(--dark); color: var(--text); }
 .as-filter.toggle input { display: none; }
 .as-filter.toggle.on { background: var(--icon); color: var(--dark); font-weight: 600; }

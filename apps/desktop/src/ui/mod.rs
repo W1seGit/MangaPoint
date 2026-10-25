@@ -226,6 +226,8 @@ fn Shell() -> Element {
     };
     // Leaving a page: the scenery flies away and the page fades, then the other page comes in.
     let leaving = use_signal(|| false);
+    // The chapter table takes what is left of the window, so the page around it does not scroll.
+    use_effect(move || state.ui.host().run_script("fit_table", String::new()));
     let scene = if page == Page::Search { "search" } else { "" };
     let mut tasks = BarItem::new("tasks", "Tasks", "pulse", owner == Page::Tasks);
     tasks.badge = (in_queue > 0).then(|| in_queue.to_string());

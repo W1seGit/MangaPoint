@@ -57,7 +57,6 @@ pub fn Split(target: &'static str, dir: i32) -> Element {
 pub fn ChapterRangeBar(all_on: bool, numbers: Vec<Option<f64>>, item_name: String, on_all: EventHandler<bool>, on_range: EventHandler<Vec<usize>>) -> Element {
     let mut range_text = use_signal(String::new);
     let mut range_error = use_signal(|| None::<String>);
-    let mut whole = use_signal(|| false);
     rsx! {
         div { class: "px-sticky",
             div { class: "px-all-row",
@@ -75,7 +74,7 @@ pub fn ChapterRangeBar(all_on: bool, numbers: Vec<Option<f64>>, item_name: Strin
                     class: "px-range",
                     onsubmit: move |e| {
                         e.prevent_default();
-                        match crate::logic::chapters::select_range(&range_text.read(), &numbers, whole()) {
+                        match crate::logic::chapters::select_by_text(&range_text.read(), &numbers) {
                             Ok(found) if found.is_empty() => {
                                 // Nothing changes: leaving the export empty by accident is worse.
                                 range_error.set(Some(format!("no chapter of this {item_name} has a number in that range")));
@@ -94,7 +93,6 @@ pub fn ChapterRangeBar(all_on: bool, numbers: Vec<Option<f64>>, item_name: Strin
                         oninput: move |e| range_text.set(e.value()),
                     }
                     button { class: "btn small", r#type: "submit", "Select" }
-                    crate::widgets::WholeOnly { on: whole(), on_change: move |v| whole.set(v) }
                 }
             }
             if let Some(msg) = range_error() {

@@ -459,6 +459,8 @@ fn BrowserShell() -> Element {
     let mut later = use_signal(|| false);
     // The page being left fades before the next one comes in.
     let leaving = use_signal(|| false);
+    // The chapter table takes what is left of the window, so the page around it does not scroll.
+    use_effect(move || ctx.ui.host().run_script("fit_table", String::new()));
     // A book's overview belongs to the Library.
     let current = match page {
         Page::Book => Page::Library,
