@@ -6,6 +6,11 @@
   .sx-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .sx-control { justify-content: flex-start; }
   .sx-control .seg { width: 100%; }
+  /* The reader form's buttons: Remove and Reset share a row, Save has the whole row under them. */
+  .form-footer { flex-wrap: wrap; gap: 10px; }
+  .form-footer > .grow { display: none; }
+  .form-footer > .btn { flex: 1 1 0; min-width: 0; justify-content: center; }
+  .form-footer > .btn.primary { flex: 1 1 100%; }
 }
 
 /* ---- tablets and phones ---- */
@@ -32,6 +37,7 @@
   .lib-tools .pillrow .pill { flex: none; padding-left: 14px; padding-right: 14px; }
   .lib-filter { flex: 1 1 0; width: auto; min-width: 0; }
   .lib-sort { flex: none; max-width: 48%; }
+  .poster-grid { grid-template-columns: repeat(auto-fill, minmax(min(150px, 40%), 1fr)); gap: 22px 14px; }
 
   /* Dialogs fill the screen */
   .overlay { padding: 0; align-items: stretch; }
