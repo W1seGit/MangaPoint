@@ -2,7 +2,9 @@
 //! folders of pictures is a series of chapters, and a folder of archives is a
 //! series with one chapter in each.
 
-use super::names::{chapter_name, chapter_number, clean_name, mangapoint_chapter, mangapoint_title, natural_cmp};
+use super::names::{
+    chapter_name, chapter_number, clean_name, mangapoint_chapter, mangapoint_chapter_order, mangapoint_title, natural_cmp,
+};
 use super::{
     extension, fail, scan_file, tiff_in, BookSource, Format, ImportBook, ImportChapter, PageRef,
     MAX_ENTRIES, MAX_PAGE_BYTES, PAGE_EXTENSIONS,
@@ -185,6 +187,8 @@ pub(crate) fn scan_dir(path: &Path, cancel: &CancelFlag) -> Result<ImportBook> {
         if let Some(title) = mangapoint_title(&label) {
             book.meta.title = title;
         }
+        // In order by chapter number (the names alone put 12.5 before 12.25).
+        tree.pictures.sort_by(|a, b| mangapoint_chapter_order(&a.0).total_cmp(&mangapoint_chapter_order(&b.0)));
     }
 
     let only_root = tree.pictures.len() == 1 && tree.pictures[0].0.is_empty();

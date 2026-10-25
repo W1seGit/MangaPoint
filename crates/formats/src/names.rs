@@ -273,10 +273,12 @@ pub fn plain(n: f64) -> String {
 /// The title of a series from the name of its folder in a MangaPoint library (`solo-leveling-3fa9c2e1`
 /// is "Solo Leveling"). `None` when the name does not end in the eight-digit hash such a folder has.
 /// The title's words are what the folder's name was made from, so a series imported back gets the id
-/// it had.
+/// it had. A title with no Latin letters or digits gets the folder name `series-…`; there is no title
+/// left in that name, so it is `None` too (each such folder then keeps its own name, instead of all of
+/// them becoming one series called "Series").
 pub fn mangapoint_title(folder: &str) -> Option<String> {
     let (slug, hash) = folder.rsplit_once('-')?;
-    if hash.len() != 8 || !hash.chars().all(|c| c.is_ascii_hexdigit()) || slug.is_empty() {
+    if hash.len() != 8 || !hash.chars().all(|c| c.is_ascii_hexdigit()) || slug.is_empty() || slug == "series" {
         return None;
     }
     let words: Vec<String> = slug
@@ -288,6 +290,16 @@ pub fn mangapoint_title(folder: &str) -> Option<String> {
         })
         .collect();
     (!words.is_empty()).then(|| words.join(" "))
+}
+
+/// Where the folder `rel` of a MangaPoint library series goes in reading order: the series folder
+/// itself first, then its chapters by number (`c12_25`, 12.25, before `c12_5`, 12.5, which their names
+/// alone would not give), then the chapters without a number.
+pub fn mangapoint_chapter_order(rel: &str) -> f64 {
+    if rel.is_empty() {
+        return f64::NEG_INFINITY;
+    }
+    mangapoint_chapter(rel).and_then(|(n, _)| n).unwrap_or(f64::INFINITY)
 }
 
 /// The number and name of a chapter from the name of its folder in a MangaPoint library: `c12` is
@@ -378,6 +390,10 @@ mod tests {
         assert_eq!(mangapoint_title("one-piece-0000abcd").as_deref(), Some("One Piece"));
         assert_eq!(mangapoint_title("My Comic"), None);
         assert_eq!(mangapoint_title("solo-leveling"), None);
+        assert_eq!(mangapoint_title("series-1a2b3c4d"), None, "a title with no Latin letters left no words");
+        let mut folders = vec!["u7", "c12_5", "c13", "", "c12_25", "c12"];
+        folders.sort_by(|a, b| mangapoint_chapter_order(a).total_cmp(&mangapoint_chapter_order(b)));
+        assert_eq!(folders, ["", "c12", "c12_25", "c12_5", "c13", "u7"]);
         assert_eq!(mangapoint_chapter("c12"), Some((Some(12.0), "Chapter 12".to_string())));
         assert_eq!(mangapoint_chapter("c12_5"), Some((Some(12.5), "Chapter 12.5".to_string())));
         assert_eq!(mangapoint_chapter("u991"), Some((None, "Chapter".to_string())));

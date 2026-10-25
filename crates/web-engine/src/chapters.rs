@@ -43,7 +43,10 @@ use std::collections::HashSet;
 use formats::{comicinfo, names};
 
 pub use comicinfo::{ComicInfo, InfoPage};
-pub use names::{chapter_name, chapter_number, clean_name, mangapoint_chapter, mangapoint_title, natural_cmp, plain, series_title};
+pub use names::{
+    chapter_name, chapter_number, clean_name, mangapoint_chapter, mangapoint_chapter_order, mangapoint_title, natural_cmp, plain,
+    series_title,
+};
 
 /// The pictures a page can be (the importer's list).
 pub const PAGE_EXTENSIONS: [&str; 7] = ["jpg", "jpeg", "png", "webp", "gif", "tif", "tiff"];
@@ -445,6 +448,8 @@ fn folder(label: &str, entries: &[Entry]) -> Result<Guess, String> {
         if let Some(title) = names::mangapoint_title(label) {
             out.title = title;
         }
+        // In order by chapter number (the names alone put 12.5 before 12.25).
+        tree.sort_by(|a, b| names::mangapoint_chapter_order(&a.0).total_cmp(&names::mangapoint_chapter_order(&b.0)));
     }
     let only_root = tree.len() == 1 && tree[0].0.is_empty();
     let mut cover: Option<usize> = None;
