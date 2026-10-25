@@ -104,6 +104,8 @@ export async function rememberSize(book, i, w, h) {
     const src = await source(book);
     const p = src.table.pages[i];
     if (p && (p.w !== w || p.h !== h)) {
+      // Tables saved before `at` kept where the page is in `w`: keep that before the width takes its place.
+      if (typeof p.w === 'string' && p.at === undefined) p.at = p.w;
       p.w = w;
       p.h = h;
       src.table.measured = true;

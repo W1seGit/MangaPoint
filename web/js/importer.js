@@ -510,6 +510,21 @@ export async function commit(draftId, edit, onProgress = () => {}) {
     chapters,
   };
   const table = { mode: d.mode, pages: d.pages.map(({ s, ...rest }) => (d.mode === 'pictures' ? { ...rest, s } : rest)) };
+  // The same file imported again: the chapters added to the book later (kept beside it) stay, after its own.
+  const before = await dbGet('books', id).catch(() => null);
+  const oldTable = before?.parts ? await dbGet('pages', id).catch(() => null) : null;
+  if (oldTable) {
+    const addedLater = (p) => p.z !== undefined || p.at !== undefined || typeof p.w === 'string';
+    const from = oldTable.pages.findIndex(addedLater);
+    if (from >= 0) {
+      const shift = table.pages.length - from;
+      table.pages.push(...oldTable.pages.slice(from));
+      for (const c of before.chapters || []) if (c.first >= from) chapters.push({ ...c, first: c.first + shift });
+      record.parts = before.parts;
+      record.size = Math.max(record.size || 0, before.size || 0);
+      record.page_count = table.pages.length;
+    }
+  }
   await dbPut('pages', id, table);
   if (d.thumb) await dbPut('covers', id, d.thumb.blob).catch(() => {});
   await dbPut('books', id, record);
@@ -541,14 +556,15 @@ export async function appendTo(bookId, draftIds, edits = {}, onProgress = () => 
     if (d.mode === 'archive') {
       const where = await saveFile(bookId, `part-${parts}.bin`, d.files[0]);
       if (!where) throw new Error(`${d.file_name} could not be kept on this device.`);
-      for (const { s, ...rest } of d.pages) table.pages.push({ ...rest, z: parts, w: where });
+      // `at`: where the file is kept. (Not `w`: that is the page's measured width.)
+      for (const { s, ...rest } of d.pages) table.pages.push({ ...rest, z: parts, at: where });
     } else {
       for (const p of d.pages) {
         const name = `p${parts}-${p.f}`;
         const where = await saveFile(bookId, name, d.files[p.s]);
         if (!where) throw new Error(`${d.file_name} could not be kept on this device.`);
         const { s, ...rest } = p;
-        table.pages.push({ ...rest, f: name, w: where });
+        table.pages.push({ ...rest, f: name, at: where });
       }
     }
     // The chapters as the visitor left them in the review (some left out, names and numbers edited).

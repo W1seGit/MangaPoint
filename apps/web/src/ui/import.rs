@@ -41,13 +41,15 @@ pub fn close_import(ctx: Ctx) {
     });
 }
 
-fn remove_review(ctx: Ctx, index: usize) {
+/// Leave out the book of draft `draft_id`. (By its draft, not its place in the list: another card
+/// left out a moment before can have moved it up.)
+fn remove_review(ctx: Ctx, draft_id: &str) {
     let mut imp = ctx.import;
     let id = {
         let mut i = imp.write();
-        if index >= i.reviews.len() {
+        let Some(index) = i.reviews.iter().position(|r| r.draft.draft_id == draft_id) else {
             return;
-        }
+        };
         i.reviews.remove(index).draft.draft_id
     };
     dioxus::core::spawn_forever(async move {
@@ -333,12 +335,16 @@ fn BrowserBookCard(index: usize, review: Review) -> Element {
                 Chip { text: kind.to_string() }
                 button {
                     class: "btn ghost small import-remove", r#type: "button", title: "Leave this out", "aria-label": "Leave {d.file_name} out",
-                    onclick: move |_| {
-                        leaving.set(true);
-                        dioxus::core::spawn_forever(async move {
-                            bridge::sleep(220).await;
-                            remove_review(ctx, index);
-                        });
+                    onclick: {
+                        let draft_id = d.draft_id.clone();
+                        move |_| {
+                            leaving.set(true);
+                            let draft_id = draft_id.clone();
+                            dioxus::core::spawn_forever(async move {
+                                bridge::sleep(220).await;
+                                remove_review(ctx, &draft_id);
+                            });
+                        }
                     },
                     Icon { name: "x", size: 15 }
                 }

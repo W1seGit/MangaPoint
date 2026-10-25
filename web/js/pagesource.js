@@ -18,6 +18,15 @@ export function isImageName(name) {
   return IMAGE_EXT.includes(extOf(name));
 }
 
+/**
+ * Where a page added to a book later is kept ('opfs' or 'idb'), or undefined for the book's own pages.
+ * Tables saved before this was called `at` kept it in `w`, which is also the measured width: a string
+ * there is the old place, a number a width.
+ */
+function keptAt(p) {
+  return p.at ?? (typeof p.w === 'string' ? p.w : undefined);
+}
+
 export class BookSource {
   /**
    * `book`: the library record (id, kind, stored). `table`: its page table.
@@ -55,7 +64,7 @@ export class BookSource {
     return this.zip;
   }
 
-  /** The archive a page added later lives in: `part-<z>.bin`, kept where the page says (`w`). */
+  /** The archive a page added later lives in: `part-<z>.bin`, kept where the page says (`at`). */
   async #part(z, where) {
     let opening = this.parts.get(z);
     if (!opening) {
@@ -76,7 +85,7 @@ export class BookSource {
   }
 
   async #zipOf(p) {
-    return p.z !== undefined ? this.#part(p.z, p.w) : this.#archive();
+    return p.z !== undefined ? this.#part(p.z, keptAt(p)) : this.#archive();
   }
 
   /** The picture of page `i` as a typed Blob. */
@@ -89,8 +98,8 @@ export class BookSource {
       return zip.read({ name: p.n, method: p.m, csize: p.c, usize: p.u, offset: p.o, encrypted: false }, type);
     }
     // Loose pictures: one stored file per page, or the Files of this session.
-    if (Array.isArray(this.session) && p.s !== undefined && !p.w) return this.session[p.s].slice(0, this.session[p.s].size, type);
-    const f = await loadFile(this.book.id, p.f, p.w || this.book.stored);
+    if (Array.isArray(this.session) && p.s !== undefined && !keptAt(p)) return this.session[p.s].slice(0, this.session[p.s].size, type);
+    const f = await loadFile(this.book.id, p.f, keptAt(p) || this.book.stored);
     if (!f) throw new Error('A page of this book is not on this device any more.');
     return f.slice(0, f.size, type);
   }

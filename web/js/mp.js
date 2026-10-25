@@ -374,6 +374,8 @@ const handlers = {
 
   async commit({ draft_id, title, chapters }) {
     const rec = await importer.commit(draft_id, { title, chapters }, (done, total) => emit({ t: 'commit_progress', done, total }));
+    // A book imported again over itself: what was open of its old file is let go.
+    pages.forgetSource(rec.id);
     return rec;
   },
 
