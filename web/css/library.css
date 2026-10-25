@@ -9,6 +9,8 @@
 /* Library: a book waiting for its file is a card like the others, with a faded placeholder. The
    selection is the app's (the tick on each card, the action bar); on a phone the bar sits above the dock. */
 .poster.not-installed .poster-art .cover { opacity: 0.55; }
+/* In a browser a card's tick and menu are always shown (a touch screen has no hover to bring them up). */
+.poster-check, .poster-more { opacity: 1; }
 .poster-place { display: block; margin-top: 2px; }
 
 /* A book's overview: back to the library, what it is and what can be done, then its chapters */

@@ -21,6 +21,10 @@ try {
   // ---- picking several books: the app's tick on each card, and its action bar ----
   r.check('no Select button: ticking a card is how a selection starts, as in the app', !(await page.eval("!!document.querySelector('#select-button')")));
   r.check('no bar until a card is ticked', !(await page.eval("!!document.querySelector('.action-bar')")));
+  // In a browser each card's tick and menu are always shown, at every size, not only on hover.
+  await page.eval("document.querySelector('h1')?.scrollIntoView()");
+  const shown = await page.eval("[...document.querySelectorAll('.poster')].every((p) => ['.poster-check', '.poster-more'].every((s) => { const e = p.querySelector(s); return e && getComputedStyle(e).opacity === '1'; }))");
+  r.check('every card shows its tick and its menu without a hover', shown);
   r.check('the cards in a row line up at the top', await page.eval("(() => { const b = [...document.querySelectorAll('.poster')].map((p) => p.getBoundingClientRect()); return b.length > 1 && (b[1].left <= b[0].left || Math.round(b[1].top) === Math.round(b[0].top)); })()"));
   await press('.poster-check', null, 0);
   await page.waitFor("!!document.querySelector('.action-bar')", 5, 'the bar');
