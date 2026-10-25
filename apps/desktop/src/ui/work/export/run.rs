@@ -87,12 +87,18 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
                 });
             }
             let mut job = state.job;
+            // Picking up after a pause: carry on from the numbers it stopped at.
+            let resumed = job
+                .peek()
+                .as_ref()
+                .filter(|v| v.paused && v.series_id == series.id)
+                .map_or((0, 0), |v| (v.progress.done(), v.progress.total()));
             job.set(Some(JobView {
                 kind: JobKind::Export,
                 title: series.title.clone(),
                 series_id: series.id.clone(),
                 paused: false,
-                progress: JobProgress::default(),
+                progress: JobProgress { resumed, ..Default::default() },
                 result: None,
                 cancel: cancel.clone(),
             }));

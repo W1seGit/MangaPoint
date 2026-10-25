@@ -241,8 +241,8 @@ fn ExportJobRow() -> Element {
                                 span { "goes on from here when resumed, even after the app is closed" }
                             }
                         } else {
-                            if job.progress.chapter_total > 0 {
-                                span { "{job.progress.finished} of {plural(job.progress.chapter_total, \"chapter\")} done" }
+                            if job.progress.total() > 0 {
+                                span { "{job.progress.done()} of {plural(job.progress.total(), \"chapter\")} done" }
                             }
                             if running {
                                 if let Some(v) = speed { span { "about {v:.1} pages a second" } }

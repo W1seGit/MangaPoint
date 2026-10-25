@@ -14,8 +14,8 @@ pub fn TaskChip(on_open: EventHandler<()>) -> Element {
     }
     let shown = if let Some(job) = state.job.read().as_ref().filter(|j| j.result.is_none()) {
         let verb = if job.paused { "Paused" } else if job.progress.writing.is_some() { "Writing" } else { "Exporting" };
-        let detail = if job.progress.chapter_total > 0 {
-            format!("{} of {}", job.progress.finished, job.progress.chapter_total)
+        let detail = if job.progress.total() > 0 {
+            format!("{} of {}", job.progress.done(), job.progress.total())
         } else {
             String::new()
         };
