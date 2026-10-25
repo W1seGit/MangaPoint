@@ -22,10 +22,10 @@ pub fn register() {
 #[cfg(target_os = "windows")]
 fn register_now() {
     use std::os::windows::process::CommandExt;
-    // The cat, as a picture file the system can show beside the name.
+    // The mascot, as a picture file the system can show beside the name.
     let icon = crate::state::paths().root().join("notification-icon.png");
     if !icon.is_file() {
-        let (rgba, w, h) = crate::ui::cat::icon_rgba(8);
+        let (rgba, w, h) = crate::ui::mascot::icon_rgba(4);
         if let Some(image) = image::RgbaImage::from_raw(w, h, rgba) {
             let _ = std::fs::create_dir_all(crate::state::paths().root());
             let _ = image.save(&icon);

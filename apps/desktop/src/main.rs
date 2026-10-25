@@ -98,9 +98,9 @@ fn main() {
         env!("CARGO_PKG_VERSION"),
         state::paths().root().display()
     );
-    // The cat is the window and taskbar icon (Windows and Linux; macOS takes
+    // The mascot is the window and taskbar icon (Windows and Linux; macOS takes
     // its Dock icon from the app bundle, which the installer provides).
-    let (rgba, w, h) = ui::cat::icon_rgba(8);
+    let (rgba, w, h) = ui::mascot::icon_rgba(4);
     let window = WindowBuilder::new()
         .with_window_icon(Icon::from_rgba(rgba, w, h).ok())
         .with_title("MangaPoint")

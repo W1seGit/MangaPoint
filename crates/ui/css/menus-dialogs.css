@@ -7,7 +7,6 @@
 .update-modal { max-width: 500px; }
 .upd-top { display: flex; justify-content: center; margin: -4px 0 6px; }
 .update-modal h2, .update-modal > p { text-align: center; }
-.upd-cat { image-rendering: pixelated; shape-rendering: crispEdges; }
 .upd-arrow { animation: upd-bob 1s steps(1) infinite; }
 .upd-spark { animation: upd-twinkle 1.4s steps(1) infinite; }
 @keyframes upd-bob { 0% { transform: translateY(0); } 50% { transform: translateY(1px); } }

@@ -50,7 +50,6 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 @keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
 .splash { margin: auto; text-align: center; max-width: 420px; padding: 30px; }
 .splash .progress { margin-top: 18px; }
-.splash .cat { width: 96px; height: 96px; margin-bottom: 8px; }
 
 /* ---- lists (sources, exports) ---- */
 .list-row { display: flex; align-items: center; gap: 12px; padding: 11px 2px; border-top: 1px solid var(--line); }

@@ -36,7 +36,7 @@
 .desk-dot.on { width: 22px; border-radius: 5px; background: var(--text); }
 @media (prefers-reduced-motion: reduce) { .desk-slide { animation: none; } }
 .pixel-mark { shape-rendering: crispEdges; image-rendering: pixelated; flex: none; }
-/* The scenes move in steps, like the cat. */
+/* The scenes move in steps, like the mascot. */
 .desk-scene .found { opacity: 0; animation: desk-found 3.6s step-end infinite; }
 .desk-scene .found.f1 { animation-delay: 0.6s; }
 .desk-scene .found.f2 { animation-delay: 1.2s; }

@@ -25,17 +25,17 @@ pub fn Icon(name: &'static str, size: Option<u32>) -> Element {
     }
 }
 
-/// A screen with nothing on it yet: the cat napping, and a friendly line.
+/// A screen with nothing on it yet: the mascot napping, and a friendly line.
 #[component]
 pub fn EmptyState(
     title: String,
     message: String,
     compact: Option<bool>,
-    /// The cat beside the words, in a card, rather than above them.
+    /// The mascot beside the words, in a card, rather than above them.
     side: Option<bool>,
-    /// Show the cat asleep on an empty bookshelf instead of on its own.
+    /// Show the mascot asleep by an empty bookshelf instead of on its own.
     shelf: Option<bool>,
-    /// Or another scene: "search", "ocean" or "waiting".
+    /// Or another scene: "search" or "waiting".
     scene: Option<&'static str>,
     children: Element,
 ) -> Element {
@@ -48,16 +48,14 @@ pub fn EmptyState(
     };
     rsx! {
         div { class: "{class}",
-            if scene == Some("ocean") {
-                art::ocean::OceanCat {}
-            } else if scene == Some("search") {
-                art::scenes::SearchCat {}
+            if scene == Some("search") {
+                art::mascot::SearchScene {}
             } else if scene == Some("waiting") {
-                art::hang::HangingCat {}
+                art::mascot::WaitingScene {}
             } else if shelf.unwrap_or(false) {
-                art::shelf::ShelfCat {}
+                art::mascot::ShelfScene {}
             } else {
-                art::cat::RestingCat {}
+                art::mascot::Resting {}
             }
             div { class: "empty-words",
                 h2 { "{title}" }
@@ -111,13 +109,12 @@ pub fn Chip(text: String, kind: Option<String>) -> Element {
     rsx! { span { class: "{class}", "{text}" } }
 }
 
-/// Something is loading: the cat runs in circles in the middle of the place
-/// where it will show up.
+/// Something is loading: the mascot nods in the middle of the place where it will show up.
 #[component]
 pub fn Loading(label: String) -> Element {
     rsx! {
         div { class: "loading",
-            art::cat::CirclingCat {}
+            art::mascot::Loader {}
             span { "{label}" }
         }
     }
@@ -128,7 +125,7 @@ pub fn Loading(label: String) -> Element {
 pub fn Busy(label: String, size: Option<u32>) -> Element {
     rsx! {
         span { class: "busy",
-            art::cat::CirclingCat { size: size.unwrap_or(44) }
+            art::mascot::Loader { size: size.unwrap_or(44) }
             "{label}"
         }
     }

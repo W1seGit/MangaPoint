@@ -157,7 +157,7 @@ pub fn SearchPage() -> Element {
     };
 
     // Before anything is searched the box sits in the middle of the window, under
-    // the cat. Searching moves it up and widens it (see css/desktop.css).
+    // the mascot. Searching moves it up and widens it (see css/desktop.css).
     let idle = view.query.is_empty() && !view.searching;
     // Until the catalog engine is up there is nothing to search with: show how
     // far it is instead of the box, which then arrives.
@@ -299,7 +299,7 @@ pub fn SearchPage() -> Element {
             p { class: "muted small", style: "margin: 6px 2px 0", "Checking chapter lists to pick the best source for each…" }
         } else if !view.query.is_empty() && view.ranked.is_empty() && !view.no_sources && !view.none_selected {
             EmptyState {
-                title: "The cat looked everywhere",
+                title: "No results",
                 message: format!("It found nothing for “{}”. Try another spelling, or add more sources.", view.query),
                 scene: "search",
             }

@@ -1,7 +1,7 @@
 //! First run: choose which sources to install.
 
 use super::ask_enable_browser;
-use super::browse::BrowsingCat;
+use mangapoint_ui::art::mascot::BrowsingScene;
 use super::widgets::{Chip, Icon, Loading};
 use crate::backend;
 use crate::state::spawn_forever;
@@ -135,7 +135,7 @@ pub fn Setup(#[props(default = false)] onboarding: bool) -> Element {
     rsx! {
         div { class: "onboard-head",
             if onboarding {
-                div { class: "step-hero", BrowsingCat {} }
+                div { class: "step-hero", BrowsingScene {} }
             }
             h1 { "Choose your sources" }
             p { class: "muted",

@@ -2,7 +2,7 @@
 //! PDF viewer, with the original beside each converted page.
 use super::crop_editor::SourceCanvas;
 use crate::state::AppState;
-use crate::ui::cat::CirclingCat;
+use crate::ui::mascot::Loader;
 use crate::ui::widgets::EmptyState;
 use crate::ui::work::{prepare_preview, schedule_preview, select_preview_page};
 use converter::plan::Source;
@@ -367,7 +367,7 @@ pub fn PreviewTab() -> Element {
                                                     div { class: "editor-image-loading" }
                                                 }
                                                 if busy {
-                                                    div { class: "render-veil", CirclingCat { size: 96 } }
+                                                    div { class: "render-veil", Loader { size: 96 } }
                                                 }
                                             }
                                         }

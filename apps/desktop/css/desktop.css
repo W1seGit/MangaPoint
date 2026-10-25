@@ -22,9 +22,6 @@
 .onboard-head { text-align: center; }
 .onboard-head p { max-width: 600px; margin-left: auto; margin-right: auto; }
 .step-hero { display: flex; justify-content: center; margin-bottom: 4px; width: 100%; }
-.step-hero .scene-cat { margin-bottom: 0; }
-.step-hero .browse-cat { width: min(660px, 100%); height: auto; max-width: 100%; }
-.step-hero .shelf-scene { width: 228px; height: auto; shape-rendering: crispEdges; }
 .reader-pick { width: 340px; max-width: 100%; margin: 12px auto 0; min-height: 300px; }
 .reader-pick .adder { width: 100%; }
 .series-card {
@@ -240,7 +237,7 @@
 
 .keep { display: contents; }
 .keep.gone { display: none; }
-/* A loading cat on the page itself, in the middle of the space the content will fill. */
+/* The loading mascot on the page itself, in the middle of the space the content will fill. */
 .page-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: calc(100vh - 360px); }
 /* The status under the search box stays clear of it. */
 .searchwrap ~ .loading, .searchwrap ~ p, .searchwrap ~ .banner { margin-top: 24px; }
@@ -310,7 +307,7 @@
 
 /* ---- the search while the catalog engine starts, and the box arriving ---- */
 .engine-starting { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: calc(100vh - 80px); text-align: center; }
-.engine-starting .cat { width: 96px; height: 96px; margin-bottom: 6px; }
+.engine-starting .m-idle { width: 96px; margin-bottom: 6px; }
 .engine-starting strong { font-size: 1.2rem; margin-top: 6px; }
 .engine-starting p { margin: 0; }
 .es-bar { width: min(360px, 70vw); margin: 10px 0 8px; }
@@ -461,13 +458,6 @@
 .engine-step { width: min(1240px, 100%); max-width: 1240px; margin: auto; text-align: center; }
 .engine-step p { max-width: 480px; margin-left: auto; margin-right: auto; }
 .engine-bar { width: 320px; max-width: 100%; margin: 14px auto 10px; }
-.walker .wf1 { animation-delay: 0.15s; }
-.walker .wf2 { animation-delay: 0.3s; }
-.walker .wf3 { animation-delay: 0.45s; }
-.walker .wf4 { animation-delay: 0.6s; }
-.walker .wf5 { animation-delay: 0.75s; }
-.walker .wf0 { opacity: 1; }
-@media (prefers-reduced-motion: reduce) { .walker .wf0 { opacity: 1; } }
 .setup-tools { display: flex; flex-direction: column; gap: 8px; margin: 16px auto 0; width: min(780px, 100%); }
 .setup-all { width: 100%; height: 40px; justify-content: center; }
 .setup-list { display: flex; flex-direction: column; margin: 6px auto 0; width: min(780px, 100%); max-height: clamp(180px, calc(100vh - 600px), 340px); overflow-y: auto; padding-right: 4px; }
@@ -482,12 +472,6 @@
 .reader-picked .pills { justify-content: center; padding: 12px 0 2px; }
 .app[data-motion="snappy"] .reader-picked { animation-duration: 0.06s; transition-duration: 0.06s; }
 @media (prefers-reduced-motion: reduce) { .reader-picked { transition: none; } }
-
-/* ---- the cat going through the sources: the page loading, the glass bobbing, whole pixels only ---- */
-.browse-cat .browse-load { transform-box: fill-box; transform-origin: left center; animation: browse-load 3s steps(6) infinite; }
-.browse-cat .browse-glass { animation: browse-bob 2.4s step-end infinite; }
-@keyframes browse-bob { 0%, 49% { transform: translateY(0); } 50%, 100% { transform: translateY(-1px); } }
-@media (prefers-reduced-motion: reduce) { .browse-cat .browse-load, .browse-cat .browse-glass { animation: none; } }
 
 /* ---- Send to: the way to the reader, the format, the boxes ---- */
 .reader-way .way-label { display: flex; align-items: center; margin: 0; }
@@ -522,7 +506,7 @@
 .editor-scope button.selected { background: var(--accent); color: var(--accent-text); font-weight: 600; }
 .editor-crop-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 
-/* Pages drawn again: darkened, with the cat on them. */
+/* Pages drawn again: darkened, with the mascot on them. */
 .render-veil { position: absolute; inset: 0; z-index: 3; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.58); animation: fade-in 0.18s ease-out both; }
 .source-region { position: absolute; border: 1px dashed rgba(255, 255, 255, 0.7); pointer-events: none; }
 .source-region span { position: absolute; top: 4px; left: 4px; min-width: 20px; padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.75); color: var(--text); font-size: 0.72rem; line-height: 1.5; text-align: center; }

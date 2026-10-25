@@ -18,7 +18,11 @@
 }
 .toast:nth-child(n + 5) { opacity: 0; }
 .toast:first-child, .toast { pointer-events: auto; }
-.toast-cat { flex: none; width: 52px; height: 56px; image-rendering: pixelated; shape-rendering: crispEdges; }
+.toast-mascot { position: relative; flex: none; width: 44px; height: 58px; }
+.toast-mascot .mascot { width: 44px; height: 58px; }
+.toast-badge { position: absolute; right: -7px; bottom: 2px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--panel); background: var(--ok); color: var(--dark); }
+.toast-mascot.warning .toast-badge { background: var(--warn); }
+.toast-mascot.error .toast-badge { background: var(--bad); }
 .toast-text { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
 .toast-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
 .toast-x:hover { background: var(--panel-3); color: var(--text); }

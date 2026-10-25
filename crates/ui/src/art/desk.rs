@@ -1,10 +1,9 @@
 //! Pixel pictures for the App part of Settings: one small scene for each thing
-//! the desktop app does, starring the gray cat (the same sprite as everywhere
+//! the desktop app does, starring the mascot (the same drawing as everywhere
 //! else), and the marks of macOS, Windows, Linux and GitHub drawn as pixels.
 //! Original art drawn in code as SVG rectangles; the motion is CSS (see
-//! `web.css`), in the same steps as the cat's own.
+//! `web.css`), in the same slow steps as the mascot's own.
 
-use super::cat::sitting_markup;
 use dioxus::prelude::*;
 use std::sync::OnceLock;
 
@@ -73,14 +72,9 @@ fn ring(out: &mut String, cx: f32, cy: f32, inner: f32, outer: f32, fill: &str) 
     }
 }
 
-/// The cat sitting at the left, blinking now and then, `dx` pixels to the left of its own place.
-fn cat(paw_top: Option<usize>, dx: i32) -> String {
-    format!(
-        "<g transform=\"translate({},0)\"><g class=\"look-open\">{}</g><g class=\"look-blink\">{}</g></g>",
-        -dx,
-        sitting_markup(false, paw_top),
-        sitting_markup(true, paw_top)
-    )
+/// The mascot sitting at the left, blinking now and then.
+fn mascot() -> String {
+    format!("<g transform=\"translate(1 3)\">{}</g>", super::mascot::half_markup())
 }
 
 /// An e-reader: a dark frame around a pale screen, with a few rows of a manga page on it.
@@ -110,7 +104,7 @@ fn ereader(out: &mut String, x: i32, y: i32, w: i32, h: i32) {
 }
 
 fn search() -> String {
-    let mut s = cat(Some(19), 6);
+    let mut s = mascot();
     // The handle runs from the paw up to the lens.
     for x in 15..=24 {
         let y = 20 - (x - 15) * 4 / 10;
@@ -133,7 +127,7 @@ fn search() -> String {
 }
 
 fn download() -> String {
-    let mut s = cat(None, 6);
+    let mut s = mascot();
     // Chapters stacking up.
     for (i, fill) in ["#8fb8e8", "#b39ddb", "#f0a3b3"].into_iter().enumerate() {
         let y = 24 - i as i32 * 4;
@@ -155,7 +149,7 @@ fn download() -> String {
 }
 
 fn screen() -> String {
-    let mut s = cat(Some(17), 6);
+    let mut s = mascot();
     ereader(&mut s, 34, 3, 16, 26);
     // Crop marks that close in on the page.
     s.push_str("<g class=\"crop\">");
@@ -167,9 +161,9 @@ fn screen() -> String {
 }
 
 fn send() -> String {
-    let mut s = cat(Some(18), 6);
+    let mut s = mascot();
     ereader(&mut s, 42, 9, 12, 18);
-    // Waves from the cat to the reader, one after another.
+    // Waves from the mascot to the reader, one after another.
     for (i, r) in [3.0f32, 5.5, 8.0].into_iter().enumerate() {
         let mut arc = String::new();
         for y in 0..H {
@@ -188,7 +182,7 @@ fn send() -> String {
 }
 
 fn readers() -> String {
-    let mut s = cat(None, 8);
+    let mut s = mascot();
     // Readers of every size, side by side.
     ereader(&mut s, 24, 16, 9, 14);
     ereader(&mut s, 34, 11, 10, 19);
@@ -201,7 +195,7 @@ fn readers() -> String {
 }
 
 fn library() -> String {
-    let mut s = cat(None, 6);
+    let mut s = mascot();
     // A shelf of books.
     let books = [("#f08585", 6), ("#8fb8e8", 7), ("#e3b341", 5), ("#b39ddb", 7), ("#7fd18b", 6), ("#e8963a", 7)];
     for row in 0..2 {
@@ -248,7 +242,7 @@ fn scene_markup(name: &str) -> &'static str {
 pub fn FeatureScene(name: &'static str, label: &'static str) -> Element {
     rsx! {
         svg {
-            class: "scene-cat desk-scene", view_box: "0 0 {W} {H}", width: "224", height: "128",
+            class: "desk-scene", view_box: "0 0 {W} {H}", width: "224", height: "128",
             role: "img", "aria-label": "{label}",
             dangerous_inner_html: "{scene_markup(name)}",
         }
@@ -373,7 +367,7 @@ mod tests {
                 "readers" => readers(),
                 _ => library(),
             });
-            // The cat is drawn in its own space (moved by a transform); the props are not.
+            // The mascot is drawn in its own space (moved by a transform); the props are not.
             let props = m.rsplit("</g></g>").next().unwrap_or(&m);
             for part in props.split("<rect ").skip(1) {
                 let num = |key: &str| -> i32 {

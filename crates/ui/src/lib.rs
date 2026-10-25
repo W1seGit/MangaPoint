@@ -2,7 +2,7 @@
 //! so a change lands in both. An app folder keeps only what the other app cannot have; see
 //! `docs/architecture.md`.
 //!
-//! - `art`: the cat, the scenes and the icons.
+//! - `art`: the mascot, the scenes and the icons.
 //! - `host`: how a shared screen reaches the app it is in (`Host`, `UiState`).
 //! - `widgets`: the small pieces used by several screens.
 //! - `chapter_table`: the chapter table with its filter, range and sorting.
@@ -57,7 +57,7 @@ mod css_tests {
         assert_eq!(sorted, on_disk);
         assert!(super::CSS.contains("--panel"), "the colours come first");
         // The art's generated class names are not in any code, so a split by usage can lose them.
-        for need in [".cat .f0", "@keyframes cat-f0", ".cat .f4", ".shelf-scene .st1", ".scene-cat .dot"] {
+        for need in [".m-head", "@keyframes m-nod", ".m-steam.s2", ".m-window.w2 .m-lit", ".mdots span"] {
             assert!(super::CSS.contains(need), "the shared style sheets must hold {need}");
         }
     }

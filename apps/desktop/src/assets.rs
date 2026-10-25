@@ -2,7 +2,7 @@
 //! embedding in the Windows executable. Written by
 //! `mangapoint --write-icons <folder>`.
 
-use crate::ui::cat::icon_rgba;
+use crate::ui::mascot::icon_rgba;
 use std::path::Path;
 
 /// An `.ico` holding one 256x256 image stored as PNG (supported by every
@@ -24,7 +24,7 @@ pub fn ico_from_png(png: &[u8]) -> Vec<u8> {
 /// Write `icon.png` (256x256) and `icon.ico` into `dir`.
 pub fn write_icons(dir: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-    let (rgba, w, h) = icon_rgba(8);
+    let (rgba, w, h) = icon_rgba(4);
     let image = image::RgbaImage::from_raw(w, h, rgba).ok_or("the icon has the wrong size")?;
     let png_path = dir.join("icon.png");
     image.save(&png_path).map_err(|e| e.to_string())?;

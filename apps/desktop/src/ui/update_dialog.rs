@@ -1,11 +1,11 @@
 //! The dialog that offers a newer version, and the check that opens it.
 //!
-//! Top to bottom: a cat with a parcel, what the new version is, a short summary
+//! Top to bottom: the mascot with a parcel, what the new version is, a short summary
 //! of its release notes, a switch to skip this version, and the choice: later,
 //! or update (and restart).
 
 use super::widgets::{open_link, Icon, ProgressBar, Toggle};
-use mangapoint_ui::art::update_cat::UpdateCat;
+use mangapoint_ui::art::mascot::UpdateScene;
 use crate::state::{AppState, UpdatePhase};
 use crate::updates::{self, Apply, Applied, Update};
 use dioxus::prelude::*;
@@ -101,7 +101,7 @@ pub fn UpdateDialogHost() -> Element {
     rsx! {
         div { class: "overlay", onclick: move |_| if !working { close(state, &for_close, skip()) },
             div { class: "modal update-modal", onclick: move |e| e.stop_propagation(),
-                div { class: "upd-top", UpdateCat {} }
+                div { class: "upd-top", UpdateScene {} }
                 h2 { "MangaPoint {version} is out" }
                 p { class: "muted small", style: "margin: 0 0 10px", "You have {updates::VERSION}." }
                 if !update.summary.is_empty() {

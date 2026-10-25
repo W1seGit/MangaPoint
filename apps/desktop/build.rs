@@ -1,4 +1,4 @@
-//! Embeds the cat icon in the Windows executable so Explorer, the taskbar
+//! Embeds the mascot icon in the Windows executable so Explorer, the taskbar
 //! and Alt+Tab show it. If the Windows resource compiler is missing, the
 //! build still succeeds (the window icon is also set at run time).
 

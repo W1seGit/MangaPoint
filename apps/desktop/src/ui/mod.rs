@@ -1,6 +1,5 @@
 //! The app's screens.
 
-mod browse;
 mod download_dialog;
 mod host;
 mod task_chip;
@@ -22,7 +21,7 @@ pub mod work;
 mod workspace;
 
 // The art and the chapter table are shared with the website.
-pub use mangapoint_ui::art::{cat, pixels, walker};
+pub use mangapoint_ui::art::mascot;
 use mangapoint_ui::chapter_table;
 use mangapoint_ui::readers;
 use mangapoint_ui::dialogs::{ToastHost, UnsavedHost};
@@ -181,7 +180,7 @@ fn Splash(message: String, percent: Option<u8>) -> Element {
     let fraction = percent.map(|p| p as f32 / 100.0);
     rsx! {
         div { class: "splash",
-            walker::WalkingCat {}
+            mascot::Walking {}
             h1 { "MangaPoint" }
             p { class: "muted", "{message}" }
             ProgressBar { fraction }

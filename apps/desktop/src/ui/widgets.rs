@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 pub use mangapoint_ui::widgets::*;
 
 /// What a page that needs the catalog engine shows while it is still
-/// starting: the cat, how far it is, and that the rest of the app works.
+/// starting: the mascot, how far it is, and that the rest of the app works.
 #[component]
 pub fn EngineStarting() -> Element {
     let state = use_context::<AppState>();
@@ -15,7 +15,7 @@ pub fn EngineStarting() -> Element {
     };
     rsx! {
         div { class: "engine-starting",
-            super::cat::Cat {}
+            super::mascot::Idle {}
             strong { "Getting the search ready" }
             p { class: "muted", "{message}" }
             div { class: "es-bar", super::ProgressBar { fraction: percent.map(|p| f32::from(p) / 100.0) } }
@@ -31,7 +31,7 @@ pub fn Cover(key_id: String) -> Element {
     // A shared string: drawing a cover does not copy its picture.
     let url = state.covers.read().get(&key_id).cloned();
     // The address whose picture has arrived, and the one that could not be had:
-    // until it arrives the cat runs in circles in its place, and a picture that
+    // until it arrives the mascot nods in its place, and a picture that
     // cannot be had shows the placeholder.
     let mut arrived = use_signal(String::new);
     let mut broken = use_signal(String::new);
@@ -47,7 +47,7 @@ pub fn Cover(key_id: String) -> Element {
                         onerror: move |_| broken.set(on_error.clone()),
                     }
                     if waiting {
-                        span { class: "cover-wait", super::cat::CirclingCat { size: 56 } }
+                        span { class: "cover-wait", super::mascot::Loader { size: 56 } }
                     }
                 }
             }

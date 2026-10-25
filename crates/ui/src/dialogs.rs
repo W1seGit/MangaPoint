@@ -79,7 +79,7 @@ pub fn ToastHost() -> Element {
                             class: if toast.leaving { "toast {look} leaving" } else { "toast {look}" },
                             style: "--i: {i}",
                             role: "status",
-                            art::cat::ToastCat { look: look.to_string() }
+                            art::mascot::ToastMascot { look: look.to_string() }
                             div { class: "toast-text", "{toast.text}" }
                             button { class: "toast-x", title: "Dismiss", "aria-label": "Dismiss", onclick: move |_| ui.dismiss_toast(id),
                                 Icon { name: "x", size: 14 }

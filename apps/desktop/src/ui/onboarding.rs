@@ -4,7 +4,7 @@
 
 use super::readers::ReaderAdder;
 use super::setup::Setup;
-use super::walker::WalkingCat;
+use super::mascot::Walking;
 use super::widgets::{Icon, ProgressBar};
 use crate::backend;
 use crate::state::{spawn_forever, AppState, BootState};
@@ -146,7 +146,7 @@ pub fn Onboarding() -> Element {
     }
 }
 
-/// The engine: what it is and why, a button to install it, and the cat walking
+/// The engine: what it is and why, a button to install it, and the mascot walking
 /// while it downloads.
 #[component]
 fn EngineStep() -> Element {
@@ -155,7 +155,7 @@ fn EngineStep() -> Element {
     let folder = crate::state::paths().suwayomi_dir().display().to_string();
     rsx! {
         div { class: "engine-step",
-            WalkingCat {}
+            Walking {}
             {match boot {
                 BootState::NeedsEngine => rsx! {
                     h1 { "Install the catalog engine" }
@@ -193,7 +193,7 @@ fn ReaderStep() -> Element {
     let added = !devices.is_empty();
     rsx! {
         div { class: "onboard-head",
-            div { class: "step-hero", WalkingCat { day: true } }
+            div { class: "step-hero", Walking { day: true } }
             h1 { "Choose your reader" }
             p { class: "muted",
                 "Pages are made at the size of your reader\u{2019}s screen. Search for it, or type a name to add one of your own. "

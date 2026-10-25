@@ -90,7 +90,7 @@ pub fn SourcesPage() -> Element {
         if !loading && installed_count == 0 {
             EmptyState {
                 title: "No sources yet",
-                message: "The cat can't fetch anything without them. Add some with the button above.",
+                message: "MangaPoint can't fetch anything without them. Add some with the button above.",
                 compact: true,
             }
         }

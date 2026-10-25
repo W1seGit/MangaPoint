@@ -1,6 +1,5 @@
-//! The picture shown where a cover is missing or has not loaded: a cat in a
-//! moonlit forest, with the name of the app across the sky. Drawn as pixels,
-//! like the other cats, so it stays sharp at any size.
+//! The picture shown where a cover is missing or has not loaded: the mascot
+//! under the name of the app, in the app's own colours. Drawn as pixels, so it stays sharp at any size.
 
 use std::fmt::Write;
 use std::sync::OnceLock;
@@ -57,21 +56,11 @@ impl Canvas {
         }
     }
 
-    /// A pine tree: a trunk and a widening cone, `base` being its lowest row.
-    fn pine(&mut self, x: i32, base: i32, height: i32, color: &str) {
-        self.rect(x, base - 2, 1, 2, "#3b2a1c");
-        for i in 0..height {
-            // Each tier steps in a little at the top, like a real pine.
-            let half = (i as f32 * 0.5) as i32 - i32::from(i % 4 == 0 && i > 0);
-            self.rect(x - half, base - height - 2 + i, half * 2 + 1, 1, color);
-        }
-    }
-
     fn text(&mut self, word: &str, y: i32) {
         let width = word.chars().count() as i32 * 6 - 1;
         let left = (WIDTH - width) / 2;
         // The shadow first, then the letters on top of it.
-        for (dx, dy, color) in [(1, 1, "#05070d"), (0, 0, "#f2f0e6")] {
+        for (dx, dy, color) in [(1, 1, "#161210"), (0, 0, "#aa8d7e")] {
             for (n, c) in word.chars().enumerate() {
                 for (row, bits) in glyph(c).iter().enumerate() {
                     for (col, bit) in bits.chars().enumerate() {
@@ -89,13 +78,6 @@ impl Canvas {
             }
         }
     }
-
-    /// The mascot, as it is in the logo, sitting on the ground.
-    fn cat(&mut self, left: i32, top: i32) {
-        for (x, y, color) in super::cat::mascot_pixels() {
-            self.rect(left + x as i32, top + y as i32, 1, 1, color);
-        }
-    }
 }
 
 fn build() -> String {
@@ -105,53 +87,13 @@ fn build() -> String {
              preserveAspectRatio=\"xMidYMid slice\" shape-rendering=\"crispEdges\">"
         ),
     };
-    // The night sky, in bands that grow lighter toward the trees.
-    let sky = [
-        "#070b16", "#0a1020", "#0d162b", "#111d38", "#162545", "#1b2d52",
-    ];
-    for (i, color) in sky.iter().enumerate() {
-        c.rect(0, i as i32 * 7, WIDTH, 7, color);
-    }
-    // Stars.
-    for (x, y) in [
-        (3, 25),
-        (9, 27),
-        (17, 24),
-        (35, 22),
-        (22, 29),
-        (6, 31),
-        (33, 31),
-    ] {
-        c.rect(x, y, 1, 1, "#cfd6ee");
-    }
-    // The moon, with a few craters.
-    c.rect(29, 24, 6, 6, "#ece7c9");
-    c.rect(28, 25, 8, 4, "#ece7c9");
-    c.rect(30, 25, 1, 1, "#cfc9a5");
-    c.rect(33, 27, 1, 1, "#cfc9a5");
-    c.rect(31, 28, 1, 1, "#cfc9a5");
-    // Three rows of trees, each nearer and darker than the one behind.
-    for x in [2, 8, 15, 22, 30, 37] {
-        c.pine(x, 44, 11, "#14263d");
-    }
-    for x in [0, 6, 12, 19, 27, 34, 40] {
-        c.pine(x, 48, 14, "#0f3328");
-    }
-    for x in [4, 13, 25, 36] {
-        c.pine(x, 54, 18, "#082318");
-    }
-    // The ground, with tufts of grass.
-    c.rect(0, 50, WIDTH, 10, "#0a1c14");
-    c.rect(0, 50, WIDTH, 1, "#12301f");
-    for x in [3, 9, 16, 30, 36] {
-        c.rect(x, 51, 1, 2, "#1c4a2e");
-    }
-    // Fireflies among the trees.
-    for (x, y) in [(5, 41), (33, 38), (9, 46), (36, 47)] {
-        c.rect(x, y, 1, 1, "#e6d96a");
-    }
-    c.cat(2, 22);
-    // The name, over the sky.
+    // A dark poster with a lighter band behind the name.
+    c.rect(0, 0, WIDTH, HEIGHT, "#1e1916");
+    c.rect(0, 0, WIDTH, 24, "#2a211d");
+    c.rect(0, 24, WIDTH, 1, "#3b2f2a");
+    // The mascot, cut off by the lower edge as in the drawing.
+    c.out.push_str(&format!("<g transform=\"translate(9 31)\">{}</g>", super::mascot::half_markup()));
+    // The name.
     c.text("MANGA", 4);
     c.text("POINT", 13);
     c.out.push_str("</svg>");
@@ -173,7 +115,7 @@ mod tests {
         let svg = svg();
         assert!(svg.starts_with("<svg") && svg.ends_with("</svg>"));
         assert!(svg.contains("viewBox=\"0 0 40 60\""));
-        assert!(svg.matches("<rect").count() > 300);
+        assert!(svg.matches("<path").count() > 10);
     }
 
     #[test]
@@ -200,6 +142,5 @@ mod tests {
         for c in "MANGAPOINT".chars() {
             assert!(glyph(c).iter().all(|row| row.len() == 5), "{c}");
         }
-        assert!(super::super::cat::mascot_pixels().len() > 200);
     }
 }

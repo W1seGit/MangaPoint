@@ -2,7 +2,7 @@
 
     python tools/web-icons.py
 
-Writes web/icons/: icon-192.png, icon-512.png, icon-maskable-512.png (the cat
+Writes web/icons/: icon-192.png, icon-512.png, icon-maskable-512.png (the mascot
 inside the safe zone on the app's black), apple-touch-icon.png (180) and
 favicon-32.png. The icon is pixel art, so it is scaled with nearest-neighbour
 steps to stay crisp.
