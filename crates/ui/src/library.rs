@@ -218,8 +218,7 @@ pub fn ActionBar(
 ) -> Element {
     let mut open = use_signal(|| false);
     rsx! {
-        div { class: "action-bar", id: "action-bar",
-            div { class: "bar-left",
+        div { class: "bar-top-left",
             div { class: "bar-count",
                 div { class: "bar-count-row",
                     strong { id: "bar-count", "{count} selected" }
@@ -230,9 +229,8 @@ pub fn ActionBar(
                 }
                 span { class: "muted small", "{size}" }
             }
-            }
-            div { class: "bar-right",
-            {buttons}
+        }
+        div { class: "bar-top-right",
             div { class: "bar-menu",
                 button { class: "btn", id: "bar-more", title: "More actions", "aria-label": "More actions",
                     onclick: move |_| open.set(!open()),
@@ -240,10 +238,12 @@ pub fn ActionBar(
                 }
                 if open() {
                     div { class: "menu-scrim", onclick: move |_| open.set(false) }
-                    div { class: "menu up", onclick: move |_| open.set(false), {more} }
+                    div { class: "menu down", onclick: move |_| open.set(false), {more} }
                 }
             }
-            }
+        }
+        div { class: "action-bar", id: "action-bar",
+            div { class: "bar-right", {buttons} }
         }
     }
 }
