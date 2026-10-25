@@ -155,6 +155,26 @@ fn glass(cx: i32, cy: i32) -> String {
     s
 }
 
+/// A hand with its forearm, eight pixels across, closed round whatever it holds. `(x, y)` is its top left corner.
+fn hand(out: &mut String, x: i32, y: i32) {
+    // The forearm, running down to the sleeve.
+    rect(out, x + 1, y + 7, 6, 6, LINE);
+    rect(out, x + 2, y + 7, 4, 6, FUR);
+    rect(out, x + 1, y, 6, 8, LINE);
+    rect(out, x, y + 1, 8, 6, LINE);
+    rect(out, x + 1, y + 1, 6, 6, FUR);
+    // A line for the thumb.
+    rect(out, x + 2, y + 2, 3, 1, CHEEK);
+}
+
+/// The magnifying glass held in the mascot's right hand, which sways it a little about the hand.
+fn held_glass(cx: i32, cy: i32) -> String {
+    let (hx, hy) = (cx - 19, cy + 15);
+    let mut s = glass(cx, cy);
+    hand(&mut s, hx, hy);
+    format!("<g class=\"m-glass\" style=\"transform-origin: {}px {}px\">{s}</g>", hx + 4, hy + 4)
+}
+
 fn cached(cell: &'static OnceLock<String>, make: fn() -> String) -> &'static str {
     cell.get_or_init(make)
 }
@@ -195,7 +215,7 @@ fn shelf() -> String {
 /// Looking through a magnifying glass, for a search with nothing in it yet.
 fn search() -> String {
     let mut s = mascot(4, 8, Eyes::Open);
-    s.push_str(&format!("<g class=\"m-glass\">{}</g>", glass(66, 34)));
+    s.push_str(&held_glass(62, 34));
     s
 }
 
@@ -212,6 +232,8 @@ fn waiting() -> String {
     rect(&mut s, 66, 52, 5, 2, LINE);
     rect(&mut s, 49, 57, 21, 2, LINE);
     rect(&mut s, 50, 58, 19, 1, CHEEK);
+    // The hand round it.
+    hand(&mut s, 45, 47);
     // Steam, rising and fading one after another.
     for (i, x) in [56, 60, 64].into_iter().enumerate() {
         let _ = write!(s, "<g class=\"m-steam s{i}\">");
@@ -259,7 +281,7 @@ fn browsing() -> String {
         rect(&mut s, 77, y + 9, 30, 1, FUR);
         s.push_str("</g></g>");
     }
-    s.push_str(&format!("<g class=\"m-glass\">{}</g>", glass(58, 34)));
+    s.push_str(&held_glass(58, 34));
     s
 }
 
@@ -271,6 +293,8 @@ fn updating() -> String {
     rect(&mut s, 51, 41, 24, 20, CHEEK);
     rect(&mut s, 61, 41, 4, 20, FUR);
     rect(&mut s, 51, 49, 24, 1, LINE);
+    // A hand on it.
+    hand(&mut s, 45, 46);
     // The arrow that brings the new version.
     s.push_str("<g class=\"m-drop\">");
     rect(&mut s, 60, 8, 6, 10, FUR);

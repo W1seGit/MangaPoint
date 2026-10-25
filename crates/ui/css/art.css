@@ -22,7 +22,7 @@
 .m-steam.s2 { animation-delay: 3s; }
 @keyframes m-steam { 0% { opacity: 0; transform: translateY(2px); } 30% { opacity: 0.85; } 100% { opacity: 0; transform: translateY(-7px); } }
 .m-glass { animation: m-sway 9s ease-in-out infinite; }
-@keyframes m-sway { 0%, 100% { transform: translateX(-4px); } 50% { transform: translateX(5px); } }
+@keyframes m-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg); } }
 .m-window .m-lit { opacity: 0; animation: m-lit 9s steps(1, end) infinite; }
 .m-window.w1 .m-lit { animation-delay: 3s; }
 .m-window.w2 .m-lit { animation-delay: 6s; }
