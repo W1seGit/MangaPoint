@@ -9,7 +9,7 @@ use super::work::{
 use crate::logic::{human_bytes, library_order_read, plural, read_button, LibrarySort, LibraryView};
 use crate::state::{library_files, AppState, Modal, ModalAction, Page};
 use dioxus::prelude::*;
-use mangapoint_ui::library::{ActionBar, InfoDialog, InfoFile, InfoSheet, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
+use mangapoint_ui::library::{ActionBar, use_fading, InfoDialog, InfoFile, InfoSheet, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
 use std::collections::HashSet;
 
 #[component]
@@ -83,6 +83,10 @@ pub fn LibraryPage() -> Element {
     let order = library_order_read(&series, view(), sort(), &filter.read(), &exported, &|id| {
         db.reading_of(id).map_or(0, |p| p.last_read_at)
     });
+    // The cards in view; one that drops out (another view, a filter) fades before it goes.
+    let (fading_rows, fading) = use_fading(&order.iter().map(|&i| series[i].id.clone()).collect::<Vec<_>>());
+    let rows: Vec<(usize, bool)> =
+        fading_rows.iter().filter_map(|(id, l)| series.iter().position(|s| &s.id == id).map(|i| (i, *l))).collect();
     let downloaded_count = series
         .iter()
         .filter(|s| !s.chapters.is_empty())
@@ -239,9 +243,11 @@ pub fn LibraryPage() -> Element {
                 }
             }
             div { class: if selecting { "poster-grid selecting" } else { "poster-grid" },
-                for &i in order.iter() {
+                for (i, leaving) in rows.iter().copied() {
                     {
                         let s = series[i];
+                        let gone_id = s.id.clone();
+                        let on_gone = { let f = fading.clone(); move |_| f.gone(&gone_id) };
                         let open_id = s.id.clone();
                         let tick_id = s.id.clone();
                         let on = picked.read().contains(&s.id);
@@ -366,7 +372,7 @@ pub fn LibraryPage() -> Element {
                             not_installed: false,
                         };
                         rsx! {
-                            Poster { key: "{s.id}", facts, selected: on, selecting, menu_open,
+                            Poster { key: "{s.id}", facts, selected: on, selecting, menu_open, leaving, on_gone,
                                 art: rsx! {
                                     if has_cover { Cover { key_id: cover_key } } else { NoCover {} }
                                     if queued {

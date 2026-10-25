@@ -4,6 +4,57 @@
 use crate::art::design::Figure;
 use crate::widgets::Icon;
 use dioxus::prelude::*;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Default)]
+struct Fade {
+    last: Vec<String>,
+    leaving: Vec<(String, usize)>,
+}
+
+/// Lets cards that drop out of the view fade away where they are, instead of vanishing at once.
+#[derive(Clone)]
+pub struct Fading {
+    state: Rc<RefCell<Fade>>,
+    tick: Signal<u32>,
+}
+
+impl Fading {
+    /// The card's fade is over: take it out.
+    pub fn gone(&self, id: &str) {
+        self.state.borrow_mut().leaving.retain(|(l, _)| l != id);
+        let mut tick = self.tick;
+        tick.set(tick() + 1);
+    }
+}
+
+/// The ids to show, each with whether it is on its way out. The ones in `ids` are as given; a card
+/// that was shown last time and is not now stays at its place, marked as leaving, until `gone`.
+pub fn use_fading(ids: &[String]) -> (Vec<(String, bool)>, Fading) {
+    let state = use_hook(|| Rc::new(RefCell::new(Fade::default())));
+    let tick = use_signal(|| 0u32);
+    let _ = tick();
+    let mut rows: Vec<(String, bool)> = ids.iter().map(|id| (id.clone(), false)).collect();
+    {
+        let mut s = state.borrow_mut();
+        let left: Vec<(String, usize)> =
+            s.last.iter().enumerate().filter(|(_, p)| !ids.contains(p)).map(|(i, p)| (p.clone(), i)).collect();
+        for (id, at) in left {
+            if !s.leaving.iter().any(|(l, _)| *l == id) {
+                s.leaving.push((id, at));
+            }
+        }
+        s.leaving.retain(|(l, _)| !ids.contains(l));
+        s.last = ids.to_vec();
+        let mut leaving = s.leaving.clone();
+        leaving.sort_by_key(|(_, at)| *at);
+        for (id, at) in leaving {
+            rows.insert(at.min(rows.len()), (id, true));
+        }
+    }
+    (rows, Fading { state, tick })
+}
 
 /// The button under a card: read, continue, or import the file a book is waiting for.
 #[derive(Clone, PartialEq, Debug)]
@@ -49,6 +100,11 @@ pub fn Poster(
     selected: bool,
     selecting: bool,
     menu_open: bool,
+    /// Is it on its way out of the view (fading)?
+    #[props(default)]
+    leaving: bool,
+    #[props(default)]
+    on_gone: EventHandler<()>,
     /// The cover, and any badge over it.
     art: Element,
     /// The items of the card's menu. A click on one closes the menu.
@@ -83,7 +139,9 @@ pub fn Poster(
     about.extend(f.lines.iter().map(|(_, text)| text.clone()));
     let tip = if about.is_empty() { f.title.clone() } else { format!("{} \u{b7} {}", f.title, about.join(" \u{b7} ")) };
     rsx! {
-        div { class: "{class}", "data-id": "{f.id}",
+        div {
+            class: if leaving { "{class} leaving" } else { "{class}" }, "data-id": "{f.id}",
+            onanimationend: move |e| { if e.animation_name() == "poster-out" { on_gone.call(()); } },
             div { class: "poster-art", title: open_title.clone(), onclick: click,
                 {art}
                 button {
@@ -133,12 +191,6 @@ pub fn Poster(
                         },
                         span { "{b.label}" }
                         Figure { name: button_figure(b.icon) }
-                    }
-                    if let Some(done) = b.fraction {
-                        div { class: "progress poster-read-progress", "aria-label": "Read so far",
-                            title: "{(done * 100.0).round()}% read",
-                            div { style: "width: {(done * 100.0).round()}%" }
-                        }
                     }
                 }
             }

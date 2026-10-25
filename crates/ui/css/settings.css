@@ -1,7 +1,7 @@
 /* Settings (Figma "Settings"): a list of its parts in pixel type on the left, the part on the right. */
 
 .page:has(.settings) { max-width: none; }
-.settings { width: 100%; margin: 0 auto; min-height: calc(100vh - 168px); display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 625px) minmax(180px, 1fr); align-items: start; min-width: 0; }
+.settings { width: 100%; margin: 0 auto; min-height: calc(100vh - 168px); display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 625px) minmax(180px, 1fr); align-items: center; min-width: 0; }
 .settings-nav { grid-column: 1; grid-row: 1; justify-self: end; align-self: center; margin-right: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 0; border: 0; }
 .settings-nav .nav-item {
   position: relative; padding: 0 10px; border: 0; border-radius: var(--radius-lg); background: transparent; color: var(--icon);

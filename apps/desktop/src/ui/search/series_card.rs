@@ -1,6 +1,8 @@
 //! One series in the results.
 
-use crate::ui::widgets::{cover_key, Chip, Cover, Icon};
+use crate::logic::{ago, plural};
+use crate::state::now_secs;
+use crate::ui::widgets::{cover_key, Cover, Icon};
 use crate::state::AppState;
 use dioxus::prelude::*;
 
@@ -14,8 +16,9 @@ pub(super) fn SeriesCard(index: usize) -> Element {
     drop(view);
     let best = series.best().clone();
     let cover = cover_key(&best.candidate.source_id, best.candidate.manga_id);
-    let others = series.members.len() - 1;
     let chapters = best.enrichment.as_ref().and_then(|e| e.chapter_count);
+    // When its newest chapter came out, if the source says.
+    let updated = best.enrichment.as_ref().and_then(|e| e.latest_upload_ms).filter(|ms| *ms > 0).map(|ms| ago(now_secs(), (ms / 1000) as u64));
     let for_click = series.clone();
     let for_save = series.clone();
     let in_library = state
@@ -53,13 +56,12 @@ pub(super) fn SeriesCard(index: usize) -> Element {
             Cover { key_id: cover }
             div { class: "meta",
                 div { class: "series-title", "{series.title}" }
-                div { class: "muted small", "{best.candidate.source_name}" }
-                div { class: "row wrap", style: "margin-top: 6px",
-                    if others > 0 {
-                        Chip { text: format!("+{others} more source{}", if others == 1 { "" } else { "s" }) }
-                    }
+                div { class: "series-facts",
                     if let Some(n) = chapters {
-                        Chip { text: format!("{n} ch.") }
+                        span { class: "fact", "{plural(n as usize, \"chapter\")}" }
+                    }
+                    if let Some(when) = updated {
+                        span { class: "fact", "Updated {when}" }
                     }
                 }
             }

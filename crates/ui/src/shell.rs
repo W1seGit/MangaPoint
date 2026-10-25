@@ -93,10 +93,10 @@ pub fn CornerBar(items: Vec<BarItem>, on_pick: EventHandler<&'static str>) -> El
 /// The pixel scenery behind a screen: `"search"` has two clouds above and two rocks below. Anything
 /// else has none.
 #[component]
-pub fn Backdrop(scene: &'static str) -> Element {
+pub fn Backdrop(scene: &'static str, #[props(default)] leaving: bool) -> Element {
     match scene {
         "search" => rsx! {
-            div { class: "scenery scene-search", "aria-hidden": "true",
+            div { class: if leaving { "scenery scene-search leaving" } else { "scenery scene-search" }, "aria-hidden": "true",
                 Figure { name: "search-cloud-1", class: "bd bd-cloud-1" }
                 Figure { name: "search-cloud-2", class: "bd bd-cloud-2" }
                 Figure { name: "search-rock-1", class: "bd bd-rock-1" }

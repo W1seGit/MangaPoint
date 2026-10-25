@@ -224,12 +224,14 @@ fn Shell() -> Element {
         Page::Series => Page::Search,
         other => other,
     };
+    // Leaving a page: the scenery flies away and the page fades, then the other page comes in.
+    let leaving = use_signal(|| false);
     let scene = if page == Page::Search { "search" } else { "" };
     let mut tasks = BarItem::new("tasks", "Tasks", "pulse", owner == Page::Tasks);
     tasks.badge = (in_queue > 0).then(|| in_queue.to_string());
     tasks.busy = busy;
     rsx! {
-        Backdrop { scene }
+        Backdrop { scene, leaving: leaving() }
         if page != Page::Reader {
         Dock {
             items: vec![
@@ -237,15 +239,15 @@ fn Shell() -> Element {
                 BarItem::new("library", "Library", "nav-library", owner == Page::Library),
                 BarItem::new("export", "Export", "nav-export", owner == Page::Export),
             ],
-            on_pick: move |id| pick(state, id),
+            on_pick: move |id| pick_with_exit(state, id, leaving),
         }
         CornerBar {
             items: vec![tasks, BarItem::new("settings", "Settings", "gear", owner == Page::Settings)],
-            on_pick: move |id| pick(state, id),
+            on_pick: move |id| pick_with_exit(state, id, leaving),
         }
         }
         main { class: "content",
-            div { class: "page",
+            div { class: if leaving() { "page leaving" } else { "page" },
                 // The search stays built while another page is open, so coming
                 // back to it is instant and it is as it was left.
                 div { class: if page == Page::Search { "keep" } else { "keep gone" },
@@ -271,6 +273,40 @@ fn Shell() -> Element {
 
 /// A press on the dock or the corner bar. A series left open is where you come back to; pressing
 /// the place it belongs to while looking at it goes to the list.
+/// Pages that are left with a flourish: the page fades (and the clouds and rocks of Search fly
+/// away) before the next one comes in. Export, the reader and an open series just change.
+fn calm(page: Page) -> bool {
+    matches!(page, Page::Search | Page::Library | Page::Settings | Page::Tasks)
+}
+
+fn page_of(id: &str) -> Page {
+    match id {
+        "search" => Page::Search,
+        "library" => Page::Library,
+        "export" => Page::Export,
+        "tasks" => Page::Tasks,
+        _ => Page::Settings,
+    }
+}
+
+fn pick_with_exit(state: AppState, id: &'static str, mut leaving: Signal<bool>) {
+    let current = *state.page.peek();
+    let target = page_of(id);
+    let snappy = state.ui.settings.peek().animations == library::Animations::Snappy;
+    if leaving() {
+        return;
+    }
+    if current == target || !calm(current) || !calm(target) || snappy {
+        return pick(state, id);
+    }
+    leaving.set(true);
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(340)).await;
+        pick(state, id);
+        leaving.set(false);
+    });
+}
+
 fn pick(state: AppState, id: &str) {
     let page = match id {
         "search" => Page::Search,

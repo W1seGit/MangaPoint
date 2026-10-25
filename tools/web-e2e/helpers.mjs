@@ -16,7 +16,7 @@ export async function nav(page, label) {
   // The dock slides in when it appears (the app starts, a book is closed): wait until it sits at the bottom.
   await page.waitFor(`(() => { const b = document.querySelector('#nav-${label}'); if (!b) return false; const r = b.getBoundingClientRect(); return r.bottom <= innerHeight + 0.5 && !document.querySelector('.dock')?.getAnimations().some((a) => a.playState === 'running'); })()`, 10, 'the dock');
   await page.click(`#nav-${label}`);
-  await sleep(250);
+  await sleep(650);
 }
 
 /** Open the Import menu and choose files with the real file chooser. */

@@ -147,6 +147,7 @@ try {
   await page.send('Page.reload');
   await page.waitFor("!!document.querySelector('.nav')", 30, 'the app after a reload');
   await page.eval("document.querySelector('#nav-Settings').click()");
+  await sleep(650);
   await page.click('#settings-nav-reader');
   await sleep(400);
   const kept = await page.eval("[...document.querySelectorAll('.settings-content .pills .pill:not(.add)')].map((p) => p.innerText.trim())");

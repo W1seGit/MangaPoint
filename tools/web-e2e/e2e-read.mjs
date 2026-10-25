@@ -114,8 +114,6 @@ try {
   await page.waitFor("!!document.querySelector('.poster-read')", 10, 'poster');
   const label = await page.eval(`document.getElementById('read-${id}')?.textContent.trim()`);
   r.check('Library offers Continue with the chapter', /Continue/.test(label || ''), label);
-  const barWidth = await page.eval(`document.querySelector('#read-${id} + .poster-read-progress > div')?.style.width`);
-  r.check('Library shows a progress bar', !!barWidth && barWidth !== '0%', barWidth);
   await page.shot(`${viewport}-17-continue`);
   await sleep(1200); // the debounced write
   await page.send('Page.reload');

@@ -425,7 +425,22 @@ fn handle_event(ctx: Ctx, ev: Event) {
 
 // ---- the shell ----------------------------------------------------------------------------------
 
-/// A press on the dock or the corner bar.
+/// A press on the dock or the corner bar: the page fades out first, then the other comes in.
+fn pick_with_exit(ctx: Ctx, id: &'static str, leaving: Signal<bool>) {
+    let mut leaving = leaving;
+    let current = *ctx.page.peek();
+    let same = matches!((current, id), (Page::Library | Page::Book, "library") | (Page::Export, "export") | (Page::Settings, "settings"));
+    if leaving() || same || current == Page::Export || id == "export" {
+        return pick(ctx, id);
+    }
+    leaving.set(true);
+    spawn(async move {
+        bridge::sleep(340).await;
+        pick(ctx, id);
+        leaving.set(false);
+    });
+}
+
 fn pick(ctx: Ctx, id: &str) {
     ctx.go(match id {
         "library" => Page::Library,
@@ -442,6 +457,8 @@ fn BrowserShell() -> Element {
     let online = *ctx.online.read();
     let update = *ctx.update_ready.read();
     let mut later = use_signal(|| false);
+    // The page being left fades before the next one comes in.
+    let leaving = use_signal(|| false);
     // A book's overview belongs to the Library.
     let current = match page {
         Page::Book => Page::Library,
@@ -463,15 +480,15 @@ fn BrowserShell() -> Element {
                     BarItem::new("library", "Library", "nav-library", current == Page::Library),
                     BarItem::new("export", "Export", "nav-export", current == Page::Export),
                 ],
-                on_pick: move |id| pick(ctx, id),
+                on_pick: move |id| pick_with_exit(ctx, id, leaving),
             }
             mangapoint_ui::shell::CornerBar {
                 items: vec![BarItem::new("settings", "Settings", "gear", current == Page::Settings)],
-                on_pick: move |id| pick(ctx, id),
+                on_pick: move |id| pick_with_exit(ctx, id, leaving),
             }
             }
             main { class: "content", id: "content",
-                div { class: "page",
+                div { class: if leaving() { "page leaving" } else { "page" },
                     if !online {
                         div { class: "banner small offline-note",
                             Icon { name: "info", size: 16 }

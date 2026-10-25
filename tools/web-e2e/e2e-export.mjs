@@ -59,6 +59,7 @@ try {
   await openApp(page, server.url, viewport);
   // A first visit has no readers of its own: none is chosen for the visitor.
   await page.eval("document.querySelector('#nav-Settings').click()");
+  await sleep(650);
   await page.click('#settings-nav-reader');
   await sleep(300);
   r.check('a first visit has no readers', (await page.eval("document.querySelectorAll('.settings-content .pills .pill:not(.add)').length")) === 0);

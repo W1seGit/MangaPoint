@@ -58,15 +58,20 @@
 .scenery .bd { position: absolute; }
 .scenery .bd svg { width: 100%; height: 100%; }
 .scene-search .bd-cloud-1 { top: 3.91%; right: 5%; width: 25.56%; aspect-ratio: 368 / 160; }
-.scene-search .bd-cloud-1 svg { animation: cloud-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both, drift 18s steps(24) 0.9s infinite alternate; }
+.scene-search .bd-cloud-1 svg { animation: cloud-in-r 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both, drift 18s steps(24) 0.9s infinite alternate; }
 .scene-search .bd-cloud-2 { top: 4.69%; left: 6.11%; width: 22.22%; aspect-ratio: 320 / 152; }
-.scene-search .bd-cloud-2 svg { animation: cloud-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both, drift 24s steps(30) 0.9s infinite alternate-reverse; }
+.scene-search .bd-cloud-2 svg { animation: cloud-in-l 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both, drift 24s steps(30) 0.9s infinite alternate-reverse; }
 .scene-search .bd-rock-1 { bottom: 0; right: 0; width: 34.44%; aspect-ratio: 496 / 376; }
 .scene-search .bd-rock-1 svg { animation: rock-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both; }
 .scene-search .bd-rock-2 { bottom: 0; left: 0; width: 30.56%; aspect-ratio: 440 / 352; }
 .scene-search .bd-rock-2 svg { animation: rock-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.25s both; }
-@keyframes cloud-in { from { transform: translateY(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes rock-in { from { transform: translateY(60px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Coming in is leaving the other way round: the clouds from their own sides, the rocks from below. */
+@keyframes cloud-in-r { from { transform: translateX(60vw); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cloud-in-l { from { transform: translateX(-60vw); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes rock-in { from { transform: translateY(110%); opacity: 0; } to { transform: none; opacity: 1; } }
+/* A page that is being left fades and sinks a little. */
+.page.leaving { animation: page-out 0.32s ease forwards; pointer-events: none; }
+@keyframes page-out { to { opacity: 0; transform: translateY(10px) scale(0.99); } }
 @keyframes drift { from { transform: translateX(-14px); } to { transform: translateX(14px); } }
 
 /* ---- a screen arrives: it comes up a little and fades in ---- */

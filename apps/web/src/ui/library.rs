@@ -7,7 +7,7 @@ use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
 use crate::model::{Book, LibrarySort, LibraryView};
 use dioxus::prelude::*;
-use mangapoint_ui::library::{ActionBar, InfoDialog, InfoSheet, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
+use mangapoint_ui::library::{use_fading, ActionBar, InfoDialog, InfoSheet, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -47,6 +47,10 @@ pub fn BrowserLibraryPage() -> Element {
 
     let lib = ctx.library.read();
     let order = lib.order(view(), sort(), &filter.read());
+    // The cards in view; one that drops out (another view, a filter) fades before it goes.
+    let (fading_rows, fading) = use_fading(&order.iter().map(|&i| lib.books[i].id.clone()).collect::<Vec<_>>());
+    let rows: Vec<(usize, bool)> =
+        fading_rows.iter().filter_map(|(id, l)| lib.books.iter().position(|b| &b.id == id).map(|i| (i, *l))).collect();
     let total_bytes: u64 = lib.books.iter().map(|b| b.size).sum();
     let count = lib.books.len();
     // The places in the reading state whose file is not on this device yet are cards too.
@@ -135,9 +139,11 @@ pub fn BrowserLibraryPage() -> Element {
                 }
             }
             div { class: if selecting { "poster-grid selecting" } else { "poster-grid" },
-                for &i in order.iter() {
+                for (i, leaving) in rows.iter().copied() {
                     {
                         let b = lib.books[i].clone();
+                        let gone_id = b.id.clone();
+                        let on_gone = { let f = fading.clone(); move |_| f.gone(&gone_id) };
                         let id = b.id.clone();
                         let menu_open = menu().as_deref() == Some(b.id.as_str());
                         let reading = lib.read_button(&b);
@@ -181,7 +187,7 @@ pub fn BrowserLibraryPage() -> Element {
                             not_installed: false,
                         };
                         rsx! {
-                            Poster { key: "{id}", facts, selected: is_on, selecting, menu_open,
+                            Poster { key: "{id}", facts, selected: is_on, selecting, menu_open, leaving, on_gone,
                                 art: rsx! {
                                     BrowserCover { id: id.clone(), has_cover: b.has_cover }
                                     if needs_file {
