@@ -15,8 +15,6 @@
 [Build from source](#build-from-source) ·
 [Contributing](CONTRIBUTING.md)
 
-<img src="docs/screenshots/library.jpg" alt="The MangaPoint Library: the series you keep, with their covers, how much is downloaded and exported, and where you are in each" width="780" />
-
 </div>
 
 ---
@@ -73,6 +71,17 @@ you delete a series or only some of its chapters.
 
 <div align="center">
 <img src="docs/screenshots/tasks.jpg" alt="The Tasks page: a download in progress, chapter by chapter, and the exports made before" width="780" />
+</div>
+
+### Your library
+
+Every series you keep is a card with its cover, how many chapters are downloaded and
+exported, and a **Continue** button that opens the reader where you stopped. Filter it,
+sort it, switch between what is downloaded, exported, saved for later or imported, and
+tick several series to download, export or remove them together.
+
+<div align="center">
+<img src="docs/screenshots/library.jpg" alt="The MangaPoint Library: the series you keep, with their covers, how much is downloaded and exported, and where you are in each" width="780" />
 </div>
 
 ### Read it right there
