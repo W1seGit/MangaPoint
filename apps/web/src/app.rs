@@ -481,11 +481,8 @@ fn BrowserShell() -> Element {
                 items: vec![
                     BarItem::new("library", "Library", "nav-library", current == Page::Library),
                     BarItem::new("export", "Export", "nav-export", current == Page::Export),
+                    BarItem::new("settings", "Settings", "gear", current == Page::Settings),
                 ],
-                on_pick: move |id| pick_with_exit(ctx, id, leaving),
-            }
-            mangapoint_ui::shell::CornerBar {
-                items: vec![BarItem::new("settings", "Settings", "gear", current == Page::Settings)],
                 on_pick: move |id| pick_with_exit(ctx, id, leaving),
             }
             }

@@ -80,3 +80,6 @@
   .desk-arrow.prev { left: 8px; }
   .desk-arrow.next { right: 8px; }
 }
+
+/* The storage text keeps its room: the control takes only what it needs. */
+#storage-card .sx-row { grid-template-columns: minmax(0, 1fr) auto; }

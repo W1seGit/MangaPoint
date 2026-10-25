@@ -71,7 +71,7 @@ try {
   await nav(page, 'Export');
   await page.waitFor("!!document.querySelector('.editor-row img')", 30, 'the sample pages');
   r.check('with no book the sample pages are shown, converted', (await page.eval("document.querySelectorAll('.editor-row img').length")) >= 4);
-  r.check('the top bar: page jump and zoom, thumbnails, Compare and Overview, as in the app', !!(await page.rect('.editor-toolbar .editor-page-jump input')) && !!(await page.rect('.editor-toolbar .zoom-menu')) && (narrow ? true : !!(await page.rect('.editor-thumbnails .editor-thumb')) && !!(await page.rect('#export-overview'))) && (narrow ? !!(await page.rect('#export-tab-original')) : !!(await page.rect('#export-compare'))));
+  r.check('the top bar: page jump, thumbnails, Compare and Overview, as in the app', !!(await page.rect('.editor-toolbar .editor-page-jump input')) && (narrow ? true : !!(await page.rect('.editor-thumbnails .editor-thumb')) && !!(await page.rect('#export-overview'))) && (narrow ? !!(await page.rect('#export-tab-original')) : !!(await page.rect('#export-compare'))));
   r.check('Compare shows the original beside each page (wide screens)', narrow || (await page.eval("document.querySelectorAll('.source-cell img').length")) >= 3);
   r.check('the sample cannot be exported', await page.eval("document.querySelector('#export-start').disabled"));
   await page.shot(`${viewport}-28-sample`);
@@ -260,20 +260,8 @@ try {
   await page.eval("document.querySelector('#export-pages').scrollTop = 400");
   await page.waitFor("document.querySelectorAll('.original-preview .reader-tile img').length > 1", 30, 'the original pages');
   r.check('phone or tablet: no Compare, no switch, no converted rows', !(await page.eval("!!document.querySelector('#export-compare, .compare-tab, .editor-mobile-switch, .editor-row')")));
-  r.check('phone or tablet keeps the top bar: page jump and zoom', await page.eval("!!document.querySelector('.editor-toolbar .editor-page-jump input') && !!document.querySelector('.editor-toolbar .zoom-menu')"));
-  if (!narrow) {
-    const tileW = () => page.eval("Math.round(document.querySelector('.original-preview .reader-tile').getBoundingClientRect().width)");
-    const w100 = await tileW();
-    await page.click('.editor-toolbar .zoom-chevron');
-    await sleep(300);
-    await page.click('.zoom-list .menu-item', '50%');
-    await sleep(400);
-    r.check('50% is 400px wide, the same for every page', await page.eval("[...document.querySelectorAll('.original-preview .reader-tile')].every(t => Math.abs(t.getBoundingClientRect().width - 400) < 1)"), String(await tileW()));    r.check('Fit page is no wider than 800px', w100 <= 801, String(w100));
-    await page.click('.editor-toolbar .zoom-chevron');
-    await sleep(300);
-    await page.click('.zoom-list .menu-item', 'Fit page');
-    await sleep(300);
-  }
+  r.check('phone or tablet keeps the top bar: page jump, and no zoom', await page.eval("!!document.querySelector('.editor-toolbar .editor-page-jump input') && !document.querySelector('.editor-toolbar .zoom-menu')"));
+  r.check('Fit page is no wider than 800px', await page.eval("Math.round(document.querySelector('.original-preview .reader-tile').getBoundingClientRect().width) <= 801"));
   r.check('the pages touch each other, with no gap', await page.eval("(() => { const a = [...document.querySelectorAll('.original-preview .reader-tile')]; return a.length > 1 && a.slice(1).every((im, i) => Math.abs(im.getBoundingClientRect().top - a[i].getBoundingClientRect().bottom) < 1); })()"));
   // Back to a reader: the page list is a new element and must be sized to the window again (no gap under it).
   if (viewport === 'desktop') {

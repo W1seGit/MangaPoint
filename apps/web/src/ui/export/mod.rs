@@ -774,6 +774,7 @@ pub fn BrowserExportPage() -> Element {
                 }
                 if e.sheet {
                     div { class: "xm-sheet", id: "export-sheet", role: "dialog", "aria-label": "Export settings",
+                        SettingsTab { sheet: true }
                         div { class: "xm-sheet-body",
                             {panels_left}
                             {panels_right}
@@ -820,17 +821,28 @@ fn BottomBar(sheet: bool) -> Element {
     let e = ctx.export.read().clone();
     let book = e.book.as_ref().and_then(|id| ctx.book(id));
     let Some(book) = book else { return rsx! {} };
-    let chevron = if sheet { "chevron-down" } else { "chevron-up" };
     rsx! {
         div { class: "xm-bottom",
             RunCard { book: book.clone() }
             BrowserExportFooter { book, compact: true }
-            button { class: "xm-settings-tab", id: "export-settings-tab", "aria-expanded": "{sheet}",
-                onclick: move |_| edit(ctx, |e| e.sheet = !e.sheet),
-                Icon { name: chevron, size: 16 }
-                Icon { name: "sliders-horizontal", size: 16 }
-                span { "Settings" }
-            }
+            // Open, the Settings tab is the sheet's title at the top instead.
+            if !sheet { SettingsTab { sheet: false } }
+        }
+    }
+}
+
+/// The Settings tab of a phone's Export screen: under the Export button it opens the sheet, and at the top
+/// of the open sheet it closes it.
+#[component]
+fn SettingsTab(sheet: bool) -> Element {
+    let ctx = use_context::<Ctx>();
+    let chevron = if sheet { "chevron-down" } else { "chevron-up" };
+    rsx! {
+        button { class: "xm-settings-tab", id: "export-settings-tab", "aria-expanded": "{sheet}",
+            onclick: move |_| edit(ctx, |e| e.sheet = !e.sheet),
+            Icon { name: chevron, size: 16 }
+            Icon { name: "sliders-horizontal", size: 16 }
+            span { "Settings" }
         }
     }
 }

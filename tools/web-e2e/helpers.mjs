@@ -116,8 +116,9 @@ export async function addReader(page, query, pick = null) {
   await page.eval("document.querySelector('#nav-Settings').click()");
   await page.waitFor("!!document.querySelector('#settings-nav-reader')", 10, 'Settings');
   await page.click('#settings-nav-reader');
-  await page.waitFor("!!document.querySelector('.settings-content .pill.add')", 10, 'Add device');
-  await page.click('.settings-content .pill.add');
+  // (With no reader yet the page welcomes with a button; otherwise the readers are pills with Add device.)
+  await page.waitFor("!!document.querySelector('.settings-content .pill.add, #reader-empty-add')", 10, 'Add device');
+  await page.click('.settings-content .pill.add, #reader-empty-add');
   await sleep(400);
   await page.click('.adder-box input');
   await page.type(query);

@@ -26,7 +26,12 @@
   /* Library */
   .q-head { gap: 8px; }
   .lib-tools { gap: 8px; }
-  .lib-filter { width: 100%; order: 3; }
+  /* The views get a row to themselves; the filter and the sort share the next one. */
+  .lib-tools .pillrow { flex: 1 1 100%; flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .lib-tools .pillrow::-webkit-scrollbar { display: none; }
+  .lib-tools .pillrow .pill { flex: none; padding-left: 14px; padding-right: 14px; }
+  .lib-filter { flex: 1 1 0; width: auto; min-width: 0; }
+  .lib-sort { flex: none; max-width: 48%; }
 
   /* Dialogs fill the screen */
   .overlay { padding: 0; align-items: stretch; }

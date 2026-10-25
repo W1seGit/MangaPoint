@@ -46,14 +46,6 @@ fn source_of(sources: &[PageSource], originals: &[String], sizes: &[(u32, u32)],
     }
 }
 
-/// The zoom of the page preview, in the shared zoom menu.
-#[component]
-fn BrowserZoomMenu() -> Element {
-    let ctx = use_context::<Ctx>();
-    let zoom = ctx.export.read().zoom;
-    rsx! { mangapoint_ui::export::PreviewZoom { zoom, on_change: move |zoom| { edit(ctx, |e| e.zoom = zoom); } } }
-}
-
 /// Show page `index`: scroll the list and the thumbnails to it.
 fn select_page(ctx: Ctx, index: usize) {
     edit(ctx, |e| {
@@ -90,9 +82,6 @@ fn OriginalPages(book: Book) -> Element {
         div { id: "page-editor", class: "page-editor original-editor", tabindex: "0",
             div { class: "editor-toolbar",
                 editor::PageJump { id: "export-page-jump", total, number, on_go: move |i| select_page(ctx, i) }
-                div { class: "editor-toolbar-actions",
-                    BrowserZoomMenu {}
-                }
             }
             div { class: "editor-body",
                 nav { class: "editor-thumbnails", id: "export-thumbnails", "aria-label": "Pages",
@@ -185,9 +174,6 @@ pub fn Preview(book: Book) -> Element {
         div { id: "page-editor", class: "{classes}", tabindex: "0",
             div { class: "editor-toolbar",
                 editor::PageJump { id: "export-page-jump", total, number, on_go: move |i| select_page(ctx, i) }
-                div { class: "editor-toolbar-actions",
-                    BrowserZoomMenu {}
-                }
             }
             if let Look::Failed(message) = &e.look { div { class: "banner bad small", "{message}" } }
             div { class: "editor-body",

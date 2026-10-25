@@ -158,6 +158,12 @@ pub fn Poster(
                     Icon { name: "ellipsis", size: 16 }
                 }
             }
+            // A book waiting for its file says so where the counts of the other cards are.
+            if f.not_installed {
+                div { class: "poster-tabs one",
+                    div { class: "poster-tab down notice", span { "Not installed yet" } }
+                }
+            }
             if let Some(tabs) = f.tabs.clone() {
                 div { class: if tabs.exported.is_some() { "poster-tabs" } else { "poster-tabs one" },
                     div { class: "poster-tab down", title: "Chapters downloaded",
@@ -179,9 +185,6 @@ pub fn Poster(
             // The text opens the book too.
             div { class: "poster-info", onclick: click,
                 strong { class: "poster-title", title: "{tip}", "{f.title}" }
-                if f.not_installed {
-                    span { class: "poster-note", "Not installed yet" }
-                }
                 if let Some(b) = f.button.clone() {
                     button {
                         class: "btn poster-read", id: "{b.id}", "data-id": "{f.id}",
