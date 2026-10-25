@@ -96,6 +96,8 @@ pub fn PlanPage() -> Element {
 #[component]
 fn PlanSection(series_id: String) -> Element {
     let state = use_context::<AppState>();
+    let mut range_text = use_signal(String::new);
+    let mut range_error = use_signal(|| None::<String>);
     let Some(entry) = state
         .plan
         .read()
@@ -181,6 +183,10 @@ fn PlanSection(series_id: String) -> Element {
 
     let latest: Vec<usize> = open_positions.iter().rev().take(10).copied().collect();
     let all_new = open_positions.clone();
+    // The chapters' numbers, for choosing them by typing ("1-20, 25, 30-").
+    let numbers: Vec<Option<f64>> = loaded.as_ref().map(|l| l.merged.iter().map(|c| c.number).collect()).unwrap_or_default();
+    let open_for_range = open_positions.clone();
+    let id_range = series_id.clone();
     let (id_a, id_b, id_c, id_d, id_e, id_f, id_g, id_h) = (
         series_id.clone(),
         series_id.clone(),
@@ -241,6 +247,28 @@ fn PlanSection(series_id: String) -> Element {
                         }
                     }
                     if new_count > 0 {
+                        form {
+                            class: "row", style: "gap: 6px",
+                            onsubmit: move |e| {
+                                e.prevent_default();
+                                match logic::select_by_text(&range_text.read(), &numbers) {
+                                    Ok(found) => {
+                                        range_error.set(None);
+                                        // Only what can still be picked: chapters already downloaded stay out.
+                                        let wanted: Vec<usize> = found.into_iter().filter(|i| open_for_range.contains(i)).collect();
+                                        with_entry(state, &id_range, |e| e.picked = wanted.into_iter().collect());
+                                    }
+                                    Err(msg) => range_error.set(Some(msg)),
+                                }
+                            },
+                            input {
+                                r#type: "text", id: "plan-range", style: "width: 190px",
+                                placeholder: "Range: 1-20, 25, 30-",
+                                value: "{range_text}",
+                                oninput: move |e| range_text.set(e.value()),
+                            }
+                            button { class: "btn small", r#type: "submit", "Select" }
+                        }
                         button { class: "btn small", onclick: move |_| {
                                 let all = all_new.clone();
                                 with_entry(state, &id_c, |e| e.picked = all.into_iter().collect());
@@ -255,6 +283,9 @@ fn PlanSection(series_id: String) -> Element {
                         }
                         button { class: "btn small", onclick: move |_| with_entry(state, &id_e, |e| e.picked.clear()), "None" }
                     }
+                }
+                if let Some(msg) = range_error() {
+                    p { class: "small", style: "color: var(--bad); margin: 0 0 8px", "{msg}" }
                 }
                 ChapterGrid {
                     rows,

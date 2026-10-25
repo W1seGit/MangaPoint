@@ -191,17 +191,11 @@ pub fn Poster(
                             if selecting { on_toggle.call(()); } else { on_button.call(()); }
                         },
                         span { "{b.label}" }
-                        Figure { name: button_figure(b.icon) }
                     }
                 }
             }
         }
     }
-}
-
-/// The figure on a card's button: an arrow down to download, an open book to read.
-fn button_figure(icon: &str) -> &'static str {
-    if icon == "download" { "download-small" } else { "reading" }
 }
 
 /// The bar at the bottom while cards are ticked: how many and how big, select all or none, the
