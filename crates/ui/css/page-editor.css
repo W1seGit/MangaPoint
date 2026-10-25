@@ -15,33 +15,34 @@
 
 .device figcaption { color: var(--muted); font-size: 0.82rem; margin-bottom: 6px; }
 
-/* The bar for the ticked cards is the bottom bar grown wider: the count on its left, the buttons on its
-   right, and the dock in the middle, all in one row. */
+/* The bar for the ticked cards is the bottom bar grown to the left: the count, then the buttons, and the
+   dock at its right end, all in one row. */
 .action-bar {
   --dock-gap: 276px;
-  position: fixed; left: 50%; bottom: 0; z-index: 59; box-sizing: border-box; width: min(1200px, calc(100vw - 400px)); min-height: 76px; transform: translateX(-50%);
-  display: grid; grid-template-columns: minmax(0, 1fr) var(--dock-gap) minmax(0, 1fr); align-items: center; padding: 0 30px;
+  position: fixed; right: calc(50% - var(--dock-gap) / 2); bottom: 0; z-index: 59; box-sizing: border-box;
+  width: min(900px, calc(50vw + var(--dock-gap) / 2 - 24px)); min-height: 76px;
+  display: flex; align-items: center; gap: 16px; padding: 0 calc(var(--dock-gap) + 6px) 0 30px;
   background: var(--dark); border: 1px solid #292929; border-bottom: 0; border-radius: 40px 40px 0 0;
   animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
-.action-bar .bar-left { grid-column: 1; justify-self: start; display: flex; align-items: center; gap: 12px; min-width: 0; }
-.action-bar .bar-right { grid-column: 3; justify-self: end; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; padding: 8px 0; min-width: 0; }
+.action-bar .bar-left { flex: none; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.action-bar .bar-right { flex: 1; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 10px; padding: 8px 0; min-width: 0; }
 /* The dock shares the bar's background, so the two look like one piece. */
 .dock { transition: background-color 0.3s ease, border-color 0.3s ease; }
 .app:has(.action-bar) .dock { background: transparent; border-color: transparent; }
-/* The Library gives its children a rise that would keep the bar off centre. */
+/* The Library gives its children a rise that would keep the bar off its place. */
 .keep.lib:not(.gone) > #action-bar { animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
-@keyframes bar-up { from { transform: translate(-50%, 40px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+@keyframes bar-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .action-bar .bar-count { display: flex; flex-direction: column; line-height: 1.25; margin-right: 6px; }
-/* A window too narrow for the corner bar beside it: the corner bar waits while cards are ticked. */
-@media (max-width: 1100px) {
-  .action-bar { width: calc(100vw - 24px); }
-  .app:has(.action-bar) .corner { display: none; }
+/* A smaller window: the buttons keep their icons only. */
+@media (max-width: 1500px) and (min-width: 761px), (max-width: 520px) {
+  .action-bar .bar-right .btn { font-size: 0; gap: 0; padding-left: 12px; padding-right: 12px; }
+  .action-bar .bar-right .btn .fig, .action-bar .bar-right .btn svg { font-size: 1rem; }
 }
 /* A narrow window: the bar sits on top of the dock instead, joined to its top edge. */
 @media (max-width: 760px) {
-  .action-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; bottom: 64px; z-index: 61; padding: 12px 16px 20px; border-radius: 28px 28px 0 0; }
-  .action-bar .bar-right { margin-left: auto; padding: 0; }
+  .action-bar { left: 0; right: 0; width: auto; flex-wrap: wrap; gap: 8px; bottom: 64px; z-index: 61; padding: 12px 16px 20px; border-radius: 28px 28px 0 0; }
+  .action-bar .bar-right { flex: 1; justify-content: flex-end; padding: 0; }
   .app:has(.action-bar) .dock { background: var(--dark); border-color: #292929; }
 }
 .bar-menu { position: relative; }
