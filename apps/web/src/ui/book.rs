@@ -268,6 +268,7 @@ pub fn BookPage() -> Element {
 
         if !picked.read().is_empty() {
             div { class: "action-bar", id: "book-bar",
+                div { class: "bar-left",
                 div { class: "bar-count",
                     strong { id: "book-bar-count", "{picked.read().len()} selected" }
                     span { class: "muted small", "{picked_read} read" }
@@ -278,7 +279,8 @@ pub fn BookPage() -> Element {
                     },
                     if all_ticked { "Select none" } else { "Select all" }
                 }
-                span { class: "grow" }
+                }
+                div { class: "bar-right",
                 if !needs_file {
                     button { class: "btn primary", id: "book-export-picked", title: "Edit and export the chapters you ticked",
                         onclick: {
@@ -306,6 +308,7 @@ pub fn BookPage() -> Element {
                         move |_| mark(ctx, &id, &picked.read(), false)
                     },
                     "Mark as unread"
+                }
                 }
             }
         }

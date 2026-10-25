@@ -69,6 +69,7 @@ pub fn PlanPage() -> Element {
             PlanSection { key: "{id}", series_id: id.clone() }
         }
         div { class: "action-bar",
+            div { class: "bar-left",
             div { class: "bar-count",
                 strong { "{plural(chapters, \"chapter\")} chosen" }
                 span { class: "muted small",
@@ -77,7 +78,8 @@ pub fn PlanPage() -> Element {
                     if with_picks == 0 && loading == 0 { "Tick some chapters" }
                 }
             }
-            span { class: "grow" }
+            }
+            div { class: "bar-right",
             button { class: "btn", onclick: move |_| leave(state), "Cancel" }
             button { class: "btn primary", disabled: chapters == 0, onclick: move |_| ask_download(
                     state,
@@ -85,6 +87,7 @@ pub fn PlanPage() -> Element {
                     format!("{} from {}", plural(chapters, "chapter"), plural(with_picks, "series")),
                 ),
                 Icon { name: "download", size: 16 } "Add to downloads"
+            }
             }
         }
     }

@@ -21,9 +21,10 @@ pub struct Fading {
 }
 
 impl Fading {
-    /// The card's fade is over: take it out.
-    pub fn gone(&self, id: &str) {
-        self.state.borrow_mut().leaving.retain(|(l, _)| l != id);
+    /// A card's fade is over: take out every card that is leaving. They all started together, and
+    /// taking them out one by one would make the cards after them start their fade again.
+    pub fn gone(&self, _id: &str) {
+        self.state.borrow_mut().leaving.clear();
         let mut tick = self.tick;
         tick.set(tick() + 1);
     }
@@ -218,6 +219,7 @@ pub fn ActionBar(
     let mut open = use_signal(|| false);
     rsx! {
         div { class: "action-bar", id: "action-bar",
+            div { class: "bar-left",
             div { class: "bar-count",
                 strong { id: "bar-count", "{count} selected" }
                 span { class: "muted small", "{size}" }
@@ -226,7 +228,8 @@ pub fn ActionBar(
                 onclick: move |_| on_all.call(!all_ticked),
                 if all_ticked { "Select none" } else { "Select all" }
             }
-            span { class: "grow" }
+            }
+            div { class: "bar-right",
             {buttons}
             div { class: "bar-menu",
                 button { class: "btn", id: "bar-more", title: "More actions", "aria-label": "More actions",
@@ -237,6 +240,7 @@ pub fn ActionBar(
                     div { class: "menu-scrim", onclick: move |_| open.set(false) }
                     div { class: "menu up", onclick: move |_| open.set(false), {more} }
                 }
+            }
             }
         }
     }

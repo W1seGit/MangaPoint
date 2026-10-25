@@ -19,6 +19,9 @@
           seen.add(id);
           const was = where.get(id);
           const now = [el.offsetLeft, el.offsetTop];
+          if (!calm && !was && grid.dataset.settled) {
+            el.animate([{ opacity: 0, scale: '0.9' }, { opacity: 1, scale: '1' }], { duration: 340, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' });
+          }
           if (!calm && was && !el.classList.contains('leaving') && (was[0] !== now[0] || was[1] !== now[1])) {
             el.animate(
               [{ translate: `${was[0] - now[0]}px ${was[1] - now[1]}px` }, { translate: '0 0' }],
@@ -32,6 +35,8 @@
       new MutationObserver(slide).observe(grid, { childList: true });
       new ResizeObserver(read).observe(grid);
       read();
+      // The cards rise in once, when the page opens; after that the script moves them about.
+      setTimeout(() => { grid.dataset.settled = '1'; }, 1600);
     },
   };
 })();

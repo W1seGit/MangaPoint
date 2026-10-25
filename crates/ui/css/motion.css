@@ -14,7 +14,7 @@
 .keep.lib:not(.gone) > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .overview-cover { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 60ms both; }
 .overview-body > * { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.poster-grid > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.poster-grid:not([data-settled]) > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .keep.lib:not(.gone) > :nth-child(2) { animation-delay: 40ms; }
 .keep.lib:not(.gone) > :nth-child(3) { animation-delay: 80ms; }
 .keep.lib:not(.gone) > :nth-child(4) { animation-delay: 120ms; }
@@ -33,22 +33,22 @@
 .overview-body > :nth-child(5) { animation-delay: 355ms; }
 .overview-body > :nth-child(6) { animation-delay: 410ms; }
 .overview-body > :nth-child(7) { animation-delay: 465ms; }
-.poster-grid > :nth-child(1) { animation-delay: 140ms; }
-.poster-grid > :nth-child(2) { animation-delay: 175ms; }
-.poster-grid > :nth-child(3) { animation-delay: 210ms; }
-.poster-grid > :nth-child(4) { animation-delay: 245ms; }
-.poster-grid > :nth-child(5) { animation-delay: 280ms; }
-.poster-grid > :nth-child(6) { animation-delay: 315ms; }
-.poster-grid > :nth-child(7) { animation-delay: 350ms; }
-.poster-grid > :nth-child(8) { animation-delay: 385ms; }
-.poster-grid > :nth-child(9) { animation-delay: 420ms; }
-.poster-grid > :nth-child(10) { animation-delay: 455ms; }
-.poster-grid > :nth-child(11) { animation-delay: 490ms; }
-.poster-grid > :nth-child(12) { animation-delay: 525ms; }
-.poster-grid > :nth-child(13) { animation-delay: 560ms; }
-.poster-grid > :nth-child(14) { animation-delay: 595ms; }
-.poster-grid > :nth-child(15) { animation-delay: 630ms; }
-.poster-grid > :nth-child(16) { animation-delay: 665ms; }
+.poster-grid:not([data-settled]) > :nth-child(1) { animation-delay: 140ms; }
+.poster-grid:not([data-settled]) > :nth-child(2) { animation-delay: 175ms; }
+.poster-grid:not([data-settled]) > :nth-child(3) { animation-delay: 210ms; }
+.poster-grid:not([data-settled]) > :nth-child(4) { animation-delay: 245ms; }
+.poster-grid:not([data-settled]) > :nth-child(5) { animation-delay: 280ms; }
+.poster-grid:not([data-settled]) > :nth-child(6) { animation-delay: 315ms; }
+.poster-grid:not([data-settled]) > :nth-child(7) { animation-delay: 350ms; }
+.poster-grid:not([data-settled]) > :nth-child(8) { animation-delay: 385ms; }
+.poster-grid:not([data-settled]) > :nth-child(9) { animation-delay: 420ms; }
+.poster-grid:not([data-settled]) > :nth-child(10) { animation-delay: 455ms; }
+.poster-grid:not([data-settled]) > :nth-child(11) { animation-delay: 490ms; }
+.poster-grid:not([data-settled]) > :nth-child(12) { animation-delay: 525ms; }
+.poster-grid:not([data-settled]) > :nth-child(13) { animation-delay: 560ms; }
+.poster-grid:not([data-settled]) > :nth-child(14) { animation-delay: 595ms; }
+.poster-grid:not([data-settled]) > :nth-child(15) { animation-delay: 630ms; }
+.poster-grid:not([data-settled]) > :nth-child(16) { animation-delay: 665ms; }
 @media (prefers-reduced-motion: reduce) { .keep.lib > *, .overview-cover, .overview-body > *, .poster-grid > * { animation: none; } }
 
 /* ---- Preferences: snappy animations ---- */

@@ -432,6 +432,7 @@ pub fn ChaptersTab() -> Element {
 
         if picked > 0 {
             div { class: "action-bar",
+                div { class: "bar-left",
                 div { class: "bar-count",
                     strong { "{picked} selected" }
                     span { class: "muted small",
@@ -440,7 +441,8 @@ pub fn ChaptersTab() -> Element {
                         if queued_picked > 0 { "{queued_picked} in the queue" }
                     }
                 }
-                span { class: "grow" }
+                }
+                div { class: "bar-right",
                 if per_source.len() >= 2 && to_download > 0 {
                     div { class: "bar-source",
                         title: "Adaptive uses the source with the most of your chapters, tests which is fastest, and fills any gaps from the others. Pick one source to use only that one.",
@@ -488,6 +490,7 @@ pub fn ChaptersTab() -> Element {
                         },
                         Icon { name: "download", size: 16 } "Add {to_download - not_offered} to downloads"
                     }
+                }
                 }
             }
         }
