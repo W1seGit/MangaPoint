@@ -7,3 +7,5 @@
 .overview { margin-bottom: 8px; }
 /* ---- the overview ---- */
 .overview { grid-template-columns: 150px minmax(0, 1fr); }
+/* A narrow window: the cover above, so the title and the buttons have the whole width. */
+@media (max-width: 760px) { .overview { grid-template-columns: minmax(0, 1fr); } .overview-cover { width: 140px; } }

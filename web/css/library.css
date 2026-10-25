@@ -18,6 +18,9 @@
 .book-actions { margin-top: 16px; gap: 8px; }
 .book-chapters-head { display: flex; align-items: baseline; gap: 12px; margin-top: 28px; }
 .book-chapters-head h2 { margin: 0; font-size: 1.15rem; }
+.book-filter-box { max-width: 280px; }
+.book-range-form { gap: 6px; margin-left: auto; }
+#book-range { width: 190px; }
 /* A card with its menu open sits above the cards after it, so the menu is never under them. */
 .poster:has(.poster-menu) { z-index: 30; }
 

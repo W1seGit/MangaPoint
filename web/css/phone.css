@@ -37,6 +37,11 @@
   .lib-tools .pillrow .pill { flex: none; padding-left: 14px; padding-right: 14px; }
   .lib-filter { flex: 1 1 0; width: auto; min-width: 0; }
   .lib-sort { flex: none; max-width: 48%; }
+  /* A book's chapters: the filter has a row to itself, and the range box and Select the next. */
+  .toolbar:has(#book-filter) { flex-wrap: wrap; }
+  .book-filter-box { flex: 1 1 100%; max-width: none; }
+  .book-range-form { flex: 1 1 100%; margin-left: 0; }
+  #book-range { flex: 1; width: auto; min-width: 0; }
   .lib-top {
     top: calc(-14px - var(--sat)); margin: calc(-14px - var(--sat)) calc(-1 * max(14px, var(--sar))) 14px calc(-1 * max(14px, var(--sal)));
     padding: calc(14px + var(--sat)) max(14px, var(--sar)) 12px max(14px, var(--sal));

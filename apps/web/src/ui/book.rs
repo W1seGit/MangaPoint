@@ -202,7 +202,7 @@ pub fn BookPage() -> Element {
             }
         }
         div { class: "toolbar",
-            div { class: "input-icon", style: "max-width: 280px",
+            div { class: "input-icon book-filter-box",
                 Icon { name: "list-filter", size: 16 }
                 input {
                     r#type: "search", placeholder: "Filter chapters", id: "book-filter",
@@ -211,7 +211,7 @@ pub fn BookPage() -> Element {
                 }
             }
             form {
-                class: "row", style: "gap: 6px; margin-left: auto",
+                class: "row book-range-form",
                 onsubmit: move |e| {
                     e.prevent_default();
                     match mangapoint_ui::logic::chapters::select_by_text(&range_text.read(), &numbers) {
@@ -220,7 +220,7 @@ pub fn BookPage() -> Element {
                     }
                 },
                 input {
-                    r#type: "text", style: "width: 190px", id: "book-range",
+                    r#type: "text", id: "book-range",
                     placeholder: "Range: 1-20, 25, 30-",
                     value: "{range_text}",
                     oninput: move |e| range_text.set(e.value()),
