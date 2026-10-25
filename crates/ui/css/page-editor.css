@@ -37,10 +37,14 @@
   .action-bar .bar-right .btn { font-size: 0; gap: 0; padding-left: 12px; padding-right: 12px; }
   .action-bar .bar-right .btn .fig, .action-bar .bar-right .btn svg { font-size: 1rem; }
 }
-/* A narrower window (a tablet, a half-screen window): beside the dock there is not room for the count and
-   the buttons, so the bar sits on top of the dock instead, joined to its top edge. */
+/* A narrower window (a tablet, a phone, a half-screen window): beside the dock there is not room for the
+   count and the buttons, so the bar floats just above the dock instead, the full width, rounded all round. */
 @media (max-width: 1100px) {
-  .action-bar { right: 0; width: auto; height: auto; min-height: 0; gap: 8px; bottom: 64px; z-index: 61; padding: 12px 16px 20px; border-radius: 28px 28px 0 0; }
+  .action-bar {
+    left: 12px; right: 12px; width: auto; max-width: none; height: auto; min-height: 64px; gap: 8px;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px)); z-index: 61; padding: 8px 10px 8px 20px;
+    justify-content: space-between; border: 1px solid #292929; border-radius: 32px;
+  }
   .action-bar .bar-right { flex: none; justify-content: flex-end; padding: 0; }
 }
 .bar-menu { position: relative; }
