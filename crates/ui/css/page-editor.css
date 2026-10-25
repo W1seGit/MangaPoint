@@ -18,29 +18,29 @@
 /* The bar for the ticked cards: a dark bar in the bottom left corner, like the navbar's, with the count
    and then the buttons. */
 .action-bar {
-  position: fixed; left: 0; bottom: 0; z-index: 59; box-sizing: border-box; width: min(760px, calc(50vw - 150px)); height: 76px;
-  display: flex; align-items: center; gap: 14px; padding: 0 34px 0 30px; container-type: inline-size;
+  position: fixed; left: 0; bottom: 0; z-index: 59; box-sizing: border-box; width: fit-content; max-width: calc(50vw - 140px); height: 76px;
+  display: flex; align-items: center; gap: 14px; padding: 0 34px 0 30px;
   background: var(--dark); border: 1px solid #292929; border-left: 0; border-bottom: 0; border-radius: 0 40px 0 0;
   animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1);
 }
 .action-bar .bar-left { flex: none; display: flex; align-items: center; gap: 12px; min-width: 0; }
-.action-bar .bar-right { flex: 1; display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap; gap: 10px; min-width: 0; }
+.action-bar .bar-right { flex: none; display: flex; align-items: center; justify-content: flex-start; flex-wrap: nowrap; gap: 10px; min-width: 0; }
 .action-bar .btn { flex: none; white-space: nowrap; }
 .keep.lib:not(.gone) > #action-bar { animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
 @keyframes bar-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .action-bar .bar-count { display: flex; flex-direction: column; line-height: 1.25; margin-right: 6px; }
-/* Nothing ever wraps onto a second line: the less room the bar has, the less it says. */
-@container (max-width: 700px) {
+.action-bar .bar-count-row { display: flex; align-items: baseline; gap: 12px; }
+.bar-link { padding: 0; border: 0; border-bottom: 1px dotted currentColor; border-radius: 0; background: none; color: var(--muted); font: inherit; font-size: 0.82rem; cursor: pointer; }
+.bar-link:hover { color: var(--text); }
+/* Nothing ever wraps onto a second line: the buttons keep only their icons unless the window is wide. */
+@media (max-width: 1699px) {
   .action-bar .bar-right .btn { font-size: 0; gap: 0; padding-left: 12px; padding-right: 12px; }
   .action-bar .bar-right .btn .fig, .action-bar .bar-right .btn svg { font-size: 1rem; }
-}
-@container (max-width: 440px) {
-  #bar-select-all, .action-bar .bar-count .muted { display: none; }
 }
 /* A narrow window: the bar sits on top of the dock instead, joined to its top edge. */
 @media (max-width: 760px) {
   .action-bar { right: 0; width: auto; height: auto; min-height: 0; gap: 8px; bottom: 64px; z-index: 61; padding: 12px 16px 20px; border-radius: 28px 28px 0 0; }
-  .action-bar .bar-right { flex: 1; justify-content: flex-end; padding: 0; }
+  .action-bar .bar-right { flex: none; justify-content: flex-end; padding: 0; }
 }
 .bar-menu { position: relative; }
 .controls.compact .field { grid-template-columns: 1fr; gap: 4px; }

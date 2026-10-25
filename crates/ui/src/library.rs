@@ -221,12 +221,14 @@ pub fn ActionBar(
         div { class: "action-bar", id: "action-bar",
             div { class: "bar-left",
             div { class: "bar-count",
-                strong { id: "bar-count", "{count} selected" }
+                div { class: "bar-count-row",
+                    strong { id: "bar-count", "{count} selected" }
+                    button { class: "bar-link", id: "bar-select-all",
+                        onclick: move |_| on_all.call(!all_ticked),
+                        if all_ticked { "Select none" } else { "Select all" }
+                    }
+                }
                 span { class: "muted small", "{size}" }
-            }
-            button { class: "btn ghost small", id: "bar-select-all",
-                onclick: move |_| on_all.call(!all_ticked),
-                if all_ticked { "Select none" } else { "Select all" }
             }
             }
             div { class: "bar-right",
