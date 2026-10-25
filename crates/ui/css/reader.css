@@ -49,6 +49,9 @@
 .reader-chapter-link:hover { color: var(--accent, var(--text)); }
 .reader-chapter-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .reader-top .reader-menu { left: 50%; right: auto; transform: translateX(-50%); min-width: 220px; }
+/* Its opening keeps the centring, so it does not jump sideways. */
+.reader-top .reader-menu.menu.down { animation-name: reader-menu-in; }
+@keyframes reader-menu-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translateX(-50%); } }
 .reader-round {
   width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; flex: none;
   border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.14); color: var(--text); cursor: pointer;

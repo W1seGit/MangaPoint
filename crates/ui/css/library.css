@@ -22,7 +22,8 @@
 .poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 26px 22px; padding-top: 4px; }
 .poster {
   position: relative; display: flex; flex-direction: column; width: 100%; min-width: 0; container-type: inline-size;
-  background: var(--third); border-radius: var(--radius-lg); filter: drop-shadow(0 0 0 rgba(0, 0, 0, 0));
+  background: var(--third); border-radius: var(--radius-lg);
+  /* No filter at rest: a filter would hold the menu's click-away layer (position: fixed) inside the card. */
   transition: transform 0.32s cubic-bezier(0.34, 1.45, 0.64, 1), filter 0.2s ease, opacity 0.3s ease;
 }
 .poster:hover { transform: translateY(-7px); filter: drop-shadow(0 16px 18px rgba(0, 0, 0, 0.4)); }

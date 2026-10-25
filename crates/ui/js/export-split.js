@@ -14,8 +14,9 @@
        let saved = {};
        try { saved = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
        const body = root.querySelector('.export-body');
-       if (saved.left) body.style.setProperty('--left-w', saved.left + 'px');
-       if (saved.right) body.style.setProperty('--right-w', saved.right + 'px');
+       // (The narrow layout has no columns, so no body to size.)
+       if (body && saved.left) body.style.setProperty('--left-w', saved.left + 'px');
+       if (body && saved.right) body.style.setProperty('--right-w', saved.right + 'px');
        for (const [id, h] of Object.entries(saved.panels || {})) {
         const el = root.querySelector('[data-panel="' + id + '"]');
         if (el) el.style.setProperty('--h', h + 'px');
