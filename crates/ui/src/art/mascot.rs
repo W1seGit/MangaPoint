@@ -294,14 +294,55 @@ fn waiting() -> String {
 
 /// The mascot going on its way, with the ground slipping by, for the first start.
 fn walking() -> String {
-    let mut s = String::from("<g class=\"m-ground\">");
-    for i in 0..9 {
-        rect(&mut s, i * 14 - 8, 62, 7, 1, CHEEK);
-        rect(&mut s, i * 14 - 1, 64, 4, 1, WOOD);
+    const W: i32 = 128;
+    let mut s = String::new();
+    // Hills far away, drifting by slowly. Their outline repeats every `W` pixels, so two copies side by side
+    // slide along without a seam.
+    s.push_str("<g class=\"m-hills\">");
+    for x in 0..W * 2 {
+        let a = std::f32::consts::TAU * x as f32 / W as f32;
+        let h = (7.0 + 3.0 * (2.0 * a).sin() + 2.0 * (3.0 * a + 1.0).sin()).round() as i32;
+        rect(&mut s, x, 29 - h, 1, h, WOOD);
     }
     s.push_str("</g>");
-    s.push_str(&mascot(23, 4, Eyes::Open).replace("m-head", "m-head m-walk"));
+    // The road: its edge, its surface, and the dashes down the middle going by at walking pace.
+    rect(&mut s, 0, 29, W, 1, LINE);
+    rect(&mut s, 0, 30, W, 14, CHEEK);
+    s.push_str("<g class=\"m-road\">");
+    for i in 0..11 {
+        rect(&mut s, i * 14, 38, 7, 1, FUR);
+    }
+    s.push_str("</g>");
+    // The mascot, at its small size, one foot and then the other, bobbing a pixel with each step.
+    let closed = pixels_markup(&[(6, 8), (7, 8), (14, 8), (15, 8)], LINE);
+    let mut open = String::new();
+    rect(&mut open, 6, 7, 1, 2, LINE);
+    rect(&mut open, 15, 7, 1, 2, LINE);
+    let (left, right) = (half_step(true), half_step(false));
+    let _ = write!(
+        s,
+        "<g transform=\"translate(53 7)\"><g class=\"m-bob\"><g class=\"m-step one\">{}</g><g class=\"m-step two\">{}</g><g class=\"m-head m-walk\">{}<g class=\"look-open\">{open}</g><g class=\"look-blink\">{closed}</g></g></g></g>",
+        rows_markup(&left, 17, HALF.len()),
+        rows_markup(&right, 17, HALF.len()),
+        rows_markup(&HALF, 0, 17),
+    );
     s
+}
+
+/// The small drawing with one foot lifted: on that side the feet move up a pixel.
+fn half_step(left: bool) -> Vec<String> {
+    let mut rows: Vec<Vec<u8>> = HALF.iter().map(|r| r.as_bytes().to_vec()).collect();
+    let cols = if left { 0..8 } else { 14..22 };
+    let last = rows.len() - 1;
+    for y in 24..=last {
+        for x in cols.clone() {
+            rows[y - 1][x] = rows[y][x];
+        }
+    }
+    for x in cols {
+        rows[last][x] = b'.';
+    }
+    rows.into_iter().map(|r| String::from_utf8(r).unwrap_or_default()).collect()
 }
 
 /// Holding a magnifying glass up to the websites it goes through, while the sources are looked at.
@@ -412,14 +453,14 @@ pub fn UpdateScene() -> Element {
     }
 }
 
-/// The mascot on its way, for the first start.
+/// The mascot walking down a road, at its small size, for the first start.
 #[component]
 pub fn Walking() -> Element {
     static M: OnceLock<String> = OnceLock::new();
     let markup = cached(&M, walking);
     rsx! {
         div { class: "walker",
-            svg { class: "mascot scene walk", view_box: "0 0 90 68", role: "img", "aria-label": "The mascot walking",
+            svg { class: "mascot scene walk", view_box: "0 0 128 44", role: "img", "aria-label": "The mascot walking down a road",
                 dangerous_inner_html: "{markup}",
             }
         }
@@ -578,7 +619,7 @@ mod tests {
             ("waiting", waiting(), &["m-steam s0", "m-steam s2"][..]),
             ("browsing", browsing(), &["m-window w2", "m-lit"][..]),
             ("updating", updating(), &["m-drop"][..]),
-            ("walking", walking(), &["m-ground", "m-walk"][..]),
+            ("walking", walking(), &["m-road", "m-hills", "m-step two", "m-bob"][..]),
         ] {
             for class in classes {
                 assert!(svg.contains(&format!("class=\"{class}\"")) || svg.contains(class), "{name}: {class}");

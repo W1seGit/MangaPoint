@@ -18,7 +18,7 @@ fn gallery() {
         ("Tea: Tasks with nothing to do", scene("waiting", "0 0 76 72", waiting_markup())),
         ("Glass over websites: first start, Choose your sources", scene("browse", "0 0 126 66", browsing_markup())),
         ("Paw on the parcel: the update dialog (desktop and web)", scene("Paw on the parcel: the update dialog (desktop and web)", "0 0 82 68", updating_markup())),
-        ("Walking: the splash while the app opens, and the first start", format!("<div class=\"walker\">{}</div>", scene("walk", "0 0 90 68", walking_markup()))),
+        ("Walking: the splash while the app opens, and the first start", format!("<div class=\"walker\">{}</div>", scene("walk", "0 0 128 44", walking_markup()))),
         ("Going round a circle: every loading spinner (search, reader, sources, chapters, import)", loader(120)),
         ("Small: a cover still loading, Loading chapters", loader(56)),
         ("Toasts: done, warning, failed", format!("{}{}{}", toast("success", "✓"), toast("warning", "!"), toast("error", "×"))),

@@ -25,17 +25,28 @@
 @keyframes m-lit { 0% { opacity: 1; } 33% { opacity: 0; } }
 .m-drop { animation: m-drop 4.5s ease-in-out infinite; }
 @keyframes m-drop { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(4px); } }
-.m-ground { animation: m-ground 4.2s steps(14) infinite; }
-@keyframes m-ground { to { transform: translateX(-14px); } }
+/* Walking: one foot, then the other, a pixel up with each step; the road and the hills go by. */
+.m-step.two { opacity: 0; }
+.m-step.one { animation: m-step-one 1.4s steps(1, end) infinite; }
+.m-step.two { animation: m-step-two 1.4s steps(1, end) infinite; }
+@keyframes m-step-one { 0% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes m-step-two { 0% { opacity: 0; } 50% { opacity: 1; } }
+.m-bob { animation: m-bob 0.7s steps(1, end) infinite; }
+@keyframes m-bob { 0% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+.m-road { animation: m-road 2.8s steps(14) infinite; }
+@keyframes m-road { from { transform: translateX(0); } to { transform: translateX(-14px); } }
+.m-hills { animation: m-hills 64s steps(128) infinite; }
+@keyframes m-hills { from { transform: translateX(0); } to { transform: translateX(-128px); } }
 @media (prefers-reduced-motion: reduce) {
-  .m-head, .m-steam, .m-glass, .m-window .m-lit, .m-drop, .m-ground, .look-open, .look-blink, .m-orbit, .m-orbit .mascot { animation: none; }
+  .m-head, .m-steam, .m-glass, .m-window .m-lit, .m-drop, .m-step, .m-bob, .m-road, .m-hills, .look-open, .look-blink, .m-orbit, .m-orbit .mascot { animation: none; }
   .m-steam.s0 { opacity: 0.8; }
   .look-blink { opacity: 0; }
 }
 
 /* ---- the scenes in a page ---- */
 .mascot.scene { height: auto; margin-bottom: 10px; max-width: 92%; }
-.mascot.scene.rest, .mascot.scene.search, .mascot.scene.waiting, .mascot.scene.update, .mascot.scene.browse, .mascot.scene.walk {
+.mascot.scene.walk { -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent); }
+.mascot.scene.rest, .mascot.scene.search, .mascot.scene.waiting, .mascot.scene.update, .mascot.scene.browse {
   -webkit-mask-image: linear-gradient(#000 84%, transparent); mask-image: linear-gradient(#000 84%, transparent);
 }
 .empty .mascot.scene { width: 190px; margin-bottom: 8px; }
