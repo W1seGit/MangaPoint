@@ -108,6 +108,12 @@ pub fn LibraryPage() -> Element {
         .filter(|s| !s.chapters.is_empty())
         .map(|s| s.id.clone())
         .collect();
+    // Imported series have nothing to download, and their pages could not be downloaded again.
+    let chosen_downloadable: Vec<String> = chosen.iter().filter(|s| !s.is_imported()).map(|s| s.id.clone()).collect();
+    let chosen_downloaded: Vec<&library::DownloadedSeries> =
+        chosen.iter().copied().filter(|s| !s.is_imported() && !s.chapters.is_empty()).collect();
+    let chosen_downloaded_ids: Vec<String> = chosen_downloaded.iter().map(|s| s.id.clone()).collect();
+    let downloaded_bytes: u64 = chosen_downloaded.iter().map(|s| s.bytes()).sum();
     let chosen_bytes: u64 = chosen.iter().map(|s| s.bytes()).sum();
     let selecting = !chosen.is_empty();
     let all_shown: Vec<String> = order
@@ -140,17 +146,17 @@ pub fn LibraryPage() -> Element {
     let delete_modal = Modal {
         title: format!(
             "Delete the downloads of {}?",
-            plural(chosen_with_downloads.len(), "series")
+            plural(chosen_downloaded_ids.len(), "series")
         ),
         body: format!(
             "The downloaded chapters ({}) will be deleted from this computer. The series stay in your library, so you can download them again later. Files you already exported are kept.",
-            human_bytes(chosen_bytes)
+            human_bytes(downloaded_bytes)
         ),
         confirm: "Delete downloads".into(),
         cancel: "Keep".into(),
         danger: true,
         action: ModalAction::DeleteDownloads {
-            series_ids: chosen_with_downloads.clone(),
+            series_ids: chosen_downloaded_ids.clone(),
         },
     };
 
@@ -443,11 +449,13 @@ pub fn LibraryPage() -> Element {
                     if all { picked.set(all_shown.iter().cloned().collect()); } else { picked.write().clear(); }
                 },
                 buttons: rsx! {
-                    button { class: "btn primary", onclick: {
-                            let ids = chosen_ids.clone();
-                            move |_| { picked.write().clear(); open_plan(state, ids.clone()); }
-                        },
-                        Icon { name: "download", size: 16 } "Download…"
+                    if !chosen_downloadable.is_empty() {
+                        button { class: "btn primary", onclick: {
+                                let ids = chosen_downloadable.clone();
+                                move |_| { picked.write().clear(); open_plan(state, ids.clone()); }
+                            },
+                            Icon { name: "download", size: 16 } "Download…"
+                        }
                     }
                     if !chosen_with_downloads.is_empty() {
                         button { class: "btn", title: "Edit and export the downloaded chapters of the series you ticked",
@@ -460,7 +468,7 @@ pub fn LibraryPage() -> Element {
                     }
                 },
                 more: rsx! {
-                    if !chosen_with_downloads.is_empty() {
+                    if !chosen_downloaded_ids.is_empty() {
                         button { class: "menu-item danger", title: "Delete the downloaded chapters but keep the series",
                             onclick: move |_| { state.ask(delete_modal.clone()); picked.write().clear(); },
                             Icon { name: "trash", size: 15 } "Delete downloads"
