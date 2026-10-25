@@ -155,6 +155,10 @@ impl CancelFlag {
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::SeqCst)
     }
+    /// Whether `other` is a copy of this flag (the same job), not just another flag.
+    pub fn same(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
     /// Completes once cancelled (checked every 100 ms). Race it against slow
     /// work with `tokio::select!`; the work is dropped when this wins.
     pub async fn cancelled(&self) {

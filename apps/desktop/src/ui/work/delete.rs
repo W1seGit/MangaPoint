@@ -50,25 +50,17 @@ pub(super) async fn stop_work_for(state: AppState, series_ids: &[String]) -> boo
         }
     }
     // A paused export is not running, but resuming it would fail on pages that
-    // are about to be deleted: it is ended instead.
-    {
-        let mut job = state.job;
-        let mut guard = job.write();
-        if let Some(view) = guard.as_mut() {
-            if view.kind == JobKind::Export
-                && view.paused
-                && view.result.is_none()
-                && series_ids.contains(&view.series_id)
-            {
-                view.paused = false;
-                view.cancel.cancel();
-                view.result = Some(Err("Cancelled: the series was deleted.".to_string()));
-                super::export::forget_export_plan();
-            }
-        }
+    // are about to be deleted: it is given up, and the one waiting behind it
+    // (if any) takes its place, paused, as when its X is pressed.
+    let paused_here = state.job.peek().as_ref().is_some_and(|view| {
+        view.kind == JobKind::Export && view.paused && view.result.is_none() && series_ids.contains(&view.series_id)
+    });
+    if paused_here {
+        super::export::drop_paused_export(state);
     }
     let started = Instant::now();
-    while any_busy(state, series_ids) {
+    // (A run given up while paused may still be finishing its last chapter.)
+    while any_busy(state, series_ids) || (paused_here && super::export::export_task_running()) {
         if started.elapsed() > STOP_WAIT {
             state.error(
                 "A download, export or import of this series would not stop, so nothing was deleted. Cancel it and try again."
