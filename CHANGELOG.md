@@ -9,7 +9,7 @@ All notable changes to MangaPoint are written down here. The format follows [Kee
 - **A new look.** The app follows a new design: a dock at the bottom, a corner bar for Tasks and Settings, pixel-style headings and figures, and calm page-to-page motion.
 - **A new mascot** replaces the cat everywhere, and is the new app icon. It sleeps on an empty bookcase, holds up a magnifying glass when a search finds nothing, has a cup of tea when there is nothing to do, walks along a road while the app starts, and goes round a circle while something loads.
 - **Read in the app.** Downloaded and imported series open in a reader that shows a chapter as one long strip, with a chapter picker, Previous and Next at the end of a chapter, reading settings, and zoom (Ctrl + and Ctrl −) that keeps your place.
-- **Import your own comics and books** from the Library: CBZ, CBR, ZIP, 7z, EPUB, PDF, folders of pictures, and a series folder from MangaPoint's own library. You check each book's chapters before they are added.
+- **Import your own comics and books** from the Library, with its Import button or by dropping them on it: CBZ, CBR, ZIP, 7z, EPUB, PDF, folders of pictures, and a series folder from MangaPoint's own library. You check each book's chapters before they are added.
 - **The MangaPoint website.** Read, import and export your own books in the browser, on a computer, a tablet or a phone. It works like the app (Library, a book's overview, the reader, Export and Settings) and keeps everything on your device.
 - **Keep colour** in EPUB and CBZ exports for colour e-readers, with a colour preview.
 - **Original quality** exports for phones and tablets, as CBZ or PDF, with the pages exactly as they were downloaded.
