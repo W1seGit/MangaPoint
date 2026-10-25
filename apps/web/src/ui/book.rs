@@ -52,6 +52,7 @@ pub fn BookPage() -> Element {
     let mut filter = use_signal(String::new);
     let mut sort = use_signal(|| (SortKey::Number, false));
     let mut range_text = use_signal(String::new);
+    let mut whole = use_signal(|| false);
     let mut range_error = use_signal(|| None::<String>);
     let id = ctx.book_page.read().clone();
     let lib = ctx.library.read();
@@ -214,7 +215,7 @@ pub fn BookPage() -> Element {
                 class: "row", style: "gap: 6px; margin-left: auto",
                 onsubmit: move |e| {
                     e.prevent_default();
-                    match mangapoint_ui::logic::chapters::select_by_text(&range_text.read(), &numbers) {
+                    match mangapoint_ui::logic::chapters::select_range(&range_text.read(), &numbers, whole()) {
                         Ok(found) => { range_error.set(None); picked.set(found.into_iter().collect()); }
                         Err(msg) => range_error.set(Some(msg)),
                     }
@@ -226,6 +227,7 @@ pub fn BookPage() -> Element {
                     oninput: move |e| range_text.set(e.value()),
                 }
                 button { class: "btn small", r#type: "submit", "Select" }
+                mangapoint_ui::widgets::WholeOnly { on: whole(), on_change: move |v| whole.set(v) }
             }
         }
         if let Some(msg) = range_error() {

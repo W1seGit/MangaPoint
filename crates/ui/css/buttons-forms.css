@@ -42,8 +42,8 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 .chip.bad { color: var(--bad); }
 .chip.accent { color: var(--accent-text); background: var(--accent); border-color: var(--accent); font-weight: 600; }
 .banner { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--radius); padding: 11px 15px; margin: 10px 0; background: var(--sub); border: 0; }
-.banner.warn { box-shadow: inset 3px 0 0 var(--warn); }
-.banner.bad { box-shadow: inset 3px 0 0 var(--bad); color: var(--bad); }
+.banner.warn { background: rgba(227, 179, 65, 0.1); box-shadow: inset 0 0 0 1px rgba(227, 179, 65, 0.4); }
+.banner.bad { background: rgba(240, 120, 120, 0.1); box-shadow: inset 0 0 0 1px rgba(240, 120, 120, 0.4); color: var(--bad); }
 .progress { height: 6px; border-radius: 999px; background: var(--third); overflow: hidden; }
 .progress > div { height: 100%; background: var(--accent); transition: width 0.25s; }
 .progress.indeterminate > div { width: 35%; animation: slide 1.1s infinite ease-in-out; }

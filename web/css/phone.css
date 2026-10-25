@@ -60,6 +60,8 @@
 }
 
 @media (max-width: 800px) {
-  .action-bar { bottom: calc(150px + var(--sab)); padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+  .action-bar { bottom: calc(76px + var(--sab)); padding: 12px 16px 12px; gap: 8px; flex-wrap: wrap; border-radius: 28px 28px 0 0; }
+  /* The bar for the ticked cards takes the corner bar's place, so it sits right on the dock. */
+  .app:has(.action-bar) .corner { display: none; }
   .poster-check { opacity: 1; }
 }

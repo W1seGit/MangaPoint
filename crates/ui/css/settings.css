@@ -1,8 +1,8 @@
 /* Settings (Figma "Settings"): a list of its parts in pixel type on the left, the part on the right. */
 
 .page:has(.settings) { max-width: none; }
-.settings { width: 100%; margin: 0 auto; min-height: calc(100vh - 168px); display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 625px) minmax(180px, 1fr); align-items: center; min-width: 0; }
-.settings-nav { grid-column: 1; grid-row: 1; justify-self: end; align-self: center; margin-right: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 0; border: 0; }
+.settings { width: 100%; margin: 0 auto; padding-top: clamp(8px, 11vh, 120px); display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 625px) minmax(180px, 1fr); align-items: start; min-width: 0; }
+.settings-nav { grid-column: 1; grid-row: 1; justify-self: end; align-self: start; margin-right: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 0; border: 0; }
 .settings-nav .nav-item {
   position: relative; padding: 0 10px; border: 0; border-radius: var(--radius-lg); background: transparent; color: var(--icon);
   font: 400 24px/normal var(--font-pixel); text-align: left; cursor: pointer; white-space: nowrap;
@@ -11,7 +11,7 @@
 .settings-nav .nav-item:hover:not(.active) { color: #d9c5b9; transform: translateX(5px); }
 .settings-nav .nav-item.active { background: var(--icon); color: var(--dark); }
 .settings-nav .nav-item:active { transform: scale(0.97); }
-.settings-content { grid-column: 2; min-width: 0; max-width: 625px; padding: 0 0 24px; animation: screen-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.settings-content { grid-column: 2; min-width: 0; max-width: 625px; padding: 0 0 24px; animation: screen-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
 .settings-content > .sx-group:first-child { margin-top: 0; }
 .pills { display: flex; flex-wrap: wrap; gap: 10px; }
 .pill {

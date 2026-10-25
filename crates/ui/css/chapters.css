@@ -27,7 +27,7 @@ table.chapters tbody td { height: 42px; box-sizing: border-box; padding-top: 0; 
 table.chapters tbody tr.spacer, table.chapters tbody tr.spacer:hover { cursor: default; background: transparent; }
 table.chapters tbody tr.spacer td { padding: 0; border: 0; }
 table.chapters tbody tr:hover { background: var(--panel-2); }
-table.chapters tbody tr.on { background: var(--sub); box-shadow: inset 3px 0 0 var(--accent); }
+table.chapters tbody tr.on { background: var(--sub); }
 table.chapters td.name { overflow: hidden; text-overflow: ellipsis; max-width: 0; white-space: nowrap; }
 .summary-line { display: flex; justify-content: space-between; padding: 4px 0; }
 .summary-line span:last-child { color: var(--text); }

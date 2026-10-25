@@ -2,7 +2,7 @@
 //! adding new ones in a dialog. The heading and its buttons stay in view.
 
 use super::ask_enable_browser;
-use super::widgets::{open_link, Chip, EmptyState, EngineStarting, Icon, Loading};
+use super::widgets::{open_link, EmptyState, EngineStarting, Icon, Loading};
 use crate::backend;
 use crate::logic::{ago, plural, verdict_label};
 use crate::state::spawn_forever;
@@ -122,6 +122,9 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
     let mut tab = use_signal(|| AddTab::Recommended);
     let mut store_url = use_signal(String::new);
     let mut filter = use_signal(String::new);
+    // The store's list can be narrowed to one language, and shows no 18+ source unless asked.
+    let mut store_lang = use_signal(|| state.ui.settings.read().language.clone());
+    let mut show_nsfw = use_signal(|| false);
     let installed = use_resource(move || async move {
         let _ = state.sources_version.read();
         let lang = state.ui.settings.read().language.clone();
@@ -133,18 +136,31 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
         let client = state.client()?;
         client.fetch_extensions().await.ok()
     });
-    let lang = state.ui.settings.read().language.clone();
     let query = filter.read().trim().to_lowercase();
-    let candidates: Vec<catalog::Extension> = match &*available.read() {
-        Some(Some(all)) if query.len() >= 2 => all
-            .iter()
-            .filter(|e| !e.is_installed)
-            .filter(|e| e.lang == lang || e.lang == "all")
-            .filter(|e| e.name.to_lowercase().contains(&query))
-            .take(40)
-            .cloned()
-            .collect(),
+    let wanted_lang = store_lang.read().clone();
+    // The languages the stores offer, for the filter.
+    let languages: Vec<String> = match &*available.read() {
+        Some(Some(all)) => {
+            let mut langs: Vec<String> = all.iter().filter(|e| !e.is_installed).map(|e| e.lang.clone()).collect();
+            langs.sort();
+            langs.dedup();
+            langs
+        }
         _ => Vec::new(),
+    };
+    let (candidates, matching): (Vec<catalog::Extension>, usize) = match &*available.read() {
+        Some(Some(all)) => {
+            let found: Vec<&catalog::Extension> = all
+                .iter()
+                .filter(|e| !e.is_installed)
+                .filter(|e| wanted_lang.is_empty() || e.lang == wanted_lang || e.lang == "all")
+                .filter(|e| show_nsfw() || !e.is_nsfw)
+                .filter(|e| query.is_empty() || e.name.to_lowercase().contains(&query))
+                .collect();
+            let total = found.len();
+            (found.into_iter().take(60).cloned().collect(), total)
+        }
+        _ => (Vec::new(), 0),
     };
     let missing: Vec<&'static sources::DefaultSource> = sources::DEFAULTS
         .iter()
@@ -184,6 +200,7 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
                             rsx! {
                                 div { class: "as-card", key: "{id}",
                                     div { class: "as-card-top",
+                                        div { class: "src-avatar", "{initial_of(d.name)}" }
                                         div { class: "grow",
                                             strong { "{d.name}" }
                                             div { class: "muted small", "{host_of(d.site)}" }
@@ -191,7 +208,7 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
                                     }
                                     div { class: "muted small as-desc", "{d.description}" }
                                     div { class: "as-card-foot",
-                                        if needs_browser { Chip { text: "needs browser support", kind: Some("warn".to_string()) } }
+                                        if needs_browser { span { class: "src-status warn", span { class: "dot" } "Needs browser support" } }
                                         span { class: "grow" }
                                         button {
                                             class: "btn primary small",
@@ -217,7 +234,10 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
                     }
                 }
             } else {
-                div { class: "banner warn small", "{EXTENSION_TRUST_WARNING}" }
+                div { class: "banner warn small",
+                    Icon { name: "triangle-alert", size: 16 }
+                    "{EXTENSION_TRUST_WARNING}"
+                }
                 p { class: "muted small as-lead", "Add an extension store (an https address), then search it below." }
                 form {
                     class: "as-form",
@@ -258,6 +278,25 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
                         oninput: move |e| filter.set(e.value()),
                     }
                 }
+                div { class: "as-filters",
+                    label { class: "as-filter",
+                        span { "Language" }
+                        select {
+                            value: "{store_lang}",
+                            onchange: move |e| store_lang.set(e.value()),
+                            option { value: "", selected: wanted_lang.is_empty(), "All languages" }
+                            for l in languages.iter() {
+                                option { key: "{l}", value: "{l}", selected: *l == wanted_lang, "{lang_name(l)}" }
+                            }
+                        }
+                    }
+                    label { class: if show_nsfw() { "as-filter toggle on" } else { "as-filter toggle" },
+                        input { r#type: "checkbox", checked: show_nsfw(), onchange: move |e| show_nsfw.set(e.checked()) }
+                        span { "Show 18+" }
+                    }
+                    span { class: "grow" }
+                    span { class: "muted small", "{matching} available" }
+                }
                 div { class: "as-results",
                     for ext in candidates.iter() {
                         {
@@ -265,11 +304,12 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
                             let name = ext.name.clone();
                             rsx! {
                                 div { class: "as-row", key: "{pkg}",
-                                    div { class: "grow",
+                                    div { class: "src-avatar", "{initial_of(&name)}" }
+                                    div { class: "grow as-row-name",
                                         strong { "{name}" }
-                                        span { class: "muted small", "  {ext.lang}" }
                                     }
-                                    if ext.is_nsfw { Chip { text: "18+", kind: Some("warn".to_string()) } }
+                                    span { class: "lang-tag", "{ext.lang}" }
+                                    if ext.is_nsfw { span { class: "lang-tag warn", "18+" } }
                                     button {
                                         class: "btn small",
                                         onclick: move |_| {
@@ -295,16 +335,47 @@ fn AddSources(on_close: EventHandler<()>) -> Element {
                             }
                         }
                     }
-                    if query.len() >= 2 && candidates.is_empty() {
-                        p { class: "muted small", "Nothing matches “{query}” in your stores." }
+                    if candidates.is_empty() {
+                        p { class: "muted small", "Nothing matches in your stores. Add a store above, or change the filters." }
                     }
-                    if query.len() < 2 {
-                        p { class: "muted small", "Type at least two letters to search." }
+                    if matching > candidates.len() {
+                        p { class: "muted small", "Showing the first {candidates.len()}. Type to narrow the list." }
                     }
                 }
             }
         }
     }
+}
+
+/// The first letter of a name, for the round badge before it.
+fn initial_of(name: &str) -> String {
+    name.chars().find(|c| c.is_alphanumeric()).map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into())
+}
+
+/// A language code as its name when it is a common one.
+fn lang_name(code: &str) -> String {
+    let name = match code {
+        "all" => "Multiple languages",
+        "en" => "English",
+        "ja" => "Japanese",
+        "ko" => "Korean",
+        "zh" | "zh-hans" => "Chinese",
+        "zh-hant" => "Chinese (traditional)",
+        "es" => "Spanish",
+        "fr" => "French",
+        "de" => "German",
+        "it" => "Italian",
+        "pt" | "pt-br" => "Portuguese",
+        "ru" => "Russian",
+        "id" => "Indonesian",
+        "tr" => "Turkish",
+        "ar" => "Arabic",
+        "th" => "Thai",
+        "vi" => "Vietnamese",
+        "pl" => "Polish",
+        _ => return code.to_string(),
+    };
+    format!("{name} ({code})")
 }
 
 /// `https://www.example.org/path` as `example.org`.
@@ -352,18 +423,21 @@ fn source_card(
         }
     };
 
+    let status_class = if is_testing { "src-status testing".to_string() } else { format!("src-status {}", chip_kind.clone().unwrap_or_else(|| "idle".into())) };
+    let status_text = if is_testing { "Testing…".to_string() } else { chip_text };
+    let initial = initial_of(&name);
+    // Why it failed, when it did; a source that works has nothing to explain.
+    let why = last.as_ref().filter(|r| r.verdict != Verdict::Pass).map(|r| r.message.clone());
+    let tested = last.as_ref().map(|r| format!("Tested {} · {:.1} s", ago(now, r.at), r.total_ms() as f64 / 1000.0));
+
     rsx! {
         div { class: "src-card", key: "{id}",
+            div { class: "src-avatar", "{initial}" }
             div { class: "src-main",
-                div { class: "row wrap",
-                    strong { class: "src-name", "{name}" }
-                    span { class: "muted small", "{source.lang}" }
-                    if is_testing {
-                        Chip { text: "testing…", kind: Some("accent".to_string()) }
-                    } else {
-                        Chip { text: chip_text, kind: chip_kind }
-                    }
-                    if source.is_nsfw { Chip { text: "18+", kind: Some("warn".to_string()) } }
+                div { class: "src-title",
+                    strong { class: "src-name", title: "Extension {pkg}", "{name}" }
+                    span { class: "lang-tag", "{source.lang}" }
+                    if source.is_nsfw { span { class: "lang-tag warn", "18+" } }
                 }
                 if let Some(site) = site {
                     button { class: "src-link", title: "Open {site} in your browser", onclick: move |_| open_link(site),
@@ -371,18 +445,21 @@ fn source_card(
                         Icon { name: "external-link", size: 12 }
                     }
                 }
-                if let Some(text) = description { div { class: "muted small", "{text}" } }
-                if let Some(r) = &last {
-                    div { class: "muted small", "{r.message} Tested {ago(now, r.at)}, {r.total_ms()} ms." }
+                if let Some(text) = description { div { class: "src-desc", "{text}" } }
+                div { class: "src-status-row",
+                    span { class: "{status_class}", span { class: "dot" } "{status_text}" }
+                    if let Some(text) = tested { span { class: "muted small", "{text}" } }
                 }
-                div { class: "muted small src-pkg", "Extension {pkg}" }
+                if let Some(text) = why { div { class: "src-why", "{text}" } }
             }
             div { class: "src-actions",
                 if needs_browser {
                     button { class: "btn small", onclick: move |_| ask_enable_browser(state, None), "Turn on browser support" }
                 }
                 button {
-                    class: "btn small",
+                    class: "btn small icon-btn",
+                    title: "Test this source again",
+                    "aria-label": "Retest {name}",
                     disabled: is_testing,
                     onclick: {
                         let source = source.clone();
@@ -390,10 +467,9 @@ fn source_card(
                         move |_| retest(state, source.clone(), reference.clone())
                     },
                     Icon { name: "refresh-cw", size: 14 }
-                    "Retest"
                 }
                 button {
-                    class: "btn small ghost danger", title: "Remove this source",
+                    class: "btn small ghost danger icon-btn", title: "Remove this source", "aria-label": "Remove {name}",
                     onclick: move |_| {
                         state.ask(Modal {
                             title: "Remove this source?".into(),

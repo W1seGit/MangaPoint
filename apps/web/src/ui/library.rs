@@ -138,7 +138,9 @@ pub fn BrowserLibraryPage() -> Element {
                     compact: true,
                 }
             }
-            div { class: if selecting { "poster-grid selecting" } else { "poster-grid" },
+            div {
+                class: if selecting { "poster-grid selecting" } else { "poster-grid" },
+                onmounted: move |_| ctx.ui.host().run_script("flip_grid", String::new()),
                 for (i, leaving) in rows.iter().copied() {
                     {
                         let b = lib.books[i].clone();

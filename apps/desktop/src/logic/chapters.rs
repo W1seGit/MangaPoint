@@ -2,7 +2,7 @@
 //! column choice and picking chapters by text are shared with the website (`mangapoint_ui`).
 
 use mangapoint_ui::logic::format::format_number;
-pub use mangapoint_ui::logic::chapters::{next_sort, select_by_text, SortKey};
+pub use mangapoint_ui::logic::chapters::{next_sort, SortKey};
 use search::MergedChapter;
 
 /// Newest upload time among the sources that have the chapter (0 if unknown).

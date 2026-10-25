@@ -66,12 +66,30 @@ pub fn select_by_text(text: &str, numbers: &[Option<f64>]) -> Result<Vec<usize>,
         .collect())
 }
 
+/// Like `select_by_text`, and with `whole_only` the chapters numbered 12.1 or 12.5 (extras and
+/// notices) are left out: only 12 itself can be picked.
+pub fn select_range(text: &str, numbers: &[Option<f64>], whole_only: bool) -> Result<Vec<usize>, String> {
+    if !whole_only {
+        return select_by_text(text, numbers);
+    }
+    let whole: Vec<Option<f64>> = numbers.iter().map(|n| n.filter(|n| (n - n.round()).abs() < 0.0005)).collect();
+    select_by_text(text, &whole)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn nums(v: &[f64]) -> Vec<Option<f64>> {
         v.iter().map(|&n| Some(n)).collect()
+    }
+
+    #[test]
+    fn a_range_can_skip_the_numbers_with_a_point() {
+        let numbers = vec![Some(1.0), Some(1.5), Some(2.0), Some(2.1), Some(3.0), None];
+        assert_eq!(select_range("1-3", &numbers, false).unwrap(), vec![0, 1, 2, 3, 4]);
+        assert_eq!(select_range("1-3", &numbers, true).unwrap(), vec![0, 2, 4]);
+        assert_eq!(select_range("1.5", &numbers, true).unwrap(), Vec::<usize>::new());
     }
 
     #[test]

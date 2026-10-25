@@ -54,6 +54,7 @@ pub fn ChaptersTab() -> Element {
         return rsx! { super::downloads::ImportedChapters {} };
     }
     let mut range_text = use_signal(String::new);
+    let mut whole = use_signal(|| false);
     let mut range_error = use_signal(|| None::<String>);
     // What the list needs of the queue: only this series. A download of another
     // series does not draw this list again.
@@ -367,7 +368,7 @@ pub fn ChaptersTab() -> Element {
                 class: "row", style: "gap: 6px; margin-left: auto",
                 onsubmit: move |e| {
                     e.prevent_default();
-                    match logic::select_by_text(&range_text.read(), &numbers_range) {
+                    match mangapoint_ui::logic::chapters::select_range(&range_text.read(), &numbers_range, whole()) {
                         Ok(found) => { range_error.set(None); selected.set(found.into_iter().collect()); }
                         Err(msg) => range_error.set(Some(msg)),
                     }
@@ -379,6 +380,7 @@ pub fn ChaptersTab() -> Element {
                     oninput: move |e| range_text.set(e.value()),
                 }
                 button { class: "btn small", r#type: "submit", "Select" }
+                mangapoint_ui::widgets::WholeOnly { on: whole(), on_change: move |v| whole.set(v) }
             }
             if has_downloads {
                 button { class: "btn primary small", title: "Edit and export the chapters you have downloaded",

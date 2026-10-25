@@ -242,7 +242,9 @@ pub fn LibraryPage() -> Element {
                     }
                 }
             }
-            div { class: if selecting { "poster-grid selecting" } else { "poster-grid" },
+            div {
+                class: if selecting { "poster-grid selecting" } else { "poster-grid" },
+                onmounted: move |_| state.ui.host().run_script("flip_grid", String::new()),
                 for (i, leaving) in rows.iter().copied() {
                     {
                         let s = series[i];
