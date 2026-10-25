@@ -141,6 +141,9 @@ pub fn App() -> Element {
             if let Some(tip) = mangapoint_ui::scripts::call("tooltip", "") {
                 let _ = document::eval(&tip).await;
             }
+            if let Some(anchor) = mangapoint_ui::scripts::call("zoom_anchor", "") {
+                let _ = document::eval(&anchor).await;
+            }
             let _ = document::eval(KEYS_SCRIPT).await;
             let _ = document::eval(SCROLL_SCRIPT).await;
             let _ = document::eval(SLIDE_SCRIPT).await;

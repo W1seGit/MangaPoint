@@ -4,13 +4,14 @@
 //! one by name the first time it is asked for (`web/js/mp.js`, `run_script`).
 
 /// Each script by the name it registers, and its source.
-pub const SCRIPTS: [(&str, &str); 7] = [
+pub const SCRIPTS: [(&str, &str); 8] = [
     ("adder_scroll", include_str!("../js/adder-scroll.js")),
     ("fit_table", include_str!("../js/fit-table.js")),
     ("flip_grid", include_str!("../js/flip-grid.js")),
     ("export_split", include_str!("../js/export-split.js")),
     ("preview_editor", include_str!("../js/preview-editor.js")),
     ("tooltip", include_str!("../js/tooltip.js")),
+    ("zoom_anchor", include_str!("../js/zoom-anchor.js")),
     ("zoom_scrub", include_str!("../js/zoom-scrub.js")),
 ];
 

@@ -89,6 +89,19 @@ function pickFiles(folder, only = null, into = null) {
 function installDrop() {
   let depth = 0;
   const hasFiles = (e) => e.dataTransfer && [...(e.dataTransfer.types || [])].includes('Files');
+  // Esc on a book's page goes back to the library (after it has closed anything open).
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    const el = document.activeElement;
+    if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+    if (document.querySelector('.menu-scrim, .overlay, .backdrop')) return;
+    const back = document.getElementById('book-back');
+    if (back) {
+      e.preventDefault();
+      back.click();
+    }
+  });
+
   window.addEventListener('dragenter', (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
