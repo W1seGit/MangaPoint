@@ -29,7 +29,8 @@ try {
   const vh = await page.eval('innerHeight');
   const navBox = await page.rect('.nav');
   // The bar floats above the dock (and above the corner bar on a phone).
-  r.check('the bar is joined to the dock: in its row, or on its top edge on a phone', (bar[1] + bar[3] >= vh - 6 && bar[1] <= navBox[1] + 6) || (bar[1] + bar[3] <= navBox[1] + 18 && bar[1] + bar[3] >= navBox[1]), `bar ${Math.round(bar[1])}-${Math.round(bar[1] + bar[3])} of ${vh}, dock from ${Math.round(navBox[1])}`);
+  const vw = await page.eval('innerWidth');
+  r.check('the bar sits by the dock: in its row on a computer, just above it and the full width on a tablet or phone', viewport === 'desktop' ? bar[1] + bar[3] >= vh - 6 && bar[1] <= navBox[1] + 6 : bar[1] + bar[3] <= navBox[1] && bar[1] + bar[3] >= navBox[1] - 24 && bar[0] <= 16 && bar[0] + bar[2] >= vw - 16, `bar ${Math.round(bar[1])}-${Math.round(bar[1] + bar[3])} x ${Math.round(bar[0])}-${Math.round(bar[0] + bar[2])} of ${vw}x${vh}, dock from ${Math.round(navBox[1])}`);
   r.check('the bar does not run past the sides of the screen', bar[0] >= -1 && bar[0] + bar[2] <= (await page.eval('innerWidth')) + 1, JSON.stringify(bar));
   await page.shot(`${viewport}-50-select`);
   r.check('one book can be exported', !!(await page.eval("document.querySelector('#bar-export')")));
@@ -119,8 +120,11 @@ try {
   const wide = await page.eval("(() => { const s = document.querySelector('#desk-slide').getBoundingClientRect(); const c = document.querySelector('.settings-content').getBoundingClientRect(); return [Math.round(s.width), Math.round(c.width)]; })()");
   r.check('the slide takes the whole width it can', wide[0] >= wide[1] - 80, JSON.stringify(wide));
   r.check('the GitHub link is under them', /github\.com\/W1seGit\/MangaPoint$/.test(await page.eval("document.querySelector('#github-link')?.href || ''")));
-  const head = await page.eval("(() => { const h = document.querySelector('.desk-title'); return h ? [h.textContent, getComputedStyle(h).textAlign] : null; })()");
+  const head = await page.eval("(() => { const h = document.querySelector('#desktop-app .desk-title'); return h ? [h.textContent, getComputedStyle(h).textAlign] : null; })()");
   r.check('a centred heading: Get the desktop app', head && /Get the desktop app/i.test(head[0]) && head[1] === 'center', JSON.stringify(head));
+  // Above it, the web app: what installing the site gives, and a full-width way to install it.
+  const webApp = await page.eval("(() => { const s = document.querySelector('#app-card'); const d = document.querySelector('#desktop-app'); if (!s || !d) return null; const b = s.querySelector('#install, #install-hint, .web-app-installed'); return { head: s.querySelector('.desk-title')?.textContent, points: s.querySelectorAll('.web-app-point').length, above: s.getBoundingClientRect().bottom <= d.getBoundingClientRect().top, full: b ? Math.round(b.getBoundingClientRect().width) >= Math.round(s.getBoundingClientRect().width) - 2 : false }; })()");
+  r.check('first, Get the web app: four points and a full-width install', webApp && /Get the web app/.test(webApp.head) && webApp.points === 4 && webApp.above && webApp.full, JSON.stringify(webApp));
   r.check('no paragraph of explanation above it', !(await page.eval("!!document.querySelector('.desk-intro')")));
   r.check('the features are a slider with a dot each', (await page.eval("document.querySelectorAll('.desk-slide').length")) === 1 && (await page.eval("document.querySelectorAll('.desk-dot').length")) === 6);
   const slideTitle = () => page.eval("document.querySelector('#desk-slide-title')?.textContent");

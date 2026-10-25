@@ -226,20 +226,31 @@ pub fn BrowserSettingsPage() -> Element {
                         super::readers::ReadersEditor {}
                     },
                     Section::BrowserApp => rsx! {
-                        h2 { class: "sx-group", "App" }
-                        div { id: "app-card",
-                            SettingRow {
-                                label: "Use it like an app",
-                                help: "Install MangaPoint to open it from your home screen or desktop, full screen, and to read your library with no connection at all. On iPhone and iPad: the Share button, then Add to Home Screen.",
-                                note: if caps.standalone || can_install { String::new() } else { "In your browser's menu choose Install app, or Add to Home Screen.".to_string() },
-                                div { class: "row wrap sx-buttons",
-                                    if caps.standalone {
-                                        span { class: "chip ok", "Installed" }
-                                    } else if can_install {
-                                        button { class: "btn primary", id: "install", onclick: move |_| { dioxus::core::spawn_forever(async move { let _ = bridge::call::<String>("install", json!({})).await; }); }, Icon { name: "download", size: 15 } "Install the app" }
-                                    } else {
-                                        span { id: "install-hint" }
+                        div { class: "web-app", id: "app-card",
+                            h2 { class: "desk-title", "Get the web app" }
+                            p { class: "web-app-lead muted", "Install this website and it works like an app on your phone, tablet or computer." }
+                            div { class: "web-app-points",
+                                for (icon, title, text) in WEB_APP_POINTS {
+                                    div { class: "web-app-point", key: "{icon}",
+                                        span { class: "web-app-icon", Icon { name: icon, size: 20 } }
+                                        span { class: "web-app-words",
+                                            strong { "{title}" }
+                                            span { class: "muted small", "{text}" }
+                                        }
                                     }
+                                }
+                            }
+                            if caps.standalone {
+                                div { class: "web-app-installed", Icon { name: "circle-check", size: 18 } "Installed: you are using the app" }
+                            } else if can_install {
+                                button { class: "btn primary web-app-install", id: "install",
+                                    onclick: move |_| { dioxus::core::spawn_forever(async move { let _ = bridge::call::<String>("install", json!({})).await; }); },
+                                    Icon { name: "download", size: 17 } "Install the app"
+                                }
+                            } else {
+                                div { class: "web-app-installed muted", id: "install-hint",
+                                    Icon { name: "info", size: 17 }
+                                    "In your browser's menu choose Install app, or on iPhone and iPad the Share button, then Add to Home Screen."
                                 }
                             }
                         }
@@ -346,6 +357,14 @@ fn DownloadTile(slug: &'static str, name: &'static str, choices: Vec<(&'static s
 }
 
 /// What the desktop app does, one scene at a time: arrows, dots to jump, and a swipe on a phone.
+/// What installing the website gives: (icon, title, words).
+const WEB_APP_POINTS: [(&str, &str, &str); 4] = [
+    ("wifi-off", "Read offline", "Your library and the reader work with no connection at all."),
+    ("smartphone", "From your home screen", "It opens in its own window, full screen, like any other app."),
+    ("hard-drive", "Kept on this device", "Your books stay in this browser on this device. Nothing is uploaded."),
+    ("refresh-cw", "Always up to date", "When there is a new version, it is offered the next time you open it."),
+];
+
 #[component]
 fn DeskSlider() -> Element {
     let mut at = use_signal(|| 0usize);

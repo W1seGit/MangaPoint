@@ -51,6 +51,10 @@ pub fn body(name: &str) -> Option<&'static str> {
         "wifi" => Some(
             r#"<path d="M12 20h.01" /> <path d="M2 8.82a15 15 0 0 1 20 0" /> <path d="M5 12.859a10 10 0 0 1 14 0" /> <path d="M8.5 16.429a5 5 0 0 1 7 0" />"#,
         ),
+        "wifi-off" => Some(
+            r#"<path d="M12 20h.01" /> <path d="M8.5 16.429a5 5 0 0 1 7 0" /> <path d="M5 12.859a10 10 0 0 1 5.17-2.69" /> <path d="M19 12.859a10 10 0 0 0-2.007-1.523" /> <path d="M2 8.82a15 15 0 0 1 4.177-2.643" /> <path d="M22 8.82a15 15 0 0 0-11.288-3.764" /> <path d="m2 2 20 20" />"#,
+        ),
+        "smartphone" => Some(r#"<rect width="14" height="20" x="5" y="2" rx="2" ry="2" /> <path d="M12 18h.01" />"#),
         "triangle-alert" => Some(
             r#"<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /> <path d="M12 9v4" /> <path d="M12 17h.01" />"#,
         ),

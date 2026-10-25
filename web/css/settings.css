@@ -8,8 +8,21 @@
 .sx-bar { margin: 2px 0 10px; }
 @media (max-width: 700px) { .sx-buttons { justify-content: flex-start; } }
 
-/* Settings, App: the desktop app, what it does and where to get it */
-.desk-app { margin-top: 34px; }
+/* Settings, App: the web app (installing this site), then the desktop app */
+.web-app { display: flex; flex-direction: column; gap: 16px; }
+.web-app .desk-title { margin-bottom: 0; }
+.web-app-lead { margin: -6px 0 4px; text-align: center; }
+.web-app-points { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.web-app-point { display: flex; align-items: flex-start; gap: 14px; padding: 16px 18px; border-radius: var(--radius-lg); background: var(--panel-2); }
+.web-app-icon { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--panel-3); color: var(--icon); }
+.web-app-words { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.web-app-words strong { color: var(--text); }
+.web-app-install { width: 100%; justify-content: center; min-height: 48px; font-size: 1rem; }
+.web-app-installed { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 10px 16px; border-radius: 999px; background: var(--panel-2); text-align: center; }
+@media (max-width: 700px) { .web-app-points { grid-template-columns: minmax(0, 1fr); } }
+
+/* the desktop app, what it does and where to get it */
+.desk-app { margin-top: 44px; padding-top: 34px; border-top: 1px solid var(--line); }
 .desk-title { text-align: center; font-size: 1.6rem; margin: 0 0 18px; }
 .desk-slider { display: flex; flex-direction: column; align-items: stretch; gap: 14px; }
 .desk-slide {
