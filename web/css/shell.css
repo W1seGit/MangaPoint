@@ -36,7 +36,6 @@ body.dragging .drop-overlay { display: flex; }
 }
 
 /* Menus */
-.menu-note { padding: 8px 12px 4px; max-width: 250px; white-space: normal; border-top: 1px solid var(--line); margin-top: 4px; }
 .import-anchor .menu { right: 0; }
 /* Above the tab bar and the settings sheet of a phone. */
 .menu-scrim { z-index: 70; }

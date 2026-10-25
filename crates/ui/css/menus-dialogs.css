@@ -41,6 +41,8 @@
 .menu.up { animation: menu-up 0.16s ease-out both; }
 @keyframes menu-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .menu-anchor { position: relative; flex: none; }
+/* A line of help under a menu's choices. */
+.menu-note { padding: 8px 12px 4px; max-width: 250px; white-space: normal; border-top: 1px solid var(--line); margin-top: 4px; }
 /* The Library heading's Import menu opens over the sticky search bar below it. */
 .q-head:has(.menu-scrim) { position: relative; z-index: 30; }
 /* An open menu, and the block it opens from, sit above everything else on the page; only the dock and the

@@ -251,6 +251,28 @@ fn Shell() -> Element {
         }
         }
         main { class: "content",
+            // Files and folders dropped on the Library are imported, as with its Import button (or added to
+            // the import dialog that is open). On the other pages a drop does nothing.
+            ondragover: move |e| {
+                if *state.page.peek() == Page::Library {
+                    e.prevent_default();
+                }
+            },
+            ondrop: move |e| {
+                if *state.page.peek() != Page::Library {
+                    return;
+                }
+                e.prevent_default();
+                let paths: Vec<std::path::PathBuf> = dioxus::html::HasFileData::files(&*e.data()).iter().map(|f| f.path()).collect();
+                if paths.is_empty() {
+                    return;
+                }
+                if state.import.peek().is_some() {
+                    work::add_paths_to_import(state, paths);
+                } else {
+                    work::import_paths(state, None, paths);
+                }
+            },
             div { class: if leaving() { "page leaving" } else { "page" },
                 // The search stays built while another page is open, so coming
                 // back to it is instant and it is as it was left.

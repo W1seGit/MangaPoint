@@ -199,6 +199,7 @@ pub fn LibraryPage() -> Element {
                             onclick: move |_| { import_menu.set(false); start_import(state, None, true); },
                             Icon { name: "folder-open", size: 15 } "Choose a folder…"
                         }
+                        div { class: "menu-note muted small", "Or drop files and folders anywhere on this page." }
                     }
                 }
             }
