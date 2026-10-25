@@ -193,7 +193,7 @@ fn ReaderStep() -> Element {
     let added = !devices.is_empty();
     rsx! {
         div { class: "onboard-head",
-            div { class: "step-hero", Walking { day: true } }
+            div { class: "step-hero", Walking {} }
             h1 { "Choose your reader" }
             p { class: "muted",
                 "Pages are made at the size of your reader\u{2019}s screen. Search for it, or type a name to add one of your own. "

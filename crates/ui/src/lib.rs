@@ -57,7 +57,7 @@ mod css_tests {
         assert_eq!(sorted, on_disk);
         assert!(super::CSS.contains("--panel"), "the colours come first");
         // The art's generated class names are not in any code, so a split by usage can lose them.
-        for need in [".m-head", "@keyframes m-nod", ".m-steam.s2", ".m-window.w2 .m-lit", ".mdots span"] {
+        for need in [".m-head", "@keyframes m-nod", ".m-steam.s2", ".m-window.w2 .m-lit", ".m-orbit .mascot"] {
             assert!(super::CSS.contains(need), "the shared style sheets must hold {need}");
         }
     }

@@ -1,9 +1,9 @@
 //! The mascot: the fur-coloured creature drawn by hand in `mangapoint-mc.ase`, and the calm little
-//! scenes it stars in wherever the app has nothing to show yet or is waiting: asleep on an empty
-//! shelf, looking through a magnifying glass, with a cup of tea, bobbing while something loads.
+//! scenes it stars in wherever the app has nothing to show yet or is waiting: asleep on a bookcase,
+//! holding up a magnifying glass, with a cup of tea, going round a circle while something loads.
 //!
 //! The pixels are in `sprite.rs`. Everything here is SVG rectangles drawn from them, and the motion is
-//! slow CSS (`art.css`): a one-pixel nod every few seconds, floating "z"s, drifting steam. It uses the
+//! slow CSS (`art.css`): a one-pixel nod every few seconds, drifting steam, a glass that tilts. It uses the
 //! app's own palette, so the pictures sit in the pages as if they were part of them.
 
 use super::sprite::{BODY, EYES_CLOSED, HALF, NECK};
@@ -113,17 +113,6 @@ pub fn half_markup() -> String {
         rows_markup(&HALF, 17, HALF.len()),
         rows_markup(&HALF, 0, 17),
     )
-}
-
-/// A letter z, five pixels across, for the sleeper's dream.
-fn z(out: &mut String, x: i32, y: i32, class: &str) {
-    let _ = write!(out, "<g class=\"{class}\">");
-    rect(out, x, y, 5, 1, FUR);
-    rect(out, x + 3, y + 1, 1, 1, FUR);
-    rect(out, x + 2, y + 2, 1, 1, FUR);
-    rect(out, x + 1, y + 3, 1, 1, FUR);
-    rect(out, x, y + 4, 5, 1, FUR);
-    out.push_str("</g>");
 }
 
 /// The pixels of a ring around (`cx`, `cy`) between two radii.
@@ -247,35 +236,35 @@ fn cached(cell: &'static OnceLock<String>, make: fn() -> String) -> &'static str
 
 /// Asleep, for a page with nothing on it yet.
 fn rest() -> String {
-    let mut s = mascot(7, 6, Eyes::Smiling);
-    z(&mut s, 52, 20, "m-z z1");
-    z(&mut s, 47, 11, "m-z z2");
-    z(&mut s, 55, 4, "m-z z3");
-    s
+    mascot(10, 6, Eyes::Smiling)
 }
 
-/// Asleep with its paws on the edge of an empty bookshelf, for a Library with nothing in it.
+/// Asleep with its paws on the top of a bookcase, for a Library with nothing in it.
 fn shelf() -> String {
-    // The shelf: a board with the mascot's chest behind it, and the empty room below.
-    let mut board = String::new();
-    rect(&mut board, 2, 52, 84, 2, FUR);
-    rect(&mut board, 2, 54, 84, 4, CHEEK);
-    rect(&mut board, 2, 58, 84, 14, DARK);
-    rect(&mut board, 2, 58, 3, 14, WOOD);
-    rect(&mut board, 83, 58, 3, 14, WOOD);
-    rect(&mut board, 2, 71, 84, 3, WOOD);
-    // One book, leaning on the board's end.
-    rect(&mut board, 70, 40, 7, 12, CHEEK);
-    rect(&mut board, 70, 40, 1, 12, LINE);
-    rect(&mut board, 76, 40, 1, 12, LINE);
-    rect(&mut board, 70, 40, 7, 1, LINE);
-    rect(&mut board, 72, 43, 3, 1, FUR);
-    rect(&mut board, 72, 45, 3, 1, FUR);
+    // The bookcase: its top, with the mascot's chest behind it, and the shelf below.
+    let mut case = String::new();
+    rect(&mut case, 2, 52, 84, 2, FUR);
+    rect(&mut case, 2, 54, 84, 4, CHEEK);
+    rect(&mut case, 2, 58, 84, 14, DARK);
+    rect(&mut case, 2, 58, 3, 14, WOOD);
+    rect(&mut case, 83, 58, 3, 14, WOOD);
+    rect(&mut case, 2, 71, 84, 3, WOOD);
+    // The books: (left, width, height), standing on the bottom board, dark and fur by turns, each with a
+    // band across its spine.
+    let books = [
+        (6, 4, 11), (10, 3, 9), (13, 5, 12), (18, 3, 10), (21, 4, 11),
+        (29, 3, 12), (32, 5, 10), (37, 4, 12), (41, 3, 9),
+        (49, 4, 11), (53, 3, 12), (56, 5, 9), (61, 4, 11), (65, 3, 10),
+        (72, 4, 12), (76, 3, 10), (79, 4, 11),
+    ];
+    for (i, (x, w, h)) in books.into_iter().enumerate() {
+        let (spine, band) = if i % 2 == 0 { (CHEEK, FUR) } else { (FUR, CHEEK) };
+        rect(&mut case, x, 71 - h, w, h, spine);
+        rect(&mut case, x, 71 - h, 1, h, LINE);
+        rect(&mut case, x + 1, 71 - h + 2, w - 1, 1, band);
+    }
     let arms = [((10.5, 42.0), (10.5, 46.5)), ((33.5, 42.0), (33.5, 46.5))];
-    let mut s = posed(22, 6, Eyes::Smiling, Lift::Both, &arms, &board);
-    z(&mut s, 68, 20, "m-z z1");
-    z(&mut s, 74, 12, "m-z z2");
-    s
+    posed(22, 6, Eyes::Smiling, Lift::Both, &arms, &case)
 }
 
 /// Holding up a magnifying glass, for a search with nothing in it yet.
@@ -304,16 +293,8 @@ fn waiting() -> String {
 }
 
 /// The mascot going on its way, with the ground slipping by, for the first start.
-fn walking(day: bool) -> String {
-    let mut s = String::new();
-    // A light in the sky: the sun by day, the moon by night.
-    if day {
-        ring(&mut s, 77.0, 14.0, 0.0, 5.0, FUR);
-    } else {
-        ring(&mut s, 77.0, 14.0, 0.0, 5.0, FUR);
-        ring(&mut s, 80.0, 12.0, 0.0, 4.5, "#161210");
-    }
-    s.push_str("<g class=\"m-ground\">");
+fn walking() -> String {
+    let mut s = String::from("<g class=\"m-ground\">");
     for i in 0..9 {
         rect(&mut s, i * 14 - 8, 62, 7, 1, CHEEK);
         rect(&mut s, i * 14 - 1, 64, 4, 1, WOOD);
@@ -381,7 +362,7 @@ pub fn Resting() -> Element {
 pub fn ShelfScene() -> Element {
     static M: OnceLock<String> = OnceLock::new();
     rsx! {
-        svg { class: "mascot scene shelf", view_box: "0 0 88 76", role: "img", "aria-label": "The mascot, asleep on an empty shelf",
+        svg { class: "mascot scene shelf", view_box: "0 0 88 76", role: "img", "aria-label": "The mascot, asleep on a bookcase",
             dangerous_inner_html: "{cached(&M, shelf)}",
         }
     }
@@ -431,12 +412,11 @@ pub fn UpdateScene() -> Element {
     }
 }
 
-/// The mascot on its way, at night or (with `day`) in daylight, for the first start.
+/// The mascot on its way, for the first start.
 #[component]
-pub fn Walking(#[props(default = false)] day: bool) -> Element {
-    static DAY: OnceLock<String> = OnceLock::new();
-    static NIGHT: OnceLock<String> = OnceLock::new();
-    let markup = if day { cached(&DAY, || walking(true)) } else { cached(&NIGHT, || walking(false)) };
+pub fn Walking() -> Element {
+    static M: OnceLock<String> = OnceLock::new();
+    let markup = cached(&M, walking);
     rsx! {
         div { class: "walker",
             svg { class: "mascot scene walk", view_box: "0 0 90 68", role: "img", "aria-label": "The mascot walking",
@@ -458,8 +438,8 @@ pub fn Idle() -> Element {
     }
 }
 
-/// Something is loading: the mascot nods, with three dots coming and going under it. `size` is its width
-/// in pixels.
+/// Something is loading: the mascot goes round and round a dotted circle, staying upright. `size` is the
+/// width of the whole in pixels.
 #[component]
 pub fn Loader(#[props(default = 120)] size: u32) -> Element {
     static M: OnceLock<String> = OnceLock::new();
@@ -468,8 +448,9 @@ pub fn Loader(#[props(default = 120)] size: u32) -> Element {
     }
     rsx! {
         span { class: "mloader", style: "--m: {size}px", role: "img", "aria-label": "Loading",
-            svg { class: "mascot", view_box: "0 0 44 57", "aria-hidden": "true", dangerous_inner_html: "{cached(&M, make)}" }
-            span { class: "mdots", span {} span {} span {} }
+            span { class: "m-orbit",
+                svg { class: "mascot", view_box: "0 0 44 57", "aria-hidden": "true", dangerous_inner_html: "{cached(&M, make)}" }
+            }
         }
     }
 }
@@ -557,7 +538,7 @@ pub(super) fn browsing_markup() -> String { browsing() }
 #[cfg(test)]
 pub(super) fn updating_markup() -> String { updating() }
 #[cfg(test)]
-pub(super) fn walking_markup(day: bool) -> String { walking(day) }
+pub(super) fn walking_markup() -> String { walking() }
 #[cfg(test)]
 pub(super) fn loader_markup() -> String { mascot(0, 0, Eyes::Open) }
 
@@ -591,13 +572,13 @@ mod tests {
     #[test]
     fn every_scene_is_drawn_and_has_its_motion() {
         for (name, svg, classes) in [
-            ("rest", rest(), &["m-head", "m-z z1", "m-z z3"][..]),
-            ("shelf", shelf(), &["m-head", "m-z z2"][..]),
+            ("rest", rest(), &["m-head", "m-eyes"][..]),
+            ("shelf", shelf(), &["m-head", "m-body"][..]),
             ("search", search(), &["m-glass", "look-blink"][..]),
             ("waiting", waiting(), &["m-steam s0", "m-steam s2"][..]),
             ("browsing", browsing(), &["m-window w2", "m-lit"][..]),
             ("updating", updating(), &["m-drop"][..]),
-            ("walking", walking(true), &["m-ground", "m-walk"][..]),
+            ("walking", walking(), &["m-ground", "m-walk"][..]),
         ] {
             for class in classes {
                 assert!(svg.contains(&format!("class=\"{class}\"")) || svg.contains(class), "{name}: {class}");

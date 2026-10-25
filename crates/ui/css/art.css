@@ -1,5 +1,5 @@
-/* The mascot and its scenes. Everything moves slowly: a one-pixel nod every few seconds, "z"s and steam that
-   drift and fade, a magnifying glass that sways. */
+/* The mascot and its scenes. Everything moves slowly: a one-pixel nod every few seconds, steam that drifts and
+   fades, a magnifying glass that tilts, a slow walk round a circle while something loads. */
 
 .mascot { display: block; overflow: visible; shape-rendering: crispEdges; image-rendering: pixelated; flex: none; }
 .desk-scene { shape-rendering: crispEdges; image-rendering: pixelated; }
@@ -13,10 +13,6 @@
 .look-open { animation: look-open 7s steps(1, end) infinite; }
 @keyframes look-open { 0%, 92% { opacity: 1; } 92.01%, 96% { opacity: 0; } 96.01%, 100% { opacity: 1; } }
 @keyframes look-blink { 0%, 92% { opacity: 0; } 92.01%, 96% { opacity: 1; } 96.01%, 100% { opacity: 0; } }
-.m-z { opacity: 0; animation: m-float 7s ease-in-out infinite; }
-.m-z.z2 { animation-delay: 2.3s; }
-.m-z.z3 { animation-delay: 4.6s; }
-@keyframes m-float { 0% { opacity: 0; transform: translate(0, 3px); } 25% { opacity: 0.9; } 70% { opacity: 0.9; } 100% { opacity: 0; transform: translate(2px, -6px); } }
 .m-steam { opacity: 0; animation: m-steam 4.5s ease-out infinite; }
 .m-steam.s1 { animation-delay: 1.5s; }
 .m-steam.s2 { animation-delay: 3s; }
@@ -32,8 +28,8 @@
 .m-ground { animation: m-ground 4.2s steps(14) infinite; }
 @keyframes m-ground { to { transform: translateX(-14px); } }
 @media (prefers-reduced-motion: reduce) {
-  .m-head, .m-z, .m-steam, .m-glass, .m-window .m-lit, .m-drop, .m-ground, .look-open, .look-blink, .mdots span { animation: none; }
-  .m-z.z1, .m-steam.s0 { opacity: 0.8; }
+  .m-head, .m-steam, .m-glass, .m-window .m-lit, .m-drop, .m-ground, .look-open, .look-blink, .m-orbit, .m-orbit .mascot { animation: none; }
+  .m-steam.s0 { opacity: 0.8; }
   .look-blink { opacity: 0; }
 }
 
@@ -62,14 +58,14 @@
 .empty.side .empty-words { max-width: 420px; }
 .empty .btn { margin-top: 14px; }
 
-/* ---- something is loading: the mascot nods with three dots under it ---- */
-.mloader { --m: 120px; display: inline-flex; flex-direction: column; align-items: center; gap: calc(var(--m) * 0.06); flex: none; }
-.mloader .mascot { width: calc(var(--m) * 0.55); height: auto; }
-.mdots { display: flex; gap: calc(var(--m) * 0.05); }
-.mdots span { width: max(4px, calc(var(--m) * 0.055)); height: max(4px, calc(var(--m) * 0.055)); border-radius: 50%; background: var(--icon); opacity: 0.25; animation: m-dot 2.1s ease-in-out infinite; }
-.mdots span:nth-child(2) { animation-delay: 0.35s; }
-.mdots span:nth-child(3) { animation-delay: 0.7s; }
-@keyframes m-dot { 0%, 60%, 100% { opacity: 0.25; } 30% { opacity: 1; } }
+/* ---- something is loading: the mascot goes round a dotted circle, upright all the way ---- */
+.mloader { --m: 120px; display: inline-block; position: relative; width: var(--m); height: var(--m); flex: none; }
+.mloader::before { content: ""; position: absolute; inset: 20%; border: 2px dashed var(--line-strong); border-radius: 50%; }
+.m-orbit { position: absolute; inset: 0; animation: m-orbit 4s linear infinite; }
+/* The mascot sits on the circle and turns back as the circle turns, so it never tips over. */
+.m-orbit .mascot { position: absolute; left: 50%; top: 20%; width: calc(var(--m) * 0.28); height: auto; transform: translate(-50%, -50%); animation: m-upright 4s linear infinite; }
+@keyframes m-orbit { to { transform: rotate(360deg); } }
+@keyframes m-upright { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(-360deg); } }
 .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 24px 0; color: var(--muted); text-align: center; width: 100%; }
 .busy { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
 .m-idle { width: 96px; height: auto; margin-bottom: 8px; }
