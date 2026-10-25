@@ -14,10 +14,10 @@ use library::{DownloadLimits, DownloadSpeed, PageQuality};
 /// The sections, in the order the sidebar lists them.
 const SECTIONS: [(SettingsSection, &str, &str); 6] = [
     (SettingsSection::Readers, "hard-drive", "Your reader"),
+    (SettingsSection::Sources, "layers", "Sources"),
     (SettingsSection::Downloads, "download", "Downloads"),
     (SettingsSection::Files, "folder-open", "Files"),
     (SettingsSection::Preferences, "sliders-horizontal", "Preferences"),
-    (SettingsSection::Sources, "layers", "Sources"),
     (SettingsSection::About, "info", "About"),
 ];
 

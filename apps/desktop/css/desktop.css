@@ -34,6 +34,11 @@
 }
 .series-card:hover { transform: translateY(-6px); filter: drop-shadow(0 14px 16px rgba(0, 0, 0, 0.4)); }
 .series-card:active { transform: translateY(-2px) scale(0.99); }
+/* In a wrap the whole wrap lifts, so the Add button (a sibling of the card) goes up with it. */
+.series-wrap { transition: transform 0.3s cubic-bezier(0.34, 1.45, 0.64, 1), filter 0.2s ease; }
+.series-wrap:hover { transform: translateY(-6px); filter: drop-shadow(0 14px 16px rgba(0, 0, 0, 0.4)); }
+.series-wrap:active { transform: translateY(-2px) scale(0.99); }
+.series-wrap .series-card:hover, .series-wrap .series-card:active { transform: none; filter: none; }
 .series-card .meta { padding: 12px 15px 15px; }
 .series-title { font-weight: 600; line-height: 1.25; color: var(--icon); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .upd-notes { margin: 0 0 12px; padding: 0 0 0 18px; display: flex; flex-direction: column; gap: 5px; color: var(--text); font-size: 0.9rem; }
@@ -176,16 +181,22 @@
 .popover .source-row input { width: 17px; height: 17px; accent-color: var(--accent); }
 
 /* ---- the search page: the name of the app over the box until something is searched ---- */
-.search-stage { transition: padding-top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.search-stage.idle { min-height: calc(100vh - 168px); display: flex; flex-direction: column; justify-content: center; padding-bottom: 10vh; }
-.search-hero { text-align: center; overflow: hidden; max-height: 700px; opacity: 1; margin-bottom: 0; transition: max-height 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease, margin 0.5s ease; display: flex; flex-direction: column; align-items: center; }
-.hero-title { margin: 0; font: 400 96px/1.2 var(--font-pixel); color: #fff; letter-spacing: 0; white-space: nowrap; }
+.search-stage { --hero: 96px; padding-top: 0; transition: padding-top 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.search-stage.idle { padding-top: max(0px, calc(50vh - 270px)); }
+.search-hero { height: calc(var(--hero) * 1.2); text-align: center; overflow: hidden; opacity: 1; display: flex; flex-direction: column; align-items: center; transition: height 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.35s ease; }
+.hero-title { margin: 0; font: 400 var(--hero)/1.2 var(--font-pixel); color: #fff; letter-spacing: 0; white-space: nowrap; }
 .hero-title span { display: inline-block; animation: letter-in 0.6s cubic-bezier(0.34, 1.5, 0.64, 1) both; animation-delay: calc(var(--i) * 45ms + 120ms); }
 @keyframes letter-in { from { opacity: 0; transform: translateY(26px) scale(0.8); } to { opacity: 1; transform: none; } }
-.search-stage:not(.idle) .search-hero { max-height: 0; opacity: 0; margin-bottom: 0; }
-.search-stage .searchwrap { margin: 0 auto; max-width: 100%; transition: max-width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), margin-top 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
-.search-stage.idle .searchwrap { max-width: 907px; width: 100%; margin-top: clamp(40px, 12vh, 125px); }
-@media (max-width: 1100px) { .hero-title { font-size: 64px; } }
+.search-stage:not(.idle) .search-hero { height: 0; opacity: 0; }
+.search-stage .searchwrap { margin: 0 auto; width: 100%; max-width: 1560px; transition: max-width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), margin-top 0.6s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.search-stage.idle .searchwrap { max-width: 907px; margin-top: clamp(40px, 12vh, 125px); }
+/* Searching sends the scenery away: the clouds out to their sides, the rocks down. Going back to the start brings them in again. */
+.scenery .bd { transition: transform 0.8s cubic-bezier(0.5, 0, 0.2, 1), opacity 0.6s ease; }
+.app:has(.search-stage:not(.idle)) .scene-search .bd-cloud-1 { transform: translateX(60vw); opacity: 0; }
+.app:has(.search-stage:not(.idle)) .scene-search .bd-cloud-2 { transform: translateX(-60vw); opacity: 0; }
+.app:has(.search-stage:not(.idle)) .scene-search .bd-rock-1,
+.app:has(.search-stage:not(.idle)) .scene-search .bd-rock-2 { transform: translateY(110%); opacity: 0; }
+@media (max-width: 1100px) { .search-stage { --hero: 64px; } }
 @media (prefers-reduced-motion: reduce) { .search-stage, .search-hero, .search-stage .searchwrap, .hero-title span { transition: none; animation: none; } }
 .series-actions { gap: 8px; }
 .page-head + .chapters-summary { margin-top: 26px; }
@@ -318,7 +329,7 @@
 .q-actions:has(> .q-aside) { flex: 0 1 auto; min-width: 0; margin-left: auto; }
 
 /* ---- the Sources page: a heading that stays, and a card for each source ---- */
-.sources-head { position: sticky; top: -22px; z-index: 12; display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin: -22px -28px 18px; padding: 22px 28px 14px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.sources-head { position: sticky; top: -28px; z-index: 12; display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin: -28px -36px 18px; padding: 28px 36px 14px; background: var(--bg); box-shadow: 0 -60px 0 var(--bg); }
 .sources-head h1 { margin: 0; }
 .sources-head p { margin: 4px 0 0; }
 .sources-head .btn { margin-top: 4px; }

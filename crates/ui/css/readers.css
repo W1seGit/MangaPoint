@@ -18,11 +18,13 @@ input.title-input:focus { border-color: var(--icon); background: transparent; ou
 .title-input.fixed { display: flex; align-items: center; }
 .size-boxes { display: flex; align-items: center; gap: 0; }
 .size-boxes .unit-box { position: relative; }
-.size-boxes .pre, .size-boxes .unit { display: none; }
+.size-boxes .pre { display: none; }
+.size-boxes .unit { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 2; color: var(--placeholder); font: 400 14px/1 var(--font-ui); pointer-events: none; }
 /* Two pills with a bridge between them: the link, lit while the shape of the screen is kept. */
 .size-boxes .dim-box input[type="number"] {
   field-sizing: content; width: auto; min-width: 70px; height: 33px; padding: 0 14px; text-align: center;
   font: 400 24px/normal var(--font-ui); color: #fff; background: var(--dark); border: 2px solid var(--icon); border-radius: var(--radius-lg);
+  padding-right: 38px;
   appearance: textfield; -moz-appearance: textfield; position: relative; z-index: 1;
 }
 .size-boxes .dim-box input::-webkit-outer-spin-button, .size-boxes .dim-box input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -35,10 +37,9 @@ input.title-input:focus { border-color: var(--icon); background: transparent; ou
 .size-boxes .btn.icon.chain:hover { filter: brightness(1.12); }
 .size-boxes .btn.icon.chain .fig, .size-boxes .btn.icon.chain .icon { transition: transform 0.3s cubic-bezier(0.34, 1.7, 0.64, 1); }
 .size-boxes .btn.icon.chain:active .fig, .size-boxes .btn.icon.chain:active .icon { transform: scale(0.8) rotate(-12deg); }
-/* How many pixels an inch has: smaller, after the sizes. */
+/* How many pixels an inch has: a pill like the sizes, after them. */
 .size-boxes .ppi-box { margin-left: 14px; }
-.size-boxes .ppi-box .unit { display: inline; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 0.8rem; }
-.size-boxes .ppi-box input[type="number"] { min-width: 0; width: 92px; height: 33px; padding: 0 38px 0 12px; font-size: 1rem; text-align: left; border-color: var(--third); }
+.size-boxes .ppi-box input[type="number"] { padding-right: 46px; }
 .sx-control.sx-inline { gap: 8px; }
 .sx-control.sx-inline input[type="number"] { width: 110px; }
 

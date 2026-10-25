@@ -172,6 +172,7 @@ pub(super) fn ReaderForm(revision: Signal<u32>, pick: Element) -> Element {
     let pressed = if locked() { "true" } else { "false" };
 
     rsx! {
+        {pick}
         div { class: "reader-line",
             input {
                 class: "title-input", r#type: "text", maxlength: "40", value: "{name}",
@@ -230,7 +231,6 @@ pub(super) fn ReaderForm(revision: Signal<u32>, pick: Element) -> Element {
                 Help { text: "The size of the reader's screen in inches, width and height, and how many pixels it packs into each inch (its density). Pages are made at inches times density, in pixels, so nothing is scaled again on the reader. The Xteink screens are 220 ppi." }
             }
         }
-        {pick}
 
         div { class: "sx-row",
             div { class: "sx-text",

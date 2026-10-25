@@ -153,6 +153,7 @@ try {
         Wait-Until "!document.querySelector('#reader') && document.querySelector('.poster')" 10 'return to the library'
     }
     Check 'Settings has the reading state buttons' {
+        Start-Sleep -Milliseconds 1200
         Mouse-Click '#nav-Settings'
         Wait-Until "document.querySelector('.settings-nav') !== null" 15 'Settings'
         Mouse-Click '.settings-nav button' 'Preferences'

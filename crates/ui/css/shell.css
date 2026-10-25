@@ -14,28 +14,30 @@
 .nav-item { position: relative; }
 .dock, .corner { position: fixed; bottom: 0; z-index: 60; display: flex; align-items: center; }
 .dock {
-  left: 50%; transform: translateX(-50%); gap: 41px; padding: 13px 37px 12px;
+  left: 50%; transform: translateX(-50%); gap: 18px; padding: 13px 30px 12px;
   background: var(--dark); border: 1px solid #292929; border-bottom: 0; border-radius: 40px 40px 0 0;
-  transition: padding 0.35s cubic-bezier(0.34, 1.4, 0.64, 1);
   animation: dock-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) both;
 }
-.corner { right: 0; height: 57px; gap: 29px; padding: 0 13px 0 47px; animation: dock-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) 0.1s both; }
+.corner { right: 0; height: 64px; gap: 14px; padding: 0 16px 0 47px; animation: dock-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) 0.1s both; }
 .dock-item {
-  position: relative; flex: none; display: grid; place-items: center; width: var(--w); height: 27px; padding: 0;
+  position: relative; flex: none; display: grid; place-items: center; width: 50px; height: 50px; padding: 0;
   border: 0; border-radius: 25px; background: transparent; color: var(--icon); cursor: pointer; text-align: center;
-  transition: width 0.4s cubic-bezier(0.34, 1.5, 0.64, 1), height 0.4s cubic-bezier(0.34, 1.5, 0.64, 1),
-    background-color 0.2s ease, color 0.2s ease, transform 0.18s ease;
+  transition: background-color 0.3s ease, color 0.3s ease, transform 0.18s ease;
 }
 .dock-item:hover:not(.on) { color: #d9c5b9; transform: translateY(-3px) scale(1.12); }
 .dock-item:active:not(.on) { transform: translateY(0) scale(0.94); }
 .dock-item:focus-visible { outline: 2px solid var(--icon); outline-offset: 4px; }
-.dock-item.on { width: 50px; height: 50px; background: var(--icon); color: var(--dark); cursor: default; }
+.dock-item.on { background: var(--icon); color: var(--dark); cursor: default; }
 .dock-item.on .fig { animation: dock-pop 0.4s cubic-bezier(0.34, 1.6, 0.64, 1) both; }
 .dock-tag {
   position: absolute; left: 50%; top: 39px; transform: translateX(-50%); padding: 0 4px; border-radius: 45px;
   background: var(--icon); color: var(--dark); font: 400 15px/18px var(--font-pixel); white-space: nowrap;
   animation: tag-in 0.35s cubic-bezier(0.34, 1.6, 0.64, 1) 0.08s both; pointer-events: none;
 }
+/* The corner bar: each button is a round chip, so that it can be found. */
+.corner .dock-item { width: 44px; height: 44px; background: var(--third); color: var(--icon); box-shadow: inset 0 0 0 1px #4d3d34; }
+.corner .dock-item:hover:not(.on) { background: #54433a; color: #fff; }
+.corner .dock-item.on { background: var(--icon); color: var(--dark); box-shadow: none; }
 /* The number of downloads waiting, and a heartbeat while something is being downloaded. */
 .dock-badge {
   position: absolute; top: -9px; right: -11px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
@@ -56,10 +58,14 @@
 .scenery { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .scenery .bd { position: absolute; }
 .scenery .bd svg { width: 100%; height: 100%; }
-.scene-search .bd-cloud-1 { top: 3.91%; right: 5%; width: 25.56%; aspect-ratio: 368 / 160; animation: cloud-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both, drift 18s steps(24) 0.9s infinite alternate; }
-.scene-search .bd-cloud-2 { top: 4.69%; left: 6.11%; width: 22.22%; aspect-ratio: 320 / 152; animation: cloud-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both, drift 24s steps(30) 0.9s infinite alternate-reverse; }
-.scene-search .bd-rock-1 { bottom: 0; right: 0; width: 34.44%; aspect-ratio: 496 / 376; animation: rock-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both; }
-.scene-search .bd-rock-2 { bottom: 0; left: 0; width: 30.56%; aspect-ratio: 440 / 352; animation: rock-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.25s both; }
+.scene-search .bd-cloud-1 { top: 3.91%; right: 5%; width: 25.56%; aspect-ratio: 368 / 160; }
+.scene-search .bd-cloud-1 svg { animation: cloud-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both, drift 18s steps(24) 0.9s infinite alternate; }
+.scene-search .bd-cloud-2 { top: 4.69%; left: 6.11%; width: 22.22%; aspect-ratio: 320 / 152; }
+.scene-search .bd-cloud-2 svg { animation: cloud-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both, drift 24s steps(30) 0.9s infinite alternate-reverse; }
+.scene-search .bd-rock-1 { bottom: 0; right: 0; width: 34.44%; aspect-ratio: 496 / 376; }
+.scene-search .bd-rock-1 svg { animation: rock-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.15s both; }
+.scene-search .bd-rock-2 { bottom: 0; left: 0; width: 30.56%; aspect-ratio: 440 / 352; }
+.scene-search .bd-rock-2 svg { animation: rock-in 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.25s both; }
 @keyframes cloud-in { from { transform: translateY(-40px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes rock-in { from { transform: translateY(60px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes drift { from { transform: translateX(-14px); } to { transform: translateX(14px); } }

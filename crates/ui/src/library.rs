@@ -224,3 +224,59 @@ pub fn LibraryTools(
         }
     }
 }
+
+/// What a card's "Information" shows: facts as (label, value), and the files it was exported to.
+#[derive(Clone, PartialEq, Debug)]
+pub struct InfoSheet {
+    pub title: String,
+    pub facts: Vec<(String, String)>,
+    /// `None` where exports are not kept (the website downloads them and forgets).
+    pub files: Option<Vec<InfoFile>>,
+}
+
+/// One exported file: its name, what it is ("XTC · 12 chapters · 40 MB"), and where it is.
+#[derive(Clone, PartialEq, Debug)]
+pub struct InfoFile {
+    pub name: String,
+    pub note: String,
+    pub place: String,
+}
+
+/// The sheet of a series: how much room its downloads take, how many chapters were exported and
+/// the file each export is in.
+#[component]
+pub fn InfoDialog(sheet: InfoSheet, on_close: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "overlay", onclick: move |_| on_close.call(()),
+            div { class: "modal info-sheet", role: "dialog", "aria-label": "Information", onclick: move |e| e.stop_propagation(),
+                div { class: "modal-head",
+                    h2 { "{sheet.title}" }
+                    button { class: "btn ghost small", title: "Close", "aria-label": "Close", onclick: move |_| on_close.call(()),
+                        Icon { name: "x", size: 16 }
+                    }
+                }
+                dl { class: "info-facts",
+                    for (label, value) in sheet.facts.iter() {
+                        div { key: "{label}", dt { "{label}" } dd { "{value}" } }
+                    }
+                }
+                if let Some(files) = sheet.files.as_ref() {
+                    div { class: "info-head", "Exported files" }
+                    if files.is_empty() {
+                        p { class: "muted small", style: "margin: 0", "Nothing exported yet." }
+                    } else {
+                        ul { class: "info-files",
+                            for (i, file) in files.iter().enumerate() {
+                                li { key: "{i}",
+                                    div { class: "info-file", title: "{file.name}", "{file.name}" }
+                                    div { class: "muted small", "{file.note}" }
+                                    div { class: "muted small info-place", title: "{file.place}", "{file.place}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

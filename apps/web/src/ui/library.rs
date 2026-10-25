@@ -7,7 +7,7 @@ use crate::bridge;
 use crate::format::{ago, human_bytes, plural};
 use crate::model::{Book, LibrarySort, LibraryView};
 use dioxus::prelude::*;
-use mangapoint_ui::library::{ActionBar, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
+use mangapoint_ui::library::{ActionBar, InfoDialog, InfoSheet, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -41,6 +41,8 @@ pub fn BrowserLibraryPage() -> Element {
     let mut filter = use_signal(String::new);
     let mut import_menu = use_signal(|| false);
     let mut menu = use_signal(|| None::<String>);
+    // The card whose Information is open.
+    let mut info = use_signal(|| None::<InfoSheet>);
     let mut picked = use_signal(BTreeSet::<String>::new);
 
     let lib = ctx.library.read();
@@ -153,6 +155,15 @@ pub fn BrowserLibraryPage() -> Element {
                         let mut status = kind_label(&b).to_string();
                         if finished { status.push_str(" \u{b7} Finished"); }
                         if needs_file { status.push_str(" \u{b7} Needs its file"); }
+                        let sheet = InfoSheet {
+                            title: b.title.clone(),
+                            facts: vec![
+                                ("Kind".to_string(), kind_label(&b).to_string()),
+                                ("Chapters".to_string(), have.clone()),
+                                ("Stored on this device".to_string(), if needs_file { "Its file is not kept".to_string() } else { stored.clone() }),
+                            ],
+                            files: None,
+                        };
                         let facts = PosterFacts {
                             id: id.clone(),
                             title: b.title.clone(),
@@ -178,6 +189,10 @@ pub fn BrowserLibraryPage() -> Element {
                                     }
                                 },
                                 menu: rsx! {
+                                    button { class: "menu-item",
+                                        onclick: move |_| info.set(Some(sheet.clone())),
+                                        Icon { name: "info", size: 15 } "Information"
+                                    }
                                     if !needs_file {
                                         button { class: "menu-item",
                                             onclick: { let id = read_id.clone(); move |_| super::reader::open_reader(ctx, &id, None) },
@@ -291,6 +306,9 @@ pub fn BrowserLibraryPage() -> Element {
             }
         }
 
+        if let Some(sheet) = info() {
+            InfoDialog { sheet, on_close: move |_| info.set(None) }
+        }
         if selecting {
             ActionBar {
                 count: chosen.len(),

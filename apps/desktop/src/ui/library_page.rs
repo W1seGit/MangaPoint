@@ -9,7 +9,7 @@ use super::work::{
 use crate::logic::{human_bytes, library_order_read, plural, read_button, LibrarySort, LibraryView};
 use crate::state::{library_files, AppState, Modal, ModalAction, Page};
 use dioxus::prelude::*;
-use mangapoint_ui::library::{ActionBar, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
+use mangapoint_ui::library::{ActionBar, InfoDialog, InfoFile, InfoSheet, LibraryTools, Poster, PosterButton, PosterFacts, PosterTabs};
 use std::collections::HashSet;
 
 #[component]
@@ -23,6 +23,8 @@ pub fn LibraryPage() -> Element {
     let mut import_menu = use_signal(|| false);
     // The poster whose menu is open.
     let mut menu = use_signal(|| None::<String>);
+    // The card whose Information is open.
+    let mut info = use_signal(|| None::<InfoSheet>);
     // Fetch the details and covers of series that do not have them yet, and
     // show the saved covers. Runs again when the catalog comes up or the
     // library changes.
@@ -307,12 +309,38 @@ pub fn LibraryPage() -> Element {
                         }
                         let status = if s.is_imported() { "Imported" } else if chapters > 0 { "Downloaded" } else { "Saved for later" };
                         lines.push(("poster-status", format!("{status}{}", if is_exported { " · Exported" } else { "" })));
+                        let sheet = {
+                            let records = state.exports.read();
+                            let mut facts = vec![
+                                ("Downloaded".to_string(), if chapters == 0 { "Nothing yet".to_string() } else { format!("{} · {size}", plural(chapters, "chapter")) }),
+                                ("Exported".to_string(), format!("{} of {chapters}", exported_chapters.get(&s.id).copied().unwrap_or(0).min(chapters))),
+                            ];
+                            if let Some(total) = s.chapter_total {
+                                facts.insert(0, ("Chapters in the series".to_string(), total.to_string()));
+                            }
+                            let mut files = Vec::new();
+                            for r in records.records.iter().rev().filter(|r| r.series_id == s.id) {
+                                for f in &r.files {
+                                    let path = std::path::Path::new(&f.path);
+                                    let name = path.file_name().map_or_else(|| f.path.clone(), |n| n.to_string_lossy().into_owned());
+                                    let place = path.parent().map_or_else(|| r.target.clone(), |p| p.display().to_string());
+                                    files.push(InfoFile {
+                                        name,
+                                        note: format!("{} · {} · {}", r.format.to_uppercase(), plural(r.chapters, "chapter"), human_bytes(f.bytes)),
+                                        place,
+                                    });
+                                }
+                            }
+                            InfoSheet { title: s.title.clone(), facts, files: Some(files) }
+                        };
                         let facts = PosterFacts {
                             id: s.id.clone(),
                             title: s.title.clone(),
                             tabs: Some(PosterTabs {
                                 downloaded: format!("{chapters}/{}", s.chapter_total.filter(|t| *t >= chapters).unwrap_or(chapters)),
-                                exported: Some(format!("{}/{chapters}", exported_chapters.get(&s.id).copied().unwrap_or(0).min(chapters))),
+                                exported: Some(exported_chapters.get(&s.id).copied().unwrap_or(0).min(chapters))
+                                    .filter(|n| *n > 0)
+                                    .map(|n| format!("{n}/{chapters}")),
                             }),
                             stats: Some((have.clone(), stored.clone())),
                             lines,
@@ -340,6 +368,10 @@ pub fn LibraryPage() -> Element {
                                     button { class: "menu-item",
                                         onclick: move |_| open_series_from_library(state, &view_id),
                                         Icon { name: "book-open", size: 15 } "Open"
+                                    }
+                                    button { class: "menu-item",
+                                        onclick: move |_| info.set(Some(sheet.clone())),
+                                        Icon { name: "info", size: 15 } "Information"
                                     }
                                     if chapters > 0 {
                                         button { class: "menu-item",
@@ -378,6 +410,9 @@ pub fn LibraryPage() -> Element {
             }
         }
 
+        if let Some(sheet) = info() {
+            InfoDialog { sheet, on_close: move |_| info.set(None) }
+        }
         if selecting {
             ActionBar {
                 count: chosen.len(),
