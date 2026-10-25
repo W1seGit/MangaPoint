@@ -62,7 +62,7 @@
 .poster-tab.down { background: var(--sub); color: var(--icon); border-radius: var(--radius-lg) 0 0 var(--radius-lg); }
 .poster-tab.up { background: var(--icon); color: var(--third); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
 .poster-tabs.one .poster-tab.down { border-radius: var(--radius-lg); }
-.poster-tab.notice { color: var(--warn); }
+.poster-tab.notice { color: var(--icon); }
 .poster-badge { position: absolute; left: 10px; bottom: 52px; padding: 2px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: rgba(22, 18, 16, 0.85); color: var(--text); }
 .poster-badge.saved { background: var(--third); }
 .poster-badge.queued { left: auto; right: 10px; top: 10px; bottom: auto; padding: 4px 6px; display: inline-flex; background: var(--accent); color: var(--accent-text); }
