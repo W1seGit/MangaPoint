@@ -37,21 +37,31 @@
   background: var(--icon); color: var(--dark); font: 400 15px/18px var(--font-pixel); white-space: nowrap;
   animation: tag-in 0.35s cubic-bezier(0.34, 1.6, 0.64, 1) 0.08s both; pointer-events: none;
 }
-/* The number of downloads waiting, and a heartbeat while something is being downloaded. */
+/* The number of downloads waiting. */
 .dock-badge {
   position: absolute; top: -9px; right: -11px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
   background: var(--icon); color: var(--dark); border: 2px solid var(--dark); box-sizing: content-box;
   font: 600 11px/17px var(--font-ui); text-align: center; animation: dock-pop 0.3s cubic-bezier(0.34, 1.6, 0.64, 1) both;
 }
 .dock-item.on .dock-badge { background: var(--dark); color: var(--icon); border-color: var(--icon); }
-.dock-item.busy:not(.on) .fig { animation: beat 1.6s ease-in-out infinite; }
-.dock-item.busy.on .fig { animation: beat 1.6s ease-in-out infinite; }
+/* The running task sits left of the icons in the corner bar, as a name, what it is doing and a thin bar. */
+.task-chip {
+  display: flex; flex-direction: column; justify-content: center; gap: 6px; width: 190px; height: 50px; padding: 0 14px; box-sizing: border-box;
+  border: 0; border-radius: 25px; background: #2a211d; color: var(--icon); text-align: left; cursor: pointer;
+  transition: background-color 0.2s ease; animation: dock-pop 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) backwards;
+}
+.task-chip:hover { background: #352a25; }
+.task-chip-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.task-chip-name { font: 600 13px/16px var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-chip-sub { font: 400 11px/14px var(--font-ui); opacity: 0.7; white-space: nowrap; }
+.task-chip-bar { display: block; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.task-chip-fill { display: block; height: 100%; background: var(--icon); border-radius: 2px; transition: width 0.4s ease; }
+.task-chip.paused .task-chip-fill { opacity: 0.5; }
 
 @keyframes dock-in { from { transform: translate(var(--dock-from-x, -50%), 80px); opacity: 0; } to { transform: translate(var(--dock-to-x, -50%), 0); opacity: 1; } }
 .corner { --dock-from-x: 0; --dock-to-x: 0; }
 @keyframes dock-pop { from { transform: scale(0.4); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes tag-in { from { transform: translate(-50%, -8px) scale(0.6); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
-@keyframes beat { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.14); } 60% { transform: scale(0.97); } }
 
 /* ---- the pixel scenery: it stays put behind the page; the clouds drift in pixel steps ---- */
 .scenery { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }

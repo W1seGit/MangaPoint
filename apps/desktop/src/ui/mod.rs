@@ -3,6 +3,7 @@
 mod browse;
 mod download_dialog;
 mod host;
+mod task_chip;
 mod tasks_page;
 mod update_dialog;
 mod export_page;
@@ -216,7 +217,6 @@ fn Shell() -> Element {
         let (running, waiting, _) = state.queue.read().counts();
         running + waiting
     })();
-    let busy = use_memo(move || state.queue.read().running().is_some() || state.job.read().as_ref().is_some_and(|j| j.result.is_none()))();
     // An open series belongs to wherever it was opened from.
     let opened_from_library = state.workspace.read().as_ref().is_some_and(|w| w.origin == Page::Library);
     let owner = match page {
@@ -231,7 +231,6 @@ fn Shell() -> Element {
     let scene = if page == Page::Search { "search" } else { "" };
     let mut tasks = BarItem::new("tasks", "Tasks", "pulse", owner == Page::Tasks);
     tasks.badge = (in_queue > 0).then(|| in_queue.to_string());
-    tasks.busy = busy;
     rsx! {
         Backdrop { scene, leaving: leaving() }
         if page != Page::Reader {
@@ -246,6 +245,7 @@ fn Shell() -> Element {
         CornerBar {
             items: vec![tasks, BarItem::new("settings", "Settings", "gear", owner == Page::Settings)],
             on_pick: move |id| pick_with_exit(state, id, leaving),
+            task_chip::TaskChip { on_open: move |_| pick_with_exit(state, "tasks", leaving) }
         }
         }
         main { class: "content",

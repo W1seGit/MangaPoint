@@ -80,9 +80,10 @@ pub fn Dock(items: Vec<BarItem>, on_pick: EventHandler<&'static str>) -> Element
 
 /// The bar in the bottom right corner.
 #[component]
-pub fn CornerBar(items: Vec<BarItem>, on_pick: EventHandler<&'static str>) -> Element {
+pub fn CornerBar(items: Vec<BarItem>, on_pick: EventHandler<&'static str>, #[props(default)] children: Element) -> Element {
     rsx! {
         nav { class: "nav corner", "aria-label": "Tasks and settings",
+            {children}
             for item in items {
                 BarButton { key: "{item.id}", item, tag: false, on_pick }
             }

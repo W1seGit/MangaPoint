@@ -372,7 +372,10 @@ pub(super) async fn run_export(
             } else {
                 e.to_string()
             };
-            if cancelled {
+            let paused = job.peek().as_ref().is_some_and(|v| v.paused);
+            if cancelled && paused {
+                info!("Export stopped for now; the converted chapters are kept");
+            } else if cancelled {
                 info!("Export cancelled");
             } else {
                 warn!("Export failed: {message}");
