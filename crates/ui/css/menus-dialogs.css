@@ -37,11 +37,16 @@
 
 /* ---- menus fade in just below what opened them ---- */
 @keyframes menu-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-.menu.down { top: calc(100% + 6px); bottom: auto; animation: menu-in 0.16s ease-out both; }
+.menu.down { top: calc(100% + 6px); bottom: auto; animation: menu-in 0.16s ease-out backwards; }
 .menu.up { animation: menu-up 0.16s ease-out both; }
 @keyframes menu-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .menu-anchor { position: relative; flex: none; }
 /* The Library heading's Import menu opens over the sticky search bar below it. */
 .q-head:has(.menu-scrim) { position: relative; z-index: 30; }
+/* An open menu, and the block it opens from, sit above everything else on the page; only the dock and the
+   corner bar stay over it. (The animations that bring blocks in end with `backwards`, so they leave no layer
+   of their own behind that would hold the menu under the blocks after them.) */
+.menu-anchor:has(> .menu-scrim), .bar-menu:has(> .menu-scrim) { z-index: 55; }
+.overview-body > :has(.menu-scrim), .keep.lib > :has(.menu-scrim), .rise-in > :has(.menu-scrim) { position: relative; z-index: 55; }
 .menu-anchor .menu { min-width: 260px; white-space: nowrap; }
 .menu-sep { height: 1px; margin: 5px 6px; background: var(--line); }

@@ -11,10 +11,10 @@
 
 /* ---- pages come up a piece at a time, quickly (not the Export screen, which is left as it is) ---- */
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-.keep.lib:not(.gone) > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.overview-cover { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 60ms both; }
-.overview-body > * { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
-.poster-grid:not([data-settled]) > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.keep.lib:not(.gone) > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.overview-cover { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) 60ms backwards; }
+.overview-body > * { animation: rise 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.poster-grid:not([data-settled]) > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
 .keep.lib:not(.gone) > :nth-child(2) { animation-delay: 40ms; }
 .keep.lib:not(.gone) > :nth-child(3) { animation-delay: 80ms; }
 .keep.lib:not(.gone) > :nth-child(4) { animation-delay: 120ms; }

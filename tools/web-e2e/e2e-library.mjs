@@ -165,6 +165,13 @@ try {
   const before = await rows();
   r.check('the overview lists the chapters on this device', before === 3, String(before));
   r.check('with Read, Export and Import more chapters', !!(await page.eval("document.querySelector('#book-read')")) && !!(await page.eval("document.querySelector('#book-export')")) && !!(await page.eval("document.querySelector('#book-import-more')")));
+  // The ... menu opens over the chapters below it, not under them.
+  await press('#book-more');
+  await sleep(400);
+  const hidden = await page.eval("[...document.querySelectorAll('.menu.down .menu-item')].filter((item) => { const r = item.getBoundingClientRect(); return !item.contains(document.elementFromPoint(r.left + 30, r.top + r.height / 2)); }).map((item) => item.innerText.trim())");
+  r.check('nothing on the page covers the ... menu', hidden.length === 0, hidden.join(', '));
+  await page.eval("document.querySelector('.menu-scrim').click()");
+  await sleep(300);
   // The app's own chapter table: tick boxes, sortable headings, a filter and a range box.
   const heads = await page.eval("[...document.querySelectorAll('table.chapters thead th')].map((t) => t.textContent.trim()).join('|')");
   r.check("the app's chapter table, without sources, sizes, dates or pages", /No\./.test(heads) && /Title/.test(heads) && /Status/.test(heads) && !/Sources|Size|Updated|Pages/.test(heads), heads);

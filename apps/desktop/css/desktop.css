@@ -7,8 +7,8 @@
 .onboard-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; width: min(1240px, 100%); margin: 0 auto; padding: 28px 28px 12px; }
 .onboard-body > :first-child { margin-top: auto; }
 .onboard-body > :last-child { margin-bottom: auto; }
-.onboard-body.from-right { animation: slide-from-right 0.6s cubic-bezier(0.65, 0, 0.35, 1) both; }
-.onboard-body.from-left { animation: slide-from-left 0.6s cubic-bezier(0.65, 0, 0.35, 1) both; }
+.onboard-body.from-right { animation: slide-from-right 0.6s cubic-bezier(0.65, 0, 0.35, 1) backwards; }
+.onboard-body.from-left { animation: slide-from-left 0.6s cubic-bezier(0.65, 0, 0.35, 1) backwards; }
 @keyframes slide-from-right { from { transform: translateX(100vw); } to { transform: none; } }
 @keyframes slide-from-left { from { transform: translateX(-100vw); } to { transform: none; } }
 .onboard-body.ghost { background: var(--bg); }
@@ -253,7 +253,6 @@
 .q-done .q-main { flex: 1 1 280px; min-width: 280px; }
 /* A row with its menu open rises above the rows after it (each row of a page that
    slides in is a layer of its own, and later layers would cover the menu). */
-.rise-in > *:has(.menu-scrim) { position: relative; z-index: 30; }
 .path-link:hover:not(:disabled) { color: #fff; }
 .path-link:disabled { color: var(--muted); cursor: default; }
 
@@ -402,10 +401,10 @@
 @media (max-width: 900px) { .as-grid { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .modal.add-sources { height: 92vh; padding: 16px; } .as-row { flex-wrap: wrap; } }
 .as-tabs button { white-space: nowrap; flex: 0 0 auto; }
-.rise-in > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.rise-in > * { animation: rise 0.38s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
 /* The bar for ticked chapters must come up from below without losing its centring (a kept transform would). */
 .rise-in > .action-bar.action-bar { animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
-.src-list > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.src-list > * { animation: rise 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
 .rise-in > :nth-child(2) { animation-delay: 40ms; }
 .rise-in > :nth-child(3) { animation-delay: 80ms; }
 .rise-in > :nth-child(4) { animation-delay: 120ms; }
