@@ -18,7 +18,10 @@
   background: var(--dark); border: 1px solid #292929; border-bottom: 0; border-radius: 40px 40px 0 0;
   animation: dock-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) both;
 }
-.corner { right: 0; height: 64px; gap: 14px; padding: 0 16px 0 47px; animation: dock-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) 0.1s both; }
+.corner {
+  right: 0; gap: 18px; padding: 13px 30px 12px 34px; background: var(--dark); border: 1px solid #292929; border-right: 0; border-bottom: 0;
+  border-radius: 40px 0 0 0; animation: dock-in 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) 0.1s both;
+}
 .dock-item {
   position: relative; flex: none; display: grid; place-items: center; width: 50px; height: 50px; padding: 0;
   border: 0; border-radius: 25px; background: transparent; color: var(--icon); cursor: pointer; text-align: center;
@@ -34,10 +37,6 @@
   background: var(--icon); color: var(--dark); font: 400 15px/18px var(--font-pixel); white-space: nowrap;
   animation: tag-in 0.35s cubic-bezier(0.34, 1.6, 0.64, 1) 0.08s both; pointer-events: none;
 }
-/* The corner bar: each button is a round chip, so that it can be found. */
-.corner .dock-item { width: 44px; height: 44px; background: var(--third); color: var(--icon); box-shadow: inset 0 0 0 1px #4d3d34; }
-.corner .dock-item:hover:not(.on) { background: #54433a; color: #fff; }
-.corner .dock-item.on { background: var(--icon); color: var(--dark); box-shadow: none; }
 /* The number of downloads waiting, and a heartbeat while something is being downloaded. */
 .dock-badge {
   position: absolute; top: -9px; right: -11px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px;
@@ -82,6 +81,6 @@
 
 /* A narrow window: the corner bar sits above the dock instead of beside it. */
 @media (max-width: 640px) {
-  .corner { bottom: calc(75px + var(--sab, 0px)); height: 50px; padding: 0 12px; gap: 22px; border-radius: 25px 0 0 25px; background: var(--dark); border: 1px solid #292929; border-right: 0; }
+  .corner { bottom: calc(75px + var(--sab, 0px)); padding: 8px 18px 8px 26px; border-radius: 25px 0 0 25px; }
   .content { padding-bottom: 190px; }
 }

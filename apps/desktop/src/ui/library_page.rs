@@ -271,6 +271,7 @@ pub fn LibraryPage() -> Element {
                         // "Read" (or "Continue · Ch. N" with how far) for a series with pages.
                         let reading = read_button(s, db.reading_of(&s.id));
                         let read_id = s.id.clone();
+                        let has_pages = reading.is_some();
                         let queued = working_series.contains(&s.id);
                         let menu_id = s.id.clone();
                         let menu_open = menu().as_deref() == Some(s.id.as_str());
@@ -344,14 +345,24 @@ pub fn LibraryPage() -> Element {
                             }),
                             stats: Some((have.clone(), stored.clone())),
                             lines,
-                            button: reading.map(|r| PosterButton {
+                            button: if reading.is_none() && !s.is_imported() {
+                                // Nothing downloaded yet: the button downloads.
+                                Some(PosterButton {
+                                    id: format!("get-{}", s.id),
+                                    aria: format!("Download chapters of {}", s.title),
+                                    label: "Download".to_string(),
+                                    icon: "download",
+                                    title: format!("Choose chapters of {} to download", s.title),
+                                    fraction: None,
+                                })
+                            } else { reading.map(|r| PosterButton {
                                 id: format!("read-{}", s.id),
                                 aria: format!("{} {}", r.label, s.title),
                                 label: r.label,
                                 icon: "book-open",
                                 title: format!("Read {} in MangaPoint", s.title),
                                 fraction: r.fraction,
-                            }),
+                            }) },
                             not_installed: false,
                         };
                         rsx! {
@@ -402,7 +413,9 @@ pub fn LibraryPage() -> Element {
                                     if !p.remove(&tick_id) { p.insert(tick_id.clone()); }
                                 },
                                 on_menu: move |open: bool| menu.set(open.then(|| menu_id.clone())),
-                                on_button: move |_| state.open_reader(&read_id, None),
+                                on_button: move |_| {
+                                    if has_pages { state.open_reader(&read_id, None) } else { open_plan(state, vec![read_id.clone()]) }
+                                },
                             }
                         }
                     }

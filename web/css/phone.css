@@ -54,12 +54,12 @@
   .seg button { flex: 1; white-space: normal; }
 
   /* Toasts above the dock */
-  .toasts { left: 12px; right: 12px; width: auto; bottom: calc(136px + var(--sab)); }
+  .toasts { left: 12px; right: 12px; width: auto; bottom: calc(160px + var(--sab)); }
   .toast { left: 0; right: 0; width: auto; }
 
 }
 
 @media (max-width: 800px) {
-  .action-bar { bottom: calc(92px + var(--sab)); padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+  .action-bar { bottom: calc(150px + var(--sab)); padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
   .poster-check { opacity: 1; }
 }
