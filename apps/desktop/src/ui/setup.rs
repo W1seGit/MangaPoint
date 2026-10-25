@@ -44,34 +44,40 @@ pub fn Setup(#[props(default = false)] onboarding: bool) -> Element {
         SourceManager::new(&*client).offers(&snapshot).await.ok()
     });
 
+    // The recommended ones still to install: not installed, and not turned down. (A source chosen once
+    // but not in the catalog engine now, after its data was reset, is installed again.)
+    let to_install = move || -> Vec<&'static str> {
+        match &*offers.peek() {
+            Some(Some(list)) => list
+                .iter()
+                .filter(|o| o.default.requires == Requires::Nothing && o.available && !o.installed && o.choice != Some(Choice::Skip))
+                .map(|o| o.default.id)
+                .collect(),
+            _ => Vec::new(),
+        }
+    };
     let install_recommended = move |_| {
         let mut installing = state.installing;
         installing.set(true);
+        let ids = to_install();
         spawn_forever(async move {
-            for d in sources::DEFAULTS
-                .iter()
-                .filter(|d| d.requires == Requires::Nothing)
-            {
-                let answered = state.sources.read().choices.contains_key(d.id);
-                if !answered {
-                    backend::install_default(state, d.id).await;
-                }
+            for id in ids {
+                backend::install_default(state, id).await;
             }
             installing.set(false);
             state.bump_sources();
         });
     };
     let busy = *state.installing.read();
-    // The recommended ones that have not been answered yet: when there are none
-    // (all installed, or turned down), there is nothing for the button to do.
+    // When none is left (all installed, or turned down), there is nothing for the button to do.
     let pending = match &*offers.read() {
-        Some(Some(list)) => list
-            .iter()
-            .filter(|o| o.default.requires == Requires::Nothing && o.available && !o.installed && o.choice.is_none())
-            .count(),
+        Some(Some(_)) => to_install().len(),
         _ => 1,
     };
-    let any_installed = state.sources.read().choices.values().any(|c| *c == Choice::Install);
+    let any_installed = match &*offers.read() {
+        Some(Some(list)) => list.iter().any(|o| o.installed),
+        _ => state.sources.read().choices.values().any(|c| *c == Choice::Install),
+    };
 
     let finish = move |_| {
         finish_sources(state);
