@@ -127,6 +127,11 @@ pub fn ChaptersTab() -> Element {
         }
         ChaptersState::Ready(loaded) => loaded.clone(),
     };
+    // No source answered (offline, or the catalog engine forgot the series): what is downloaded is still
+    // listed, as when loading fails, instead of an empty table.
+    if loaded.merged.is_empty() && loaded.unreachable > 0 && has_downloads {
+        return rsx! { super::downloads::DownloadsTab {} };
+    }
 
     let have = downloaded_keys(state, &ws.series_id);
     let has_downloads = !have.is_empty();
