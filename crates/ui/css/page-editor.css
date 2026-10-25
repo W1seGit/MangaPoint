@@ -29,7 +29,7 @@
 .keep.lib:not(.gone) > #action-bar { animation: bar-up 0.3s cubic-bezier(0.34, 1.4, 0.64, 1) backwards; }
 @keyframes bar-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 .action-bar .bar-count { display: flex; flex-direction: column; line-height: 1.25; margin-right: 6px; }
-.bar-count-row { display: flex; align-items: baseline; gap: 12px; }
+.action-bar .bar-count-row { display: flex; align-items: baseline; gap: 12px; }
 .bar-link { padding: 0; border: 0; border-bottom: 1px dotted currentColor; border-radius: 0; background: none; color: var(--muted); font: inherit; font-size: 0.82rem; cursor: pointer; }
 .bar-link:hover { color: var(--text); }
 /* Nothing ever wraps onto a second line: the buttons keep only their icons unless the window is wide. */
@@ -43,15 +43,6 @@
   .action-bar .bar-right { flex: none; justify-content: flex-end; padding: 0; }
 }
 .bar-menu { position: relative; }
-/* In the Library the count and Select all sit at the top left and the menu at the top right, where the
-   title and the page's buttons were; the buttons stay in the bar at the bottom. */
-.bar-top-left, .bar-top-right { position: fixed; top: 28px; z-index: 40; }
-.bar-top-left { left: 36px; min-height: 52px; display: flex; align-items: center; }
-.bar-top-right { right: 36px; }
-.bar-top-right .menu { right: 0; left: auto; }
-.keep.lib:has(.bar-top-left) .q-head { visibility: hidden; }
-.bar-top-left .bar-count { display: flex; flex-direction: column; line-height: 1.25; }
-
 .controls.compact .field { grid-template-columns: 1fr; gap: 4px; }
 .controls.compact .field .hint { grid-column: 1; }
 th.saved, td.saved { width: 120px; }
