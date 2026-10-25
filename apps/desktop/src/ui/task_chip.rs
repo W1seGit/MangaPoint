@@ -2,6 +2,8 @@
 //! how far it is. Pressing it opens the Tasks page.
 
 use crate::state::{AppState, Page};
+use crate::ui::widgets::{Cover, NoCover};
+use crate::ui::work::saved_cover_key;
 use dioxus::prelude::*;
 
 #[component]
@@ -17,24 +19,30 @@ pub fn TaskChip(on_open: EventHandler<()>) -> Element {
         } else {
             String::new()
         };
-        Some((verb, job.title.clone(), detail, job.progress.fraction(), job.paused))
+        Some((verb, job.title.clone(), detail, job.progress.fraction(), job.paused, job.series_id.clone()))
     } else {
         state.queue.read().running().map(|b| {
             let detail = format!("{} of {}", b.chapters_done(), b.chapter_count());
-            ("Downloading", b.title.clone(), detail, b.progress.fraction(), false)
+            ("Downloading", b.title.clone(), detail, b.progress.fraction(), false, b.series_id.clone())
         })
     };
-    let Some((verb, title, detail, fraction, paused)) = shown else {
+    let Some((verb, title, detail, fraction, paused, series_id)) = shown else {
         return rsx! {};
     };
+    let has_cover = state.library.read().find(&series_id).and_then(|s| s.info.as_ref()).is_some_and(|i| i.has_cover);
     let percent = (fraction.clamp(0.0, 1.0) * 100.0).round();
     rsx! {
         button { class: if paused { "task-chip paused" } else { "task-chip" }, id: "task-chip", title: "Open Tasks", onclick: move |_| on_open.call(()),
+            span { class: "task-chip-cover",
+                if has_cover { Cover { key_id: saved_cover_key(&series_id) } } else { NoCover {} }
+            }
+            span { class: "task-chip-main",
             span { class: "task-chip-text",
                 span { class: "task-chip-name", "{title}" }
                 span { class: "task-chip-sub", "{verb}" if !detail.is_empty() { " · {detail}" } }
             }
             span { class: "task-chip-bar", span { class: "task-chip-fill", style: "width: {percent}%" } }
+            }
         }
     }
 }
