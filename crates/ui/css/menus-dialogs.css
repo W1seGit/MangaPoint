@@ -1,0 +1,48 @@
+/* Menus that drop down or up, the scrim under them, and dialogs. */
+
+/* ---- dialogs ---- */
+.overlay { animation: fade-in 0.2s ease-out both; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.7); display: flex; align-items: center; justify-content: center; z-index: 50; padding: 20px; }
+.modal { animation: pop-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 12px; padding: 22px; max-width: 460px; width: 100%; }
+.modal h2 { font-size: 1.15rem; }
+.update-modal { max-width: 500px; }
+.upd-top { display: flex; justify-content: center; margin: -4px 0 6px; }
+.update-modal h2, .update-modal > p { text-align: center; }
+.upd-cat { image-rendering: pixelated; shape-rendering: crispEdges; }
+.upd-arrow { animation: upd-bob 1s steps(1) infinite; }
+.upd-spark { animation: upd-twinkle 1.4s steps(1) infinite; }
+@keyframes upd-bob { 0% { transform: translateY(0); } 50% { transform: translateY(1px); } }
+@keyframes upd-twinkle { 0% { opacity: 1; } 50% { opacity: 0.15; } }
+@media (prefers-reduced-motion: reduce) { .upd-arrow, .upd-spark { animation: none; } }
+.modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.menu-scrim { position: fixed; inset: 0; z-index: 21; }
+.menu { position: absolute; right: 0; z-index: 22; min-width: 220px; padding: 6px; background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 10px; box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; gap: 2px; }
+.menu.up { bottom: calc(100% + 10px); animation: pop-in 0.16s ease-out both; }
+.menu-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 0; background: transparent; color: var(--text); font: inherit; border-radius: 7px; cursor: pointer; text-align: left; }
+.menu-item:hover { background: var(--panel-3); }
+.menu-item.danger { color: #f08a8a; }
+
+/* ---- search filters ---- */
+.backdrop { position: fixed; inset: 0; z-index: 19; }
+
+/* ---- dialog motion ---- */
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(22px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.overlay.out { animation: fade-out 0.18s ease-in both; }
+.overlay.out .modal { animation: pop-out 0.18s ease-in both; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes pop-out { to { opacity: 0; transform: translateY(14px) scale(0.98); } }
+.modal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.modal-head h2 { margin: 0; flex: 1; }
+@media (prefers-reduced-motion: reduce) { .overlay, .modal { animation: none; } }
+
+/* ---- menus fade in just below what opened them ---- */
+@keyframes menu-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.menu.down { top: calc(100% + 6px); bottom: auto; animation: menu-in 0.16s ease-out both; }
+.menu.up { animation: menu-up 0.16s ease-out both; }
+@keyframes menu-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.menu-anchor { position: relative; flex: none; }
+/* The Library heading's Import menu opens over the sticky search bar below it. */
+.q-head:has(.menu-scrim) { position: relative; z-index: 30; }
+.menu-anchor .menu { min-width: 260px; white-space: nowrap; }
+.menu-sep { height: 1px; margin: 5px 6px; background: var(--line); }

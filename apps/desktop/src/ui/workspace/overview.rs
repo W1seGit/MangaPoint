@@ -11,6 +11,8 @@ pub fn OverviewTab() -> Element {
     let mut expanded = use_signal(|| false);
     // Whether the description is cut short, measured on the page.
     let mut cut_short = use_signal(|| false);
+    // Editing the details by hand (an imported series).
+    let mut editing = use_signal(|| false);
 
     let Some(ws) = state.workspace.read().clone() else {
         return rsx! {};
@@ -32,6 +34,17 @@ pub fn OverviewTab() -> Element {
         };
     };
 
+    if editing() && series.is_imported() {
+        return rsx! {
+            div { class: "overview",
+                div { class: "overview-body",
+                    div { class: "overview-title", h1 { "Edit details" } }
+                    super::edit_info::EditInfo { series_id: series.id.clone(), on_done: move |_| editing.set(false) }
+                }
+            }
+        };
+    }
+    let imported = series.is_imported();
     let info = series.info.clone();
     let loading = state.info_busy.read().contains(&ws.series_id);
     let cover_key = saved_cover_key(&series.id);
@@ -62,8 +75,15 @@ pub fn OverviewTab() -> Element {
                 div { class: "overview-title",
                     h1 { "{series.title}" }
                     super::SeriesActions { series_id: series.id.clone(), title: series.title.clone() }
+                    if imported {
+                        button { class: "btn", title: "Change its name, description, author and cover",
+                            onclick: move |_| editing.set(true),
+                            Icon { name: "pencil", size: 16 } "Edit details"
+                        }
+                    }
                 }
                 div { class: "row wrap",
+                    if imported { Chip { text: "Imported", kind: Some("accent".to_string()) } }
                     if let Some(i) = &info {
                         if !i.status.is_empty() { Chip { text: i.status.clone(), kind: Some("accent".to_string()) } }
                     }
@@ -107,6 +127,10 @@ pub fn OverviewTab() -> Element {
                         span { class: "read-more", onclick: move |_| expanded.set(!expanded()),
                             if expanded() { "Show less" } else { "Read more" }
                         }
+                    }
+                } else if imported {
+                    p { class: "muted small", style: "margin-top: 12px",
+                        "There is no description yet. Use Edit details to write one."
                     }
                 } else if loading {
                     p { class: "muted", style: "margin-top: 12px", Busy { label: "Loading the details…" } }

@@ -61,7 +61,7 @@ fn register_now() {}
 /// Tell the user something has finished, unless they turned that off. Shown
 /// from its own thread, because some systems make the caller wait.
 pub fn finished(state: AppState, title: &str, body: &str) {
-    if !state.settings.peek().notifications {
+    if !state.ui.settings.peek().notifications {
         return;
     }
     let (title, body) = (title.to_string(), body.to_string());

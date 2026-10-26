@@ -1,0 +1,46 @@
+[package]
+name = "web-engine"
+version.workspace = true
+edition.workspace = true
+description = "MangaPoint's conversion and book-keeping engine for the website: runs in the browser (WebAssembly) and natively for its tests."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# `core`: book-keeping the page itself needs (reading-state file, chapter
+# guessing, fingerprints, device list). Small.
+# `convert`: the converter and the file writers; only the worker loads this.
+default = ["core", "convert"]
+core = []
+convert = [
+    "core",
+    "formats/write",
+    "dep:converter",
+    "dep:zip",
+    "dep:image",
+]
+
+[dependencies]
+formats = { path = "../formats", default-features = false }
+converter = { path = "../converter", features = ["serde", "decode"], optional = true }
+device-profiles = { path = "../device-profiles", features = ["serde"] }
+library = { path = "../library" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+# ZIP inspection and image previews; the shared writers live in formats.
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"], optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.129"
+js-sys = "=0.3.106"
+
+[dev-dependencies]
+serde_json = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+pipeline = { path = "../pipeline" }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "fs", "io-util", "net", "macros"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }

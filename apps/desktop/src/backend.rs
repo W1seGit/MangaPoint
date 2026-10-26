@@ -86,7 +86,7 @@ async fn boot_with(state: AppState, install: bool, first_message: &str) {
         &paths().suwayomi_dir().join(format!("suwayomi-{VERSION_TAG}")),
     )
     .is_ok();
-    if !installed && !install && state.settings.peek().setup_step != library::SetupStep::Done {
+    if !installed && !install && state.ui.settings.peek().setup_step != library::SetupStep::Done {
         boot.set(BootState::NeedsEngine);
         return;
     }
@@ -240,7 +240,7 @@ async fn start(state: AppState) -> Result<Services, String> {
         info!("Catalog engine already installed");
     }
 
-    let browser_on = state.settings.read().browser_support && browser::supported();
+    let browser_on = state.ui.settings.read().browser_support && browser::supported();
     let config = ServerConfig {
         install,
         data_dir: paths().server_data_dir(),
@@ -561,7 +561,7 @@ fn acquire_lock_with(
 /// Turn browser support on and restart the server so it downloads and uses it.
 pub async fn enable_browser(state: AppState) {
     info!("Turning on browser support; restarting the catalog server");
-    let mut settings = state.settings;
+    let mut settings = state.ui.settings;
     settings.write().browser_support = true;
     state.save_settings();
     boot(state, true).await;
@@ -570,7 +570,7 @@ pub async fn enable_browser(state: AppState) {
 /// Turn browser support off and delete the downloaded runtime.
 pub async fn disable_browser(state: AppState) {
     info!("Turning off browser support and deleting its files");
-    let mut settings = state.settings;
+    let mut settings = state.ui.settings;
     settings.write().browser_support = false;
     state.save_settings();
     stop_running().await;

@@ -60,6 +60,11 @@ pub fn prepare_preview(state: AppState) {
 type DecodedChapter = (String, Arc<Vec<converter::GrayImage>>);
 pub(super) static DECODED: Mutex<Option<DecodedChapter>> = Mutex::new(None);
 
+/// The tests that use [`DECODED`] take this first: it is one cache for the whole
+/// program, so two of them at once would find each other's chapters in it.
+#[cfg(test)]
+pub(super) static DECODED_TEST_LOCK: Mutex<()> = Mutex::new(());
+
 /// The preview the background thread has finished for a chapter and options,
 /// waiting for the screen to take it.
 pub(super) static PREPARED_PREVIEW: Mutex<
@@ -208,6 +213,18 @@ pub(super) fn fingerprint_of(stamps: &[FileStamp]) -> String {
     format!("{:016x}", hasher.finish())
 }
 
+/// The name a chapter's saved pages go by in the preview caches, from their
+/// stamps; the files are not read.
+pub(super) async fn stamped_key(
+    cache_key: String,
+    files: Vec<std::path::PathBuf>,
+) -> Result<String, String> {
+    let stamps = tokio::task::spawn_blocking(move || stamp_files(&files))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(format!("{cache_key}/{}", fingerprint_of(&stamps)))
+}
+
 /// Read and decode a chapter's saved pages, in order. The decoded chapter is
 /// remembered under a name made from the pages' stamps, so asking again for the
 /// same pages only looks at the files' sizes and dates, off the UI thread.
@@ -274,7 +291,7 @@ fn preview_signature(state: AppState) -> u64 {
     let Some(series) = library.find(&ws.series_id) else {
         return 0;
     };
-    let device = state.settings.peek().device_profile();
+    let device = state.ui.settings.peek().device_profile();
     let opts = pipeline::process_options_for(&device, &series.settings);
     // Only the crops that apply to this chapter matter to how it looks.
     let crops = series.crops.chapter_configuration(&key);
@@ -313,6 +330,10 @@ pub(super) fn signature_of(
 }
 
 pub fn schedule_preview(state: AppState, delay_ms: u64) {
+    // For a phone or tablet the pages are shown as they are, not converted.
+    if device_profiles::is_original(&state.ui.settings.peek().device) {
+        return;
+    }
     let mut preview = state.preview;
     let signature = preview_signature(state);
     let generation = {
@@ -355,7 +376,7 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
         let Some(series) = state.library.peek().find(&ws.series_id).cloned() else {
             return fail("This series is not in your library.".into());
         };
-        let device = state.settings.peek().device_profile();
+        let device = state.ui.settings.peek().device_profile();
         let files = {
             let (id, k) = (ws.series_id.clone(), key.clone());
             tokio::task::spawn_blocking(move || library_files().page_files(&id, &k))
@@ -369,17 +390,30 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
             return fail("This chapter has no saved pages. Download it again.".into());
         }
         let image_count = files.len();
-        let (cache_key, grays) =
-            match decode_chapter(format!("{}/{key}/{image_count}", ws.series_id), files).await {
-                Ok(g) => g,
+        // The same planning and conversion the export runs.
+        let opts = pipeline::process_options_for(&device, &series.settings);
+        // With colour kept, the pages are decoded in colour, only for the
+        // chapter in view, and only when it has to be prepared (below); the
+        // gray decode is let go, so one chapter is held at a time.
+        let color = opts.color;
+        let color_files = color.then(|| files.clone());
+        let (cache_key, grays) = if color {
+            if let Ok(mut held) = DECODED.lock() {
+                *held = None;
+            }
+            match stamped_key(format!("{}/{key}/{image_count}/color", ws.series_id), files).await {
+                Ok(k) => (k, None),
                 Err(message) => return fail(message),
-            };
+            }
+        } else {
+            match decode_chapter(format!("{}/{key}/{image_count}", ws.series_id), files).await {
+                Ok((k, g)) => (k, Some(g)),
+                Err(message) => return fail(message),
+            }
+        };
         if !current(state) {
             return;
         }
-
-        // The same planning and conversion the export runs.
-        let opts = pipeline::process_options_for(&device, &series.settings);
         let shape_key = shape_options(&opts);
         let cached = PREPARED_PREVIEW.lock().ok().and_then(|g| {
             g.as_ref()
@@ -400,13 +434,19 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                 Err(e) => return fail(e.to_string()),
             }
         } else {
-            let (prepare_opts, grays) = (opts.clone(), grays.clone());
-            match tokio::task::spawn_blocking(move || {
-                pipeline::prepare_chapter(&grays, &prepare_opts)
+            let prepare_opts = opts.clone();
+            match tokio::task::spawn_blocking(move || match (grays, color_files) {
+                (Some(grays), _) => Ok(pipeline::prepare_chapter(&grays, &prepare_opts)),
+                (None, Some(files)) => {
+                    pipeline::prepare_chapter_color(&files, &prepare_opts, PREVIEW_THREADS)
+                        .map_err(|e| e.to_string())
+                }
+                (None, None) => Err("The chapter could not be read.".to_string()),
             })
             .await
             {
-                Ok(c) => {
+                Ok(Err(message)) => return fail(message),
+                Ok(Ok(c)) => {
                     if let Ok(mut cache) = PREPARED_PREVIEW.lock() {
                         *cache = Some((cache_key, shape_key, c.clone()));
                     }
@@ -560,6 +600,26 @@ pub fn schedule_preview(state: AppState, delay_ms: u64) {
                             .filter(|(k, _)| k == &key)
                             .map(|(_, crop)| *crop)
                             .or_else(|| crops.effective(&chapter_key, &key));
+                        if opts.color {
+                            // Colour: the converted page and both source panes
+                            // are drawn in colour. The shading samples are for
+                            // gray pages' dithering and do not apply.
+                            let drawn = pipeline::draw_color_page(
+                                &prepared,
+                                &page,
+                                &opts,
+                                crop.unwrap_or_default().as_array(),
+                                is_full,
+                                is_full && (want_source || is_selected),
+                                is_selected
+                                    && matches!(
+                                        page.source,
+                                        converter::Source::Image { part, .. }
+                                            if part != converter::plan::Part::Whole
+                                    ),
+                            );
+                            return (drawn.converted, drawn.thumbnail, drawn.original, drawn.piece, Vec::new());
+                        }
                         let levels = converter::plan::render_page_cropped(
                             &prepared,
                             &page,
@@ -725,6 +785,38 @@ mod page_editor_tests {
     }
 
     #[test]
+    fn colour_and_gray_previews_never_share_a_prepared_chapter_or_a_signature() {
+        let gray = converter::ProcessOptions::manga_default(480, 800, converter::Depth::Two);
+        let mut colour = gray.clone();
+        colour.color = true;
+        // The prepared chapter is kept under these options.
+        assert_ne!(shape_options(&gray), shape_options(&colour));
+        // And the drawn pages are redrawn when the choice changes.
+        assert_ne!(
+            signature_of("s", "c1", &gray, &[], &None),
+            signature_of("s", "c1", &colour, &[], &None)
+        );
+        // Tone settings still do not prepare a colour chapter again.
+        let mut toned = colour.clone();
+        toned.contrast = 90;
+        assert_eq!(shape_options(&colour), shape_options(&toned));
+    }
+
+    #[tokio::test]
+    async fn a_chapters_cache_name_follows_its_files_without_reading_them() {
+        let dir = std::env::temp_dir().join(format!("mangapoint-stamped-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("00001.img");
+        std::fs::write(&path, b"one").unwrap();
+        let a = stamped_key("k".into(), vec![path.clone()]).await.unwrap();
+        assert_eq!(a, stamped_key("k".into(), vec![path.clone()]).await.unwrap());
+        std::fs::write(&path, b"longer").unwrap();
+        assert_ne!(a, stamped_key("k".into(), vec![path]).await.unwrap());
+        assert!(stamped_key("k".into(), vec![dir.join("missing")]).await.is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn preview_tokens_do_not_reset_between_workspaces() {
         let first = next_preview_request();
         let second = next_preview_request();
@@ -732,7 +824,9 @@ mod page_editor_tests {
     }
 
     #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
     async fn preview_reloads_replaced_sources_with_the_same_page_count() {
+        let _only_one = super::DECODED_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join(format!(
             "mangapoint-preview-revision-{}",
             std::process::id()
@@ -802,6 +896,7 @@ mod tests {
 
     #[test]
     fn a_decoded_chapter_is_found_by_the_files_stamps_without_reading_them() {
+        let _only_one = DECODED_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let dir = std::env::temp_dir().join(format!("mp-decode-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // Not pictures: if they were read and decoded this would be an error.

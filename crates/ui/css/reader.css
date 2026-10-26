@@ -1,0 +1,132 @@
+/* The reader: the strip, the bars, the reading settings, the end of a chapter. */
+/* ---- the reader: a downloaded series read in the app, and a book read on the website ---- */
+/* Over the whole window (the side menu included), under dialogs and menus. The page fills the
+   screen; two bars fade into it and slide away while reading. */
+.reader {
+  position: fixed; inset: 0; z-index: 18; display: flex; flex-direction: column;
+  background: #000; color: var(--text); --zoom: 1;
+  --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
+  --bar-h: 0px; --top-h: calc(60px + var(--sat)); --bottom-h: calc(76px + var(--sab));
+}
+/* The two bars: no panel, no border, a light fade into the page behind the buttons only. Only their
+   buttons take clicks and taps, so a click on the fade still reaches the page underneath. */
+.reader .reader-bar {
+  position: absolute; left: 0; right: 0; z-index: 3; box-sizing: border-box; white-space: normal;
+  pointer-events: none; transition: transform 0.22s ease, opacity 0.22s ease;
+}
+.reader.show-bar .reader-bar > * { pointer-events: auto; }
+.reader-top {
+  top: 0; height: var(--top-h);
+  display: flex; align-items: center; justify-content: space-between; gap: 4px;
+  padding: var(--sat) max(6px, var(--sar)) 0 max(6px, var(--sal));
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0) 100%);
+}
+.reader-bottom {
+  bottom: 0; height: var(--bottom-h);
+  display: flex; justify-content: center; align-items: flex-end;
+  padding: 0 max(14px, var(--sar)) calc(12px + var(--sab)) max(14px, var(--sal));
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0) 100%);
+}
+.reader:not(.show-bar) .reader-top { transform: translateY(-100%); opacity: 0; }
+.reader:not(.show-bar) .reader-bottom { transform: translateY(100%); opacity: 0; }
+/* Always shown: no fade over the page at all, the buttons and the words carry their own backing. */
+.reader.pinned .reader-top, .reader.pinned .reader-bottom { background: none; }
+.reader.pinned .reader-arrow { background: rgba(0, 0, 0, 0.28); }
+.reader.pinned .reader-chapter-link, .reader.pinned .reader-caption { text-shadow: 0 1px 4px rgba(0, 0, 0, 0.9); }
+.reader.pinned .reader-chapter-link { background: rgba(0, 0, 0, 0.28); border-radius: 999px; }
+.reader-arrow {
+  flex: none; width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: transparent; color: var(--text); cursor: pointer;
+}
+.reader-arrow:hover { background: rgba(255, 255, 255, 0.1); }
+.reader-chapter-nav { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; }
+.reader-chapter-anchor { position: relative; flex: 0 1 auto; min-width: 0; display: flex; justify-content: center; }
+.reader-chapter-link {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 10px 12px; border: 0; background: none;
+  color: var(--text); font: inherit; font-size: 1rem; font-weight: 600; cursor: pointer;
+}
+.reader-chapter-link:hover { color: var(--accent, var(--text)); }
+.reader-chapter-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reader-top .reader-menu { left: 50%; right: auto; transform: translateX(-50%); min-width: 220px; }
+.reader-round {
+  width: 46px; height: 46px; display: inline-flex; align-items: center; justify-content: center; flex: none;
+  border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.14); color: var(--text); cursor: pointer;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.reader-round:hover { background: rgba(255, 255, 255, 0.24); }
+.reader-caption { display: flex; flex-direction: column; align-items: center; min-width: 0; pointer-events: none; text-align: center; }
+.reader-caption strong { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.95rem; }
+.reader-percent { color: var(--muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.reader-menu { max-height: 60vh; overflow-y: auto; min-width: 200px; right: auto; left: 0; }
+.reader-chapter-item.on { background: var(--panel-3); }
+.reader-read { color: var(--ok); display: inline-flex; }
+.reader .menu-anchor { position: relative; }
+
+/* The reading settings: a whole page of their own, like the app's settings */
+.reader-settings {
+  position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; overflow-y: auto;
+  background: var(--bg, #0a0a0a); color: var(--text); padding-top: var(--sat);
+}
+.reader-settings-inner { width: 100%; max-width: 680px; margin: 0 auto; box-sizing: border-box; padding: 0 max(20px, var(--sar)) calc(28px + var(--sab)) max(20px, var(--sal)); }
+.reader-settings-head { display: flex; align-items: center; gap: 14px; padding: 16px 0 10px; }
+.reader-settings-head h2 { margin: 0; font-size: 1.3rem; }
+.reader-settings-body { padding: 8px 0 0; }
+.reader-settings .seg button { flex: 1; }
+.reader-settings .zoom-menu { width: 100%; max-width: 300px; margin-left: auto; }
+.reader-settings .zoom-field input, .reader-settings .zoom-field input:focus { flex: 1; min-width: 0; width: auto; }
+.reader-settings .zoom-list { right: 0; left: 0; min-width: 0; max-height: 50vh; overflow-y: auto; }
+@media (max-width: 700px) { .reader-settings .zoom-menu { max-width: none; margin-left: 0; } }
+
+/* ---- the pages ---- */
+.reader-stage { flex: 1; min-height: 0; overflow: auto; position: relative; background: #000; }
+.reader-stage > .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+.reader-tile {
+  position: relative; display: block; margin: 0 auto; flex: none; aspect-ratio: var(--ar, 2 / 3);
+  background: #0c0c0c;
+}
+.reader-tile img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+/* One width for every page: "Fit page" is the width that suits the window (all of a phone's, a
+   comfortable column on a big screen) and the zoom is a share of that, so the same percentage looks
+   the same for every book. A page's own size never decides it. */
+.reader { --page-w: min(100%, clamp(640px, 36vw, 860px)); }
+.reader .reader-tile { width: calc(var(--page-w) * var(--zoom)); height: auto; max-width: none; }
+.reader-strip { display: flex; flex-direction: column; align-items: flex-start; min-height: 100%; }
+.reader-strip .reader-chapter { width: 100%; display: flex; flex-direction: column; }
+.reader-divider {
+  align-self: center; margin: 28px auto; padding: 6px 16px; border: 1px solid var(--line-strong);
+  border-radius: 999px; color: var(--muted); background: var(--panel); font-size: 0.9rem;
+}
+.reader-fail {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; padding: 16px; text-align: center; color: var(--muted); background: var(--panel);
+  border: 1px dashed var(--line-strong);
+}
+.reader-tile.failed { min-height: 160px; }
+
+/* ---- the end of a chapter ---- */
+.reader-end {
+  width: min(520px, 92%); margin: 0 auto; padding: 56px 0 72px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.reader-end { padding-bottom: calc(112px + var(--sab)); }
+.reader-end h2 { font-size: 1.25rem; }
+.reader-end .btn { margin-top: 12px; }
+.reader-end-buttons { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.reader-gone { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; }
+
+/* ---- on the Library cards and the chapter table ---- */
+.poster-read {
+  grid-column: 2; grid-row: 2; align-self: end;
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: auto; margin: 8px 14px 14px;
+  min-height: 34px; padding: 6px 10px; font-size: 0.9rem;
+}
+.poster-read-progress { grid-column: 2; grid-row: 3; height: 3px; margin: -8px 14px 14px; }
+.chapter-read { margin-left: 8px; padding: 3px 9px !important; min-height: 28px !important; font-size: 0.82rem; }
+
+/* ---- the Export screen's preview for a phone or tablet ---- */
+.original-editor .editor-scroll { padding: 0; background: #000; }
+.original-page { display: block; margin: 0 auto; max-width: none; aspect-ratio: var(--ar, 2 / 3); }
+.original-page img { width: 100%; height: 100%; display: block; }
+.original-page figcaption { padding: 24px; text-align: center; }

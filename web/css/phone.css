@@ -1,0 +1,83 @@
+/* Tablets and phones: a bottom tab bar instead of the sidebar, 44 px targets, dialogs that fill the
+   screen. */
+
+/* Settings rows stack on narrow screens */
+@media (max-width: 700px) {
+  .sx-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .sx-control { justify-content: flex-start; }
+  .sx-control .seg { width: 100%; }
+}
+
+/* ---- tablets and phones: a bottom tab bar instead of the sidebar ---- */
+@media (max-width: 800px) {
+  .app { flex-direction: column-reverse; }
+  .nav {
+    width: auto; flex: none; flex-direction: row; justify-content: space-around; gap: 2px;
+    border-right: 0; border-top: 1px solid var(--line);
+    padding: 6px max(8px, var(--sar)) calc(6px + var(--sab)) max(8px, var(--sal));
+    z-index: 10;
+  }
+  .brand, .nav-spacer { display: none; }
+  .nav-item {
+    flex: 1; flex-direction: column; justify-content: center; gap: 3px; min-height: 52px;
+    padding: 6px 4px; font-size: 0.74rem; text-align: center; border-radius: 10px;
+  }
+  .content { padding: calc(14px + var(--sat)) max(14px, var(--sal)) 28px max(14px, var(--sal)); padding-right: max(14px, var(--sar)); }
+  h1 { font-size: 1.35rem; }
+
+  /* 44px targets */
+  .btn { min-height: 44px; }
+  .btn.small, .btn.ghost.small { min-height: 40px; }
+  .seg button { min-height: 44px; }
+  .pill { min-height: 40px; display: inline-flex; align-items: center; }
+  .menu-item { min-height: 46px; }
+  select, input[type="text"], input[type="search"], input[type="number"] { min-height: 44px; font-size: 16px; }
+  .poster-more { width: 40px; height: 40px; }
+  .toast-x { width: 40px; height: 40px; }
+
+  /* Library */
+  .q-head { gap: 8px; }
+  .lib-tools { gap: 8px; }
+  .lib-filter { width: 100%; order: 3; }
+  .poster-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+  .poster-read { min-height: 44px; }
+
+  /* Dialogs fill the screen */
+  .overlay { padding: 0; align-items: stretch; }
+  .modal { border-radius: 0; max-width: none; padding: calc(16px + var(--sat)) 14px calc(14px + var(--sab)); display: flex; flex-direction: column; overflow-y: auto; }
+  .modal.import { width: 100%; max-height: none; height: 100%; }
+  .modal:not(.import) { align-self: center; border-radius: 12px; margin: 16px; width: auto; max-width: 460px; }
+  .overlay:has(.modal:not(.import)) { align-items: center; padding: 8px; }
+  .import-body { flex: 1; }
+  .import-bar { flex-wrap: wrap; }
+  .import-title { flex: 1 1 100%; order: -1; }
+  .import-file { flex: 1 1 auto; text-align: left; }
+  .import-book-body { grid-template-columns: minmax(0, 1fr); }
+  .import-cover { width: 96px; }
+  .import-chapter { grid-template-columns: auto 64px minmax(0, 1fr); }
+  .import-chapter .import-pages { grid-column: 3; text-align: left; margin-top: -4px; }
+  .import-chapters { max-height: none; }
+  .import-chapter input[type="checkbox"] { width: 22px; height: 22px; }
+  .modal .actions { flex-wrap: wrap; position: sticky; bottom: 0; background: var(--panel); padding-top: 10px; }
+  .modal .actions .btn { flex: 1 1 auto; }
+
+  /* Export and settings */
+  
+  
+  .seg { flex-wrap: nowrap; }
+  .seg button { flex: 1; white-space: normal; }
+
+  /* Toasts above the tab bar */
+  .toasts { left: 12px; right: 12px; width: auto; bottom: calc(76px + var(--sab)); }
+  .toast { left: 0; right: 0; width: auto; }
+
+}
+
+@media (max-width: 420px) {
+  .poster-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 800px) {
+  .action-bar { left: 0; bottom: calc(65px + var(--sab)); padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+  .page:has(.action-bar) { padding-bottom: 120px; }
+  .poster-check { opacity: 1; }
+}

@@ -1,0 +1,33 @@
+/* Toasts: stacked above the bottom bars, spreading out when pointed at. */
+
+/* ---- toasts: stacked above the bottom action bars, spreading out when pointed at ---- */
+.toasts { position: fixed; right: 20px; bottom: 88px; width: 380px; height: 0; z-index: 60; }
+.toast {
+  --h: 76px;
+  position: absolute; right: 0; bottom: 0; width: 380px; height: var(--h); box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 10px;
+  background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  transform-origin: 50% 100%;
+  transform: translateY(calc(var(--i) * -9px)) scale(calc(1 - var(--i) * 0.045));
+  opacity: calc(1 - var(--i) * 0.3);
+  z-index: calc(20 - var(--i));
+  pointer-events: none;
+  transition: transform 0.38s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
+  animation: toast-in 0.42s cubic-bezier(0.2, 0.9, 0.3, 1) backwards;
+}
+.toast:nth-child(n + 5) { opacity: 0; }
+.toast:first-child, .toast { pointer-events: auto; }
+.toast-cat { flex: none; width: 52px; height: 56px; image-rendering: pixelated; shape-rendering: crispEdges; }
+.toast-text { flex: 1; min-width: 0; font-size: 0.9rem; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.toast-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; }
+.toast-x:hover { background: var(--panel-3); color: var(--text); }
+.toasts:hover .toast { transform: translateY(calc(var(--i) * -86px)); opacity: 1; }
+.toasts:hover .toast:nth-child(n + 5) { opacity: 1; }
+/* A bridge over the gaps, so moving up the list does not let go of it. */
+.toasts:hover .toast::after { content: ""; position: absolute; left: 0; right: 0; top: -12px; height: 12px; }
+.toast.leaving { animation: toast-out 0.34s cubic-bezier(0.5, 0, 0.8, 0.4) forwards; pointer-events: none; }
+@keyframes toast-in { from { translate: 120% 0; opacity: 0; } to { translate: 0 0; opacity: 1; } }
+@keyframes toast-out { from { translate: 0 0; } to { translate: 120% 0; opacity: 0; } }
+.app[data-motion="snappy"] .toast { transition-duration: 0.08s; animation-duration: 0.1s; }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; transition: none; } }

@@ -1,179 +1,36 @@
 //! The page editor: every page of a chapter in one continuous scroll, like a
 //! PDF viewer, with the original beside each converted page.
 use super::crop_editor::SourceCanvas;
-use crate::state::{AppState, Shot, Zoom};
+use crate::state::AppState;
 use crate::ui::cat::CirclingCat;
-use crate::ui::widgets::{EmptyState, Icon, ZoomDropdown, ZoomPick};
+use crate::ui::widgets::EmptyState;
 use crate::ui::work::{prepare_preview, schedule_preview, select_preview_page};
 use converter::plan::Source;
 use dioxus::prelude::*;
 use library::CropRect;
+use mangapoint_ui::logic::preview::{groups, part_note, reader_style, row_height, seams, PageSlot, SlotPart};
+use mangapoint_ui::page_editor as editor;
 
-/// What the page after this one repeats of it: how many rows, and where those
-/// rows sit on the page (as shares of the screen height).
-#[derive(Clone, PartialEq)]
-struct Seam {
-    rows: u32,
-    band_top: f32,
-    band_height: f32,
-}
-
-/// The seam after each page of a strip chapter; `None` for the last page and
-/// for chapters that are not strips.
-fn seams(
-    pages: &[std::rc::Rc<crate::state::PreviewPage>],
-    screen_height: u32,
-) -> Vec<Option<Seam>> {
-    let rows_of = |page: &crate::state::PreviewPage| match page.source.as_ref().map(|p| p.source) {
-        Some(Source::Strip { top, height }) => Some((top, height)),
-        _ => None,
-    };
-    (0..pages.len())
-        .map(|i| {
-            let (top, height) = rows_of(&pages[i])?;
-            let (next_top, _) = rows_of(pages.get(i + 1)?)?;
-            let rows = (top + height).saturating_sub(next_top);
-            let screen = screen_height.max(1) as f32;
-            Some(Seam {
-                rows,
-                band_top: height.saturating_sub(rows) as f32 / screen * 100.0,
-                band_height: rows as f32 / screen * 100.0,
-            })
-        })
-        .collect()
-}
-
-/// Sizes the viewer to the window, reports which pages are on screen (as
-/// `[first, last, current]`, `-1` when there are none), and wires the keys.
-const EDITOR_SCRIPT: &str = include_str!("../../js/preview-editor.js");
-
-/// How tall a page is at this zoom, as a CSS length.
-fn row_height(zoom: Zoom, width: u32, height: u32) -> String {
-    match zoom {
-        Zoom::Fit => format!(
-            "min(var(--reader-page-height),calc(var(--reader-page-width) * {height} / {width}))"
-        ),
-        Zoom::Width => format!("calc(var(--reader-page-width) * {height} / {width})"),
-        Zoom::Custom(percent) => format!("{}px", height * percent as u32 / 100),
-    }
-}
-
-fn reader_style(zoom: Zoom, width: u32, height: u32) -> String {
-    let size = match zoom {
-        Zoom::Fit => format!("height:{};width:auto;", row_height(zoom, width, height)),
-        Zoom::Width => "height:auto;width:100%;".to_string(),
-        Zoom::Custom(percent) => format!(
-            "height:{}px;width:{}px;",
-            height * percent as u32 / 100,
-            width * percent as u32 / 100
-        ),
-    };
-    format!("{size}aspect-ratio:{width}/{height};")
-}
-
-/// Which pages share a picture: a double page split in two, or a page zoomed
-/// into pieces, is several reader pages from one source page. Every other page
-/// is a group of its own. As `(first, one past the last)`.
-fn groups(pages: &[std::rc::Rc<crate::state::PreviewPage>]) -> Vec<(usize, usize)> {
-    let mut out: Vec<(usize, usize)> = Vec::new();
-    for (i, page) in pages.iter().enumerate() {
-        match out.last_mut() {
-            Some(last) if page.image.is_some() && pages[last.0].image == page.image => {
-                last.1 = i + 1;
-            }
-            _ => out.push((i, i + 1)),
-        }
-    }
-    out
-}
-
-/// What a page is of its source page, when the source page makes several
-/// ("left half of source page 12"): which one of them this is.
-fn part_note(page: &crate::state::PreviewPage, k: usize, of: usize) -> Option<String> {
+/// Where a page sits in its source page, for the layout shared with the website.
+fn slot(page: &crate::state::PreviewPage) -> PageSlot {
     use converter::plan::Part;
-    let image = page.image?;
-    if of < 2 {
-        return None;
-    }
-    let what = match page.source.as_ref().map(|p| p.source) {
-        Some(Source::Image {
-            part: Part::Half(0),
-            ..
-        }) => "left half".to_string(),
-        Some(Source::Image {
-            part: Part::Half(_),
-            ..
-        }) => "right half".to_string(),
-        _ => format!("part {} of {of}", k + 1),
+    let (part, top, height) = match page.source.as_ref().map(|p| p.source) {
+        Some(Source::Strip { top, height }) => (SlotPart::Strip, top, height),
+        Some(Source::Image { part: Part::Half(0), .. }) => (SlotPart::Left, 0, 0),
+        Some(Source::Image { part: Part::Half(_), .. }) => (SlotPart::Right, 0, 0),
+        Some(Source::Image { part: Part::Whole | Part::Rotated, .. }) | None => (SlotPart::Whole, 0, 0),
+        Some(_) => (SlotPart::Piece, 0, 0),
     };
-    Some(format!("{what} of source page {}", image + 1))
+    PageSlot { image: page.image, part, top, height }
 }
 
-/// One page of the chapter in the scrolling list: the page as the reader will
-/// show it. The original sits beside it, in the group's source cell.
-#[component]
-fn EditorRow(
-    index: usize,
-    selected: bool,
-    result: Option<Shot>,
-    /// "Page 13", and when the source page makes several, which part this is.
-    label: String,
-    row_style: String,
-    frame_style: String,
-    seam: Option<Seam>,
-    /// The page is being drawn again: it is darkened, with the cat on it.
-    busy: bool,
-) -> Element {
-    let state = use_context::<AppState>();
-    rsx! {
-        article {
-            class: if selected { "editor-row selected" } else { "editor-row" },
-            "data-row": "{index}",
-            style: "{row_style}",
-            onclick: move |_| {
-                if !selected {
-                    let mut preview = state.preview;
-                    let mut p = preview.write();
-                    p.selected = index;
-                    p.draft_crop = None;
-                }
-            },
-            div { class: "editor-row-label", "{label}" }
-            div { class: "editor-row-panes",
-                div { class: "row-pane result-pane",
-                    div { class: "editor-reader-frame", style: "{frame_style}",
-                        if let Some(shot) = result {
-                            img { src: "{shot.url}", alt: "Page {index + 1} exactly as exported to the reader", draggable: "false" }
-                        } else {
-                            div { class: "editor-image-loading" }
-                        }
-                        if busy {
-                            div { class: "render-veil", CirclingCat { size: 96 } }
-                        }
-                        if let Some(seam) = seam.as_ref().filter(|s| s.rows > 0) {
-                            div {
-                                class: "editor-seam-band",
-                                style: "top: {seam.band_top}%; height: {seam.band_height}%;",
-                                title: "The next page starts with these rows again",
-                                span { "Repeated on the next page" }
-                            }
-                        }
-                    }
-                }
-            }
-            if let Some(seam) = seam {
-                div { class: if seam.rows > 0 { "editor-seam-note repeats" } else { "editor-seam-note clean" },
-                    if seam.rows > 0 {
-                        Icon { name: "layers", size: 13 }
-                        "Next page repeats these last {seam.rows} rows"
-                    } else {
-                        Icon { name: "check", size: 13 }
-                        "Clean cut: the next page starts right below"
-                    }
-                }
-            }
-        }
-    }
+
+/// Starts the page editor's script (`crates/ui/js/preview-editor.js`): it sizes the viewer to the
+/// window and reports which pages are on screen (as `[first, last, current]`, `-1` when there are
+/// none) over the eval's channel, so it stays alive.
+pub(crate) fn editor_script() -> String {
+    let source = mangapoint_ui::scripts::source("preview_editor").unwrap_or_default();
+    format!("{source}\n;window.MP.preview_editor.start((m) => dioxus.send(m));\nawait new Promise(() => {{}});")
 }
 
 /// The source artwork beside a group of reader pages. It stays in view while
@@ -227,59 +84,26 @@ fn SourceCell(
         (false, None) => Some([0.0, 0.0, 1.0, 1.0]),
     };
     rsx! {
-        div { class: "source-cell source-pane", style: "grid-row: 1 / span {pages.len()};",
-            div { class: "source-sticky",
-                if let Some(source) = source {
-                    if let (Some(current), Some(frame)) = (current, frame) {
-                        SourceCanvas {
-                            key: "{chapter}/{first}",
-                            source,
-                            draft,
-                            crop_key: current.crop_key.clone(),
-                            editing,
-                            guide,
-                            frame,
-                            marks,
-                        }
-                    } else {
-                        SourcePicture { source, index: first, marks }
+        editor::SourceCell { count: pages.len(),
+            if let Some(source) = source {
+                if let (Some(current), Some(frame)) = (current, frame) {
+                    SourceCanvas {
+                        key: "{chapter}/{first}",
+                        source,
+                        draft,
+                        crop_key: current.crop_key.clone(),
+                        editing,
+                        guide,
+                        frame,
+                        marks,
                     }
                 } else {
-                    div { class: "editor-image-loading source-loading", "Preparing source…" }
+                    editor::SourceArt { url: source.url.clone(), width: source.width, height: source.height, index: first,
+                        editor::SourceMarks { marks }
+                    }
                 }
-            }
-        }
-    }
-}
-
-/// The picture of a page that is not being cropped, with the parts that
-/// reader pages show marked on it.
-#[component]
-fn SourcePicture(source: Shot, index: usize, marks: Vec<(usize, [f32; 4], bool)>) -> Element {
-    rsx! {
-        div { class: "editor-source-scroll",
-            div {
-                class: "editor-source-art",
-                style: "aspect-ratio: {source.width} / {source.height}; --source-aspect: {source.width as f64 / source.height.max(1) as f64};",
-                img { src: "{source.url}", alt: "Source artwork of page {index + 1}", draggable: "false" }
-                SourceMarks { marks }
-            }
-        }
-    }
-}
-
-/// The rectangles of a picture that reader pages show: the page in view is
-/// lit, the others outlined and numbered.
-#[component]
-pub(super) fn SourceMarks(marks: Vec<(usize, [f32; 4], bool)>) -> Element {
-    rsx! {
-        for (page, r, on) in marks {
-            div {
-                key: "{page}",
-                class: if on { "source-region on" } else { "source-region" },
-                style: "left:{r[0] * 100.0}%;top:{r[1] * 100.0}%;width:{r[2] * 100.0}%;height:{r[3] * 100.0}%;",
-                title: "Shown on page {page + 1}",
-                span { "{page + 1}" }
+            } else {
+                editor::SourceLoading {}
             }
         }
     }
@@ -301,7 +125,7 @@ pub(crate) fn switch_chapter(state: AppState, key: String) {
     w.shading_samples.clear();
     drop(w);
     spawn(async move {
-        let _ = document::eval("document.querySelector('.editor-scroll')?.scrollTo(0,0)").await;
+        let _ = document::eval(&mangapoint_ui::scripts::call_method("preview_editor", "top", "").unwrap_or_default()).await;
     });
     schedule_preview(state, 0);
 }
@@ -334,7 +158,7 @@ fn track_scroll(state: AppState, first: i64, last: i64, current: i64) {
     if page_changed {
         let selected = state.preview.peek().selected;
         spawn(async move {
-            let js = format!("document.querySelector('[data-editor-page=\"{selected}\"]')?.scrollIntoView({{block:'nearest'}})");
+            let js = mangapoint_ui::scripts::call_method("preview_editor", "thumb", &format!("{{index:{selected}}}")).unwrap_or_default();
             let _ = document::eval(&js).await;
         });
     }
@@ -345,28 +169,10 @@ fn track_scroll(state: AppState, first: i64, last: i64, current: i64) {
 
 /// The zoom of the page preview, in the shared zoom menu.
 #[component]
-fn ZoomMenu() -> Element {
+pub(crate) fn ZoomMenu() -> Element {
     let mut state = use_context::<AppState>();
-    let selected = match state.preview.read().view.zoom {
-        Zoom::Fit => ZoomPick::Fit,
-        Zoom::Width => ZoomPick::Width,
-        Zoom::Custom(percent) => ZoomPick::Percent(percent),
-    };
-    rsx! {
-        ZoomDropdown {
-            selected,
-            percents: vec![50u16, 75, 90, 100, 125, 150, 200],
-            min: Zoom::MIN_PERCENT,
-            max: Zoom::MAX_PERCENT,
-            onpick: move |pick| {
-                state.preview.write().view.zoom = match pick {
-                    ZoomPick::Fit => Zoom::Fit,
-                    ZoomPick::Width => Zoom::Width,
-                    ZoomPick::Percent(percent) => Zoom::Custom(percent),
-                };
-            },
-        }
-    }
+    let zoom = state.preview.read().view.zoom;
+    rsx! { mangapoint_ui::export::PreviewZoom { zoom, on_change: move |zoom| { state.preview.write().view.zoom = zoom; } } }
 }
 
 #[component]
@@ -376,7 +182,7 @@ pub fn PreviewTab() -> Element {
     let mut identity = use_signal(String::new);
     use_effect(move || prepare_preview(state));
     use_future(move || async move {
-        let mut eval = document::eval(EDITOR_SCRIPT);
+        let mut eval = document::eval(&editor_script());
         while let Ok(message) = eval.recv::<Vec<i64>>().await {
             if let [first, last, current] = message.as_slice() {
                 track_scroll(state, *first, *last, *current);
@@ -415,7 +221,7 @@ pub fn PreviewTab() -> Element {
     let total = p.pages.len();
     let selected = p.selected.min(total.saturating_sub(1));
     let number = if total == 0 { 0 } else { selected + 1 };
-    let device = state.settings.read().device_profile();
+    let device = state.ui.settings.read().device_profile();
     let frame_style = reader_style(view.zoom, device.width, device.height);
     let row_style = format!(
         "--row-h:{};",
@@ -431,23 +237,12 @@ pub fn PreviewTab() -> Element {
         }
     );
     let compare = view.show_original;
-    let seams = seams(&p.pages, device.height);
+    let slots: Vec<PageSlot> = p.pages.iter().map(|page| slot(page)).collect();
+    let seams = seams(&slots, device.height);
     rsx! {
         div { id: "page-editor", class: "{classes}", tabindex: "0",
             div { class: "editor-toolbar",
-                label { class: "editor-page-jump",
-                    span { "Page" }
-                    input {
-                        r#type: "number", min: "1", max: "{total}", step: "1",
-                        value: "{number}", disabled: total == 0, "aria-label": "Go to page",
-                        onchange: move |e| {
-                            if let Ok(n) = e.value().trim().parse::<usize>() {
-                                if (1..=total).contains(&n) { select_preview_page(state, n - 1); }
-                            }
-                        },
-                    }
-                    span { class: "muted", "/ {total}" }
-                }
+                editor::PageJump { total, number, on_go: move |i| select_preview_page(state, i) }
                 div { class: "editor-toolbar-actions",
                     ZoomMenu {}
                 }
@@ -466,21 +261,8 @@ pub fn PreviewTab() -> Element {
                         if needs && !state.preview.peek().overview { schedule_preview(state, 80); }
                     },
                     for (i, page) in p.pages.iter().enumerate() {
-                        button {
-                            key: "{i}",
-                            class: if i == selected { "editor-thumb selected" } else { "editor-thumb" },
-                            "data-editor-page": "{i}",
-                            "aria-label": "Open page {i + 1}",
-                            "aria-current": if i == selected { "page" } else { "false" },
-                            onclick: move |_| select_preview_page(state, i),
-                            div { class: "editor-thumb-art",
-                                if let Some(shot) = page.thumbnail.as_ref().or(page.shot.as_ref()) {
-                                    img { src: "{shot.url}", alt: "Reader page {i + 1}" }
-                                } else {
-                                    Icon { name: "file-image", size: 23 }
-                                }
-                            }
-                            span { "{i + 1}" }
+                        editor::Thumb { key: "{i}", index: i, selected: i == selected, on_open: move |_| select_preview_page(state, i),
+                            editor::PageImage { url: page.thumbnail.as_ref().or(page.shot.as_ref()).map(|s| s.url.clone()), index: i, size: 23 }
                         }
                     }
                     button {
@@ -534,7 +316,7 @@ pub fn PreviewTab() -> Element {
                         if total == 0 && p.error.is_none() {
                             div { class: "editor-image-loading", "Preparing the chapter…" }
                         }
-                        for (start, end) in groups(&p.pages) {
+                        for (start, end) in groups(&slots) {
                             div {
                                 key: "{chapter}/g{start}",
                                 class: match (compare, end - start) {
@@ -555,22 +337,40 @@ pub fn PreviewTab() -> Element {
                                     }
                                 }
                                 for i in start..end {
-                                    EditorRow {
-                                        key: "{chapter}/{i}",
-                                        index: i,
-                                        selected: i == selected,
-                                        result: p.pages[i].shot.clone(),
-                                        label: match part_note(&p.pages[i], i - start, end - start) {
-                                            Some(note) => format!("Page {} · {note}", i + 1),
-                                            None => format!("Page {}", i + 1),
-                                        },
-                                        row_style: row_style.clone(),
-                                        frame_style: frame_style.clone(),
-                                        seam: seams.get(i).cloned().flatten(),
+                                    {
+                                        let page = &p.pages[i];
                                         // Darkened only while this page is being drawn again: a page drawn the
                                         // way it should look is left alone, whatever else is loading.
-                                        busy: (i + 1 >= p.window.0 && i <= p.window.1 + 1)
-                                            && (p.pages[i].shot.is_none() || (p.busy && p.pages[i].rendered_for != p.signature)),
+                                        let busy = (i + 1 >= p.window.0 && i <= p.window.1 + 1)
+                                            && (page.shot.is_none() || (p.busy && page.rendered_for != p.signature));
+                                        rsx! {
+                                            editor::PageRow {
+                                                key: "{chapter}/{i}",
+                                                index: i,
+                                                selected: i == selected,
+                                                label: match part_note(&slots[i], i - start, end - start) {
+                                                    Some(note) => format!("Page {} · {note}", i + 1),
+                                                    None => format!("Page {}", i + 1),
+                                                },
+                                                row_style: row_style.clone(),
+                                                frame_style: frame_style.clone(),
+                                                seam: seams.get(i).cloned().flatten(),
+                                                on_select: move |_| {
+                                                    let mut preview = state.preview;
+                                                    let mut p = preview.write();
+                                                    p.selected = i;
+                                                    p.draft_crop = None;
+                                                },
+                                                if let Some(shot) = page.shot.as_ref() {
+                                                    img { src: "{shot.url}", alt: "Page {i + 1} exactly as exported to the reader", draggable: "false" }
+                                                } else {
+                                                    div { class: "editor-image-loading" }
+                                                }
+                                                if busy {
+                                                    div { class: "render-veil", CirclingCat { size: 96 } }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -579,28 +379,10 @@ pub fn PreviewTab() -> Element {
                 }
             }
             if p.overview {
-                div { class: "editor-overview-backdrop",
-                    section { class: "editor-overview", role: "dialog", "aria-modal": "true", "aria-label": "Chapter page overview",
-                        header {
-                            strong { "Chapter overview · {total} reader pages" }
-                            button { id: "editor-close-overview", class: "btn small", onclick: move |_| { state.preview.write().overview = false; }, Icon { name: "x", size: 16 } }
-                        }
-                        div { class: "editor-overview-grid",
-                            for (i, page) in p.pages.iter().enumerate() {
-                                button {
-                                    key: "{i}",
-                                    class: if i == selected { "selected" } else { "" },
-                                    onclick: move |_| select_preview_page(state, i),
-                                    div { class: "editor-overview-art",
-                                        if let Some(shot) = page.thumbnail.as_ref().or(page.shot.as_ref()) {
-                                            img { src: "{shot.url}", alt: "Reader page {i + 1}" }
-                                        } else {
-                                            Icon { name: "file-image", size: 24 }
-                                        }
-                                    }
-                                    span { "Page {i + 1}" }
-                                }
-                            }
+                editor::Overview { total, on_close: move |_| { state.preview.write().overview = false; },
+                    for (i, page) in p.pages.iter().enumerate() {
+                        editor::OverviewPage { key: "{i}", index: i, selected: i == selected, on_open: move |_| select_preview_page(state, i),
+                            editor::PageImage { url: page.thumbnail.as_ref().or(page.shot.as_ref()).map(|s| s.url.clone()), index: i, size: 24 }
                         }
                     }
                 }
@@ -612,12 +394,10 @@ pub fn PreviewTab() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use converter::plan::{Part, Piece};
 
-    fn page(
-        image: Option<usize>,
-        part: converter::plan::Part,
-    ) -> std::rc::Rc<crate::state::PreviewPage> {
-        std::rc::Rc::new(crate::state::PreviewPage {
+    fn page(image: Option<usize>, part: Part) -> crate::state::PreviewPage {
+        crate::state::PreviewPage {
             image,
             source: image.map(|index| converter::PlannedPage {
                 source: Source::Image { index, part },
@@ -626,66 +406,16 @@ mod tests {
                 landscape: false,
             }),
             ..Default::default()
-        })
+        }
     }
 
     #[test]
-    fn the_pages_of_one_source_page_share_a_group() {
-        use converter::plan::Part;
-        let pages = vec![
-            page(Some(0), Part::Whole),
-            page(Some(1), Part::Half(1)),
-            page(Some(1), Part::Half(0)),
-            page(Some(2), Part::Whole),
-            page(None, Part::Whole),
-            page(None, Part::Whole),
-        ];
-        assert_eq!(groups(&pages), vec![(0, 1), (1, 3), (3, 4), (4, 5), (5, 6)]);
-        assert_eq!(part_note(&pages[0], 0, 1), None);
-        assert_eq!(
-            part_note(&pages[1], 0, 2).as_deref(),
-            Some("right half of source page 2")
-        );
-        assert_eq!(
-            part_note(&pages[2], 1, 2).as_deref(),
-            Some("left half of source page 2")
-        );
-        let tile = page(
-            Some(4),
-            Part::Tile {
-                of: converter::plan::Piece::Whole,
-                col: 1,
-                row: 0,
-            },
-        );
-        assert_eq!(
-            part_note(&tile, 1, 4).as_deref(),
-            Some("part 2 of 4 of source page 5")
-        );
-    }
-
-    #[test]
-    fn a_page_is_sized_by_its_zoom() {
-        assert_eq!(
-            row_height(Zoom::Custom(50), 480, 800),
-            "400px",
-            "half of the screen's own height"
-        );
-        assert!(row_height(Zoom::Fit, 480, 800).starts_with("min("));
-        assert_eq!(
-            row_height(Zoom::Width, 480, 800),
-            "calc(var(--reader-page-width) * 800 / 480)"
-        );
-    }
-
-    #[test]
-    fn the_reader_style_keeps_the_page_shape() {
-        let fit = reader_style(Zoom::Fit, 480, 800);
-        assert!(fit.contains("width:auto;") && fit.ends_with("aspect-ratio:480/800;"));
-        assert_eq!(
-            reader_style(Zoom::Custom(100), 480, 800),
-            "height:800px;width:480px;aspect-ratio:480/800;"
-        );
-        assert!(reader_style(Zoom::Width, 480, 800).starts_with("height:auto;width:100%;"));
+    fn the_planned_part_becomes_the_shared_slot() {
+        assert_eq!(slot(&page(Some(1), Part::Half(0))).part, SlotPart::Left);
+        assert_eq!(slot(&page(Some(1), Part::Half(1))).part, SlotPart::Right);
+        assert_eq!(slot(&page(Some(2), Part::Whole)).part, SlotPart::Whole);
+        let tile = page(Some(4), Part::Tile { of: Piece::Whole, col: 1, row: 0 });
+        assert_eq!(slot(&tile), PageSlot { image: Some(4), part: SlotPart::Piece, top: 0, height: 0 });
+        assert_eq!(slot(&page(None, Part::Whole)).part, SlotPart::Whole);
     }
 }

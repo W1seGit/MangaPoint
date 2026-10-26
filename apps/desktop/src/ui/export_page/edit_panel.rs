@@ -2,7 +2,7 @@
 
 use super::{active_series, Panel};
 use crate::state::AppState;
-use crate::ui::conversion::ConversionControls;
+use mangapoint_ui::conversion::ConversionControls;
 use crate::ui::work::schedule_preview;
 use crate::ui::workspace::crop_editor::CropInspector;
 use dioxus::prelude::*;

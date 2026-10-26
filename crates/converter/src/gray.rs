@@ -90,6 +90,49 @@ impl GrayImage {
     }
 }
 
+/// A full-colour page: 8-bit R, G, B per pixel, row-major, top to bottom.
+/// What a colour export draws a page as, before it is encoded as a JPEG.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ColorImage {
+    pub width: u32,
+    pub height: u32,
+    /// `width * height * 3` bytes: R, G, B for each pixel.
+    pub rgb: Vec<u8>,
+}
+
+impl ColorImage {
+    /// Join a luma plane with its two chroma planes (Cb, Cr, centred on 128;
+    /// BT.601, the JPEG convention). The planes must be the same size. Where
+    /// both chroma planes are 128 the pixel is exactly the gray luma.
+    pub fn from_ycc(luma: &GrayImage, cb: &GrayImage, cr: &GrayImage) -> ColorImage {
+        assert!(
+            (luma.width, luma.height) == (cb.width, cb.height)
+                && (luma.width, luma.height) == (cr.width, cr.height),
+            "the planes of a colour page are the same size"
+        );
+        let mut rgb = Vec::with_capacity(luma.pixels.len() * 3);
+        for ((&y, &b), &r) in luma.pixels.iter().zip(&cb.pixels).zip(&cr.pixels) {
+            let (y, b, r) = (y as f32, b as f32 - 128.0, r as f32 - 128.0);
+            let channel = |v: f32| v.round().clamp(0.0, 255.0) as u8;
+            rgb.push(channel(y + 1.402 * r));
+            rgb.push(channel(y - 0.344_136 * b - 0.714_136 * r));
+            rgb.push(channel(y + 1.772 * b));
+        }
+        ColorImage {
+            width: luma.width,
+            height: luma.height,
+            rgb,
+        }
+    }
+
+    /// The `[r, g, b]` of one pixel.
+    #[inline]
+    pub fn get(&self, x: u32, y: u32) -> [u8; 3] {
+        let at = (y as usize * self.width as usize + x as usize) * 3;
+        [self.rgb[at], self.rgb[at + 1], self.rgb[at + 2]]
+    }
+}
+
 fn check_size(width: u32, height: u32) -> Result<(), ImageError> {
     if width == 0 || height == 0 {
         Err(ImageError::ZeroSize { width, height })

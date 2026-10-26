@@ -10,19 +10,29 @@ pub struct Busy {
     pub download: bool,
     /// An export of it is running (a paused one is not: nothing is writing).
     pub export: bool,
+    /// An import is writing into it (or is about to).
+    pub import: bool,
 }
 
 impl Busy {
     pub fn any(self) -> bool {
-        self.download || self.export
+        self.download || self.export || self.import
     }
 }
 
-/// `running_export` is the series of the export that is running, if one is.
-pub fn series_busy(queue: &DownloadQueue, running_export: Option<&str>, series_id: &str) -> Busy {
+/// `running_export` is the series of the export that is running, if one is;
+/// `importing` the series a running import writes into (none when it is not
+/// running).
+pub fn series_busy(
+    queue: &DownloadQueue,
+    running_export: Option<&str>,
+    importing: &[String],
+    series_id: &str,
+) -> Busy {
     Busy {
         download: queue.series_has_work(series_id),
         export: running_export == Some(series_id),
+        import: importing.iter().any(|s| s == series_id),
     }
 }
 
@@ -35,12 +45,20 @@ pub fn may_record_chapter(known_before: bool, exists_now: bool) -> bool {
 
 /// What to tell someone closing the window while work is running; `None` when
 /// nothing is, and the window can just close.
-pub fn quit_warning(download_running: bool, export_running: bool) -> Option<&'static str> {
-    match (download_running, export_running) {
-        (false, false) => None,
-        (true, false) => Some("A download is running. Chapters that have finished are kept, but the one in progress will have to start again."),
-        (false, true) => Some("An export is running. Closing now can leave a partly written file on the reader or in the folder."),
-        (true, true) => Some("A download and an export are running. Closing now can leave a partly written file on the reader or in the folder, and the chapter being downloaded will have to start again."),
+pub fn quit_warning(
+    download_running: bool,
+    export_running: bool,
+    import_running: bool,
+) -> Option<&'static str> {
+    match (download_running, export_running, import_running) {
+        (false, false, false) => None,
+        (true, false, false) => Some("A download is running. Chapters that have finished are kept, but the one in progress will have to start again."),
+        (false, true, false) => Some("An export is running. Closing now can leave a partly written file on the reader or in the folder."),
+        (false, false, true) => Some("An import is running. Closing now stops it: the books being imported are not added, and you will have to import them again."),
+        (true, true, false) => Some("A download and an export are running. Closing now can leave a partly written file on the reader or in the folder, and the chapter being downloaded will have to start again."),
+        (true, false, true) => Some("A download and an import are running. Closing now stops both: the chapter being downloaded will have to start again, and the books being imported are not added."),
+        (false, true, true) => Some("An export and an import are running. Closing now can leave a partly written file on the reader or in the folder, and the books being imported are not added."),
+        (true, true, true) => Some("A download, an export and an import are running. Closing now can leave a partly written file on the reader or in the folder, the chapter being downloaded will have to start again, and the books being imported are not added."),
     }
 }
 
@@ -73,12 +91,18 @@ mod tests {
     #[test]
     fn a_series_is_busy_while_it_downloads_or_exports() {
         let q = queue_with("a");
-        assert!(series_busy(&q, None, "a").download);
-        assert!(!series_busy(&q, None, "b").any());
+        assert!(series_busy(&q, None, &[], "a").download);
+        assert!(!series_busy(&q, None, &[], "b").any());
         let idle = DownloadQueue::default();
-        let b = series_busy(&idle, Some("b"), "b");
+        let b = series_busy(&idle, Some("b"), &[], "b");
         assert!(b.export && !b.download && b.any());
-        assert!(!series_busy(&idle, Some("b"), "a").any());
+        assert!(!series_busy(&idle, Some("b"), &[], "a").any());
+        // An import is busy with every series it is about to write into.
+        let ids = ["x".to_string(), "y".to_string()];
+        let i = series_busy(&idle, None, &ids, "y");
+        assert!(i.import && !i.download && !i.export && i.any());
+        assert!(!series_busy(&idle, None, &ids, "z").any());
+        assert!(!series_busy(&idle, None, &[], "x").any());
     }
 
     #[test]
@@ -91,10 +115,19 @@ mod tests {
 
     #[test]
     fn closing_while_work_runs_warns_and_closing_when_idle_does_not() {
-        assert_eq!(quit_warning(false, false), None);
-        assert!(quit_warning(true, false).unwrap().contains("download"));
-        assert!(quit_warning(false, true).unwrap().contains("export"));
-        let both = quit_warning(true, true).unwrap();
+        assert_eq!(quit_warning(false, false, false), None);
+        assert!(quit_warning(true, false, false).unwrap().contains("download"));
+        assert!(quit_warning(false, true, false).unwrap().contains("export"));
+        let both = quit_warning(true, true, false).unwrap();
         assert!(both.contains("download") && both.contains("export"));
+    }
+
+    #[test]
+    fn closing_while_an_import_runs_asks_first_alone_or_with_other_work() {
+        assert!(quit_warning(false, false, true).unwrap().contains("import"));
+        assert!(quit_warning(true, false, true).unwrap().contains("import"));
+        assert!(quit_warning(false, true, true).unwrap().contains("import"));
+        let all = quit_warning(true, true, true).unwrap();
+        assert!(all.contains("download") && all.contains("export") && all.contains("import"));
     }
 }

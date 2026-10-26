@@ -2,7 +2,7 @@
 //! the wall, one of them loading, and the cat sits on the floor holding a
 //! magnifying glass up to them. Drawn in code as SVG rectangles on a coarse
 //! grid like the other cats, with its edges breaking up into the page's black;
-//! the motion is CSS (see `style.css`) and moves in whole pixels.
+//! the motion is CSS (see `crates/ui/css/art.css`) and moves in whole pixels.
 
 use super::cat::sitting_markup;
 use dioxus::prelude::*;

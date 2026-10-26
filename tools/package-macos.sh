@@ -19,6 +19,7 @@ app="$stage/MangaPoint.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/mangapoint"
 chmod +x "$app/Contents/MacOS/mangapoint"
+cp "$(cd "$(dirname "$0")/.." && pwd)/LICENSE" "$(cd "$(dirname "$0")/.." && pwd)/THIRD-PARTY-LICENSES.md" "$app/Contents/Resources/"
 
 # The icon: the PNG at every size an .icns holds.
 iconset="$(mktemp -d)/MangaPoint.iconset"

@@ -1,47 +1,43 @@
 //! The app's screens.
 
-pub mod cat;
 mod browse;
-mod chapter_table;
-mod conversion;
-mod devices;
 mod download_dialog;
+mod host;
 mod tasks_page;
 mod update_dialog;
 mod export_page;
-mod hang;
+mod import;
 mod onboarding;
-mod walker;
-mod icons;
 mod library_page;
-mod ocean;
-mod pixels;
-mod placeholder;
 mod plan_page;
 mod presets;
-mod scenes;
+mod reader;
 mod search;
 mod settings;
 mod setup;
-mod shelf;
 mod sidebar;
 mod sources_page;
 mod widgets;
 pub mod work;
 mod workspace;
 
+// The art and the chapter table are shared with the website.
+pub use mangapoint_ui::art::{cat, ocean, pixels, walker};
+use mangapoint_ui::chapter_table;
+use mangapoint_ui::readers;
+use mangapoint_ui::dialogs::{ToastHost, UnsavedHost};
+
 use crate::backend;
 use crate::state::spawn_forever;
-use crate::state::{AppState, BootState, Modal, ModalAction, Page, ToastKind};
+use crate::state::{AppState, BootState, Modal, ModalAction, Page};
 use dioxus::desktop::tao::event::{Event, WindowEvent};
 use dioxus::desktop::use_wry_event_handler;
 use dioxus::prelude::*;
 use sources::SourceManager;
 use widgets::{Icon, ProgressBar};
 
-const CSS: &str = include_str!("../style.css");
-/// Floats the explanation of a question mark above everything else.
-const TOOLTIP_SCRIPT: &str = include_str!("../js/tooltip.js");
+/// What only the desktop app shows, after the shared style sheets (`mangapoint_ui::CSS`).
+const DESKTOP_CSS: &str = include_str!("../../css/desktop.css");
 /// Keyboard shortcuts.
 const KEYS_SCRIPT: &str = include_str!("../js/keys.js");
 /// Remembers the scroll position of each page.
@@ -53,6 +49,8 @@ const SLIDE_SCRIPT: &str = include_str!("../js/slide.js");
 pub fn App() -> Element {
     let state = AppState::init();
     use_context_provider(|| state);
+    use_context_provider(|| state.ui);
+    use_hook(|| state.ui.set_host(std::rc::Rc::new(host::DesktopHost(state))));
 
     // Dev flag: `-- --toast-demo` shows one of each kind of toast.
     use_hook(|| {
@@ -64,6 +62,8 @@ pub fn App() -> Element {
             crate::notify::finished(state, "Export finished", "The Greatest Estate Developer: Exported 1 file(s).");
         }
     });
+    // Debug builds can start an import from a file dropped in a folder (for trying it).
+    use_hook(|| import::watch_for_test_imports(state));
     // Start the catalog server once, when the app opens.
     use_hook(|| {
         spawn_forever(backend::boot(state, false));
@@ -72,6 +72,22 @@ pub fn App() -> Element {
     use_hook(|| {
         crate::updates::clear_leftovers();
         spawn_forever(update_dialog::check_at_startup(state));
+    });
+    // A staging folder an import left when the app was closed in the middle of it
+    // (only ones it marked as its own, whose process is gone) is cleared away, and
+    // a chapter that was being replaced is put back.
+    use_hook(|| {
+        spawn_forever(async move {
+            let library = state.library.peek().clone();
+            let files = crate::state::library_files();
+            let removed =
+                tokio::task::spawn_blocking(move || pipeline::import::sweep_leftovers(&files, &library))
+                    .await
+                    .unwrap_or(0);
+            if removed > 0 {
+                tracing::info!("Removed {removed} unfinished import folder(s) left by an earlier run");
+            }
+        });
     });
     // Changes to the library and the queue are written in the background.
     use_hook(|| state.start_saver());
@@ -90,7 +106,8 @@ pub fn App() -> Element {
                 .peek()
                 .as_ref()
                 .is_some_and(|v| v.result.is_none() && !v.paused);
-            if let Some(warning) = crate::logic::quit_warning(download, export) {
+            let importing = work::import_running();
+            if let Some(warning) = crate::logic::quit_warning(download, export, importing) {
                 // The window would close (or hide) once this returns. Make it
                 // only hide, then show it again at once with the question.
                 let window = dioxus::desktop::window();
@@ -119,20 +136,22 @@ pub fn App() -> Element {
 
     use_hook(|| {
         spawn(async move {
-            let _ = document::eval(TOOLTIP_SCRIPT).await;
+            // Floats the explanation of a question mark above everything else.
+            if let Some(tip) = mangapoint_ui::scripts::call("tooltip", "") {
+                let _ = document::eval(&tip).await;
+            }
             let _ = document::eval(KEYS_SCRIPT).await;
             let _ = document::eval(SCROLL_SCRIPT).await;
             let _ = document::eval(SLIDE_SCRIPT).await;
         });
     });
 
-    let snappy = state.settings.read().animations == library::Animations::Snappy;
+    let snappy = state.ui.settings.read().animations == library::Animations::Snappy;
     let boot = state.boot.read().clone();
-    let setup_step = state.settings.read().setup_step;
+    let setup_step = state.ui.settings.read().setup_step;
     rsx! {
-        style { "{CSS}" }
-        style { {include_str!("../page-editor.css")} }
-        style { {include_str!("../editor-controls.css")} }
+        style { {mangapoint_ui::CSS} }
+        style { {DESKTOP_CSS} }
         div { class: "app", "data-motion": if snappy { "snappy" } else { "clean" },
             {match boot {
                 BootState::Failed(message) => rsx! { Failed { message } },
@@ -143,10 +162,11 @@ pub fn App() -> Element {
                 BootState::Starting { message, percent } if !state.engine_installed => rsx! { Splash { message, percent } },
                 _ => rsx! { Shell {} },
             }}
-            ModalHost {}
+            DesktopConfirmation {}
             UnsavedHost {}
             download_dialog::DownloadDialogHost {}
             update_dialog::UpdateDialogHost {}
+            import::ImportHost {}
             ToastHost {}
         }
     }
@@ -235,6 +255,7 @@ fn Shell() -> Element {
                     Page::Export => rsx! { export_page::ExportPage {} },
                     Page::Sources => rsx! { sources_page::SourcesPage {} },
                     Page::Settings => rsx! { settings::SettingsPage {} },
+                    Page::Reader => rsx! { reader::ReaderPage {} },
                 }}
             }
         }
@@ -300,88 +321,21 @@ fn ShortcutKeys() -> Element {
     }
 }
 
-/// Asked when the user leaves the reader form with changes that are not saved.
-#[component]
-fn UnsavedHost() -> Element {
-    let state = use_context::<AppState>();
-    let Some(to) = state.leave_prompt.read().clone() else { return rsx! {} };
-    let (save_to, discard_to) = (to.clone(), to);
-    rsx! {
-        div { class: "overlay",
-            div { class: "modal",
-                h2 { "You have unsaved settings" }
-                p { "Would you like to save or discard them?" }
-                div { class: "actions",
-                    button { class: "btn",
-                        onclick: move |_| { let mut p = state.leave_prompt; p.set(None); },
-                        "Keep editing"
-                    }
-                    button { class: "btn danger",
-                        onclick: move |_| {
-                            let mut p = state.leave_prompt;
-                            p.set(None);
-                            let mut unsaved = state.unsaved_reader;
-                            unsaved.set(None);
-                            state.leave_now(discard_to.clone());
-                        },
-                        "Discard"
-                    }
-                    button { class: "btn primary",
-                        onclick: move |_| {
-                            let saved = state.unsaved_reader.peek().clone().is_none_or(|u| (u.0)());
-                            if saved {
-                                let mut p = state.leave_prompt;
-                                p.set(None);
-                                let mut unsaved = state.unsaved_reader;
-                                unsaved.set(None);
-                                state.leave_now(save_to.clone());
-                            }
-                        },
-                        "Save"
-                    }
-                }
-            }
-        }
-    }
-}
-
 /// Confirmation dialogs.
 #[component]
-fn ModalHost() -> Element {
+fn DesktopConfirmation() -> Element {
     let state = use_context::<AppState>();
-    let modal = state.modal.read().clone();
-    let Some(modal) = modal else { return rsx! {} };
-    let confirm_class = if modal.danger {
-        "btn danger"
-    } else {
-        "btn primary"
-    };
-    let action = modal.action.clone();
+    let Some(modal) = state.modal.read().clone() else { return rsx! {} };
     rsx! {
-        div { class: "overlay",
-            div { class: "modal",
-                h2 { "{modal.title}" }
-                p { "{modal.body}" }
-                div { class: "actions",
-                    button {
-                        class: "btn",
-                        onclick: move |_| {
-                            let mut m = state.modal;
-                            m.set(None);
-                        },
-                        "{modal.cancel}"
-                    }
-                    button {
-                        class: "{confirm_class}",
-                        onclick: move |_| {
-                            let mut m = state.modal;
-                            m.set(None);
-                            run_action(state, action.clone());
-                        },
-                        "{modal.confirm}"
-                    }
-                }
-            }
+        mangapoint_ui::dialogs::Confirmation {
+            title: modal.title, body: modal.body, confirm: modal.confirm, cancel: modal.cancel,
+            danger: modal.danger, dismiss_outside: false,
+            on_cancel: move |_| { let mut m = state.modal; m.set(None); },
+            on_confirm: move |_| {
+                let mut m = state.modal;
+                m.set(None);
+                run_action(state, modal.action.clone());
+            },
         }
     }
 }
@@ -407,7 +361,7 @@ fn run_action(state: AppState, action: ModalAction) {
             }
             ModalAction::DeletePreset { id } => presets::delete_preset(state, id),
             ModalAction::RemoveReader { id } => {
-                let mut settings = state.settings;
+                let mut settings = state.ui.settings;
                 {
                     let mut st = settings.write();
                     st.custom_devices.retain(|d| d.id != id);
@@ -464,56 +418,18 @@ pub fn ask_enable_browser(state: AppState, then_install: Option<String>) {
     });
 }
 
-#[component]
-fn ToastHost() -> Element {
-    let state = use_context::<AppState>();
-    let toasts = state.toasts.read().clone();
-    if toasts.is_empty() {
-        return rsx! {};
-    }
-    rsx! {
-        // The newest sits at the bottom with the older ones stacked behind it;
-        // pointing at the stack spreads them out to read.
-        div {
-            class: "toasts",
-            onmouseenter: move |_| { let mut h = state.toasts_hovered; h.set(true); },
-            onmouseleave: move |_| { let mut h = state.toasts_hovered; h.set(false); },
-            for (i, toast) in toasts.iter().rev().enumerate() {
-                {
-                    let id = toast.id;
-                    let look = match toast.kind {
-                        ToastKind::Success => "success",
-                        ToastKind::Warning => "warning",
-                        ToastKind::Error => "error",
-                    };
-                    rsx! {
-                        div {
-                            key: "{toast.id}",
-                            class: if toast.leaving { "toast {look} leaving" } else { "toast {look}" },
-                            style: "--i: {i}",
-                            role: "status",
-                            cat::ToastCat { look: look.to_string() }
-                            div { class: "toast-text", "{toast.text}" }
-                            button { class: "toast-x", title: "Dismiss", onclick: move |_| state.dismiss_toast(id),
-                                Icon { name: "x", size: 14 }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod script_tests {
-    const SCRIPTS: [(&str, &str); 6] = [
+    const SCRIPTS: [(&str, &str); 9] = [
         ("crop-drag.js", include_str!("../js/crop-drag.js")),
-        ("export-split.js", include_str!("../js/export-split.js")),
-        ("preview-editor.js", include_str!("../js/preview-editor.js")),
-        ("tooltip.js", include_str!("../js/tooltip.js")),
+        ("export-split.js", include_str!("../../../../crates/ui/js/export-split.js")),
+        ("preview-editor.js", include_str!("../../../../crates/ui/js/preview-editor.js")),
+        ("tooltip.js", include_str!("../../../../crates/ui/js/tooltip.js")),
+        ("zoom-scrub.js", include_str!("../../../../crates/ui/js/zoom-scrub.js")),
+        ("adder-scroll.js", include_str!("../../../../crates/ui/js/adder-scroll.js")),
         ("keys.js", include_str!("../js/keys.js")),
         ("scroll.js", include_str!("../js/scroll.js")),
+        ("reader.js", include_str!("../js/reader.js")),
     ];
 
     /// `cropBound` as it is written in HTML: `data-crop-bound`.

@@ -74,6 +74,20 @@ you delete a series or only some of its chapters.
 <img src="docs/screenshots/tasks.png" alt="The Tasks page with a download in progress" width="780" />
 </div>
 
+### Bring in what you already have
+
+Import comics, books and pictures from your own computer: **CBZ, ZIP, CBR, RAR,
+CB7, 7Z, EPUB and PDF** books, **folders** (a folder of folders is a series of
+chapters, a folder of archives has one chapter in each) and loose **JPG, PNG,
+WEBP, GIF and TIFF** pictures. A book's own details are read where it has them
+(its title, author, description, genres, direction, cover and chapters), and a
+dialog shows what was found so you can correct names and chapter numbers before
+anything is written. Imported series are tagged **Imported** in the Library,
+their details and cover can be edited by hand, and **Import pages** adds more
+chapters to one, numbering them from their names or the next free number. They
+export like any other series. PDFs must have pictures for pages (scans, comics);
+MOBI and AZW3 are locked formats and are not read.
+
 ### Convert for your reader's own screen
 
 Pages are made at your reader's exact size and density, so nothing is scaled
@@ -100,6 +114,15 @@ SD card (found automatically, with a "Safe to unplug" message), or Wi-Fi.
 | **XTC**: black and white; the smallest files and the quickest to open | **XTCH**: four grays; twice the size |
 | **EPUB**: a fixed-layout EPUB 3 that nearly every reader opens, with the chapters as its table of contents | **CBZ**: a comic archive with a `ComicInfo.xml` (series, author, summary, genres, reading direction) and the chapters as page bookmarks |
 | **One file** per series, per chapter, or every N chapters; long EPUBs are cut into parts | |
+
+**Keep color.** For a color reader (Kobo Libra and Clara Colour, Kindle Colorsoft,
+Boox Go Color, Palma 2 Pro, Tab Ultra C Pro and Note Air3 C, PocketBook InkPad Color 3, or any
+reader you mark with **Color screen**), an EPUB or CBZ can keep the pages in color: each is resized
+to the screen and saved as a normal color JPEG, with no tone changes, dithering or sharpening, and
+the reader's firmware does the rest. Choose **Black & white | Color** under Format on the Export
+screen (XTC and XTCH are always gray). Pages are shrunk to gray when they are downloaded unless
+you turn on **Keep colors (uses more space)** in Settings, Downloads, so turn it on before
+downloading what you want in color.
 
 <div align="center">
 <img src="docs/screenshots/send-to.png" alt="The Send to panel: reader, destination, format and files" width="300" />
@@ -235,6 +258,15 @@ The only things MangaPoint contacts are the sources you install, GitHub (for the
 the source lists and the daily check for a newer version), and your reader over Wi-Fi if
 you use that.
 
+## On the web
+
+A browser version reads and exports **your own** books: import a CBZ, ZIP, EPUB with
+pictures, a folder of pictures, read them, and export them for an e-reader. It does not
+search or download manga, and RAR, 7z and PDF are not supported on the web yet. Everything
+runs on your device; nothing is uploaded and the host stores nothing. Build it with
+`tools/build-web.ps1` (or `tools/build-web.sh`) and serve `web/dist` from any static host.
+Details, limits and the reading-state file are in [docs/web.md](docs/web.md).
+
 ## Build from source
 
 You need [Rust](https://rustup.rs) (stable). Then:
@@ -322,6 +354,8 @@ in the [changelog](CHANGELOG.md).
   `ComicInfo.xml`; apart from the cover, XTC, XTCH and EPUB files do not yet carry the
   author or description.
 - macOS builds are unsigned.
+- Import reads PDFs only when their pages are pictures (it does not draw text or vector
+  pages), and cannot open password-protected archives, MOBI or AZW3 files.
 
 ## Responsible use
 
@@ -341,6 +375,8 @@ which devices it works with.
   Mihon/Tachiyomi extension community, which make the sources possible.
 - [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader), the
   open firmware for the Xteink readers.
+- The [UnRAR](https://www.rarlab.com/rar_add.htm) source code, which reads RAR and CBR
+  archives (its licence is in `THIRD-PARTY-LICENSES.md`).
 - [Dioxus](https://dioxuslabs.com), the UI framework, and the Rust crates this
   project stands on (see `Cargo.lock`).
 

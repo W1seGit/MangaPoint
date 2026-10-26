@@ -1,0 +1,47 @@
+/* Settings: its own sidebar, and the rows of a setting with its control. */
+
+/* ---- settings with its own sidebar, and the presets page ---- */
+.content:has(.settings) { padding: 0; }
+.page:has(.settings) { max-width: none; margin: 0; }
+.page:has(.settings) { display: flex; flex-direction: column; min-height: 100%; }
+.settings { flex: 1; display: grid; grid-template-columns: 216px minmax(0, 1fr); align-items: stretch; min-width: 0; }
+.settings-nav { display: flex; flex-direction: column; gap: 3px; padding: 18px 12px; border-right: 1px solid var(--line); }
+.settings-nav .nav-item { padding: 9px 12px; }
+.settings-content { min-width: 0; max-width: 860px; padding: 26px 36px 64px; }
+.settings-content > .sx-group:first-child { margin-top: 0; }
+.pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; border: 1px solid var(--line-strong);
+  border-radius: 999px; background: var(--panel); color: var(--text); font: inherit; cursor: pointer;
+}
+.pill:hover { border-color: var(--accent); }
+.pill.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+.pill.add { color: var(--muted); border-style: dashed; }
+@media (max-width: 980px) { .settings { grid-template-columns: 1fr; } .settings-nav { position: static; height: auto; flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--line); } }
+
+/* ---- settings: flat rows ---- */
+
+.sx-group { margin: 30px 0 4px; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); font-weight: 600; }
+
+.sx-row { min-height: 66px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 440px); gap: 28px; align-items: center; padding: 12px 0; }
+.sx-label { font-weight: 500; display: flex; align-items: center; }
+.help { position: relative; display: inline-flex; vertical-align: middle; margin-left: 6px; color: var(--muted); cursor: help; outline: none; }
+.help:hover, .help:focus-visible { color: var(--text); }
+.floating-tip {
+  position: fixed; left: 0; top: 0; z-index: 1000; display: none; max-width: 320px; padding: 9px 12px; pointer-events: none;
+  border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel-3); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+  color: var(--text); font-size: 0.84rem; font-weight: 400; line-height: 1.45; text-transform: none; letter-spacing: 0; white-space: normal;
+}
+.floating-tip.shown { display: block; }
+.sx-desc { color: var(--muted); font-size: 0.86rem; margin-top: 3px; line-height: 1.45; }
+.sx-control { display: flex; justify-content: flex-end; min-width: 0; }
+.sx-control > input[type="text"], .sx-control > input[type="number"], .sx-control > select { width: 100%; }
+.sx-control > input[type="checkbox"] { width: 20px; height: 20px; }
+.sx-control .seg { width: 100%; }
+.sx-control .seg button { flex: 1; }
+.sx-inline { display: flex; gap: 8px; width: 100%; }
+.sx-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+.sx-inline input { flex: 1; min-width: 0; }
+.sx-note { color: var(--muted); font-size: 0.84rem; margin: 6px 0 0; }
+
+.sx-note.warn { color: var(--warn); }

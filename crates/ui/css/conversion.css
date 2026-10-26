@@ -1,0 +1,86 @@
+/* The controls for how pages are converted (the Edit panel). */
+.mp-conversion .group { margin: 22px 0 10px; padding-top: 16px; border-top: 1px solid var(--line); font-size: .95rem; }
+.mp-conversion .group:first-child { margin-top: 0; border-top: 0; padding-top: 0; }
+.mp-control-heading { margin: 16px 0 8px; font-size: .84rem; font-weight: 600; color: var(--muted); }
+.mp-choice-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; margin-bottom: 12px; }
+.mp-choice-grid.two { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.mp-choice { padding: 10px 6px 9px; min-width: 0; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel-2); display: flex; flex-direction: column; gap: 6px; align-items: center; cursor: pointer; color: var(--text); text-align: center; }
+.mp-choice:hover { background: var(--panel-3); border-color: var(--accent); }
+.mp-choice.selected { border-color: var(--accent); background: var(--panel-3); box-shadow: inset 0 0 0 1px var(--accent)30; }
+.mp-choice:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 3px; }
+.mp-choice strong { font-size: .78rem; line-height: 1.25; font-weight: 600; }
+.mp-choice-hint { font-size: .68rem; line-height: 1.3; color: var(--muted); }
+.mp-diagram { display: flex; align-items: center; justify-content: center; gap: 4px; width: 64px; max-width: 100%; height: 40px; position: relative; overflow: hidden; }
+.mp-diagram i { display: block; width: 19px; height: 32px; border: 1px solid #8a8a8a; border-radius: 2px; background: linear-gradient(140deg, #e8e8e8 0 25%,#555 26% 34%,#cfcfcf 35% 64%,#777 65% 74%,#e8e8e8 75%); }
+.mp-diagram i:nth-child(3) { display: none; }
+.mp-diagram.pages i:nth-child(2), .mp-diagram.whole i:nth-child(2), .mp-diagram.trim i:nth-child(2), .mp-diagram.manual i:nth-child(2) { display: none; }
+.mp-diagram.auto i:nth-child(2) { width: 13px; height: 39px; }
+.mp-diagram.strip { flex-direction: column; gap: 2px; }
+.mp-diagram.strip i { width: 24px; height: 17px; flex-shrink: 0; }
+.mp-diagram.strip i:nth-child(3) { display: block; }
+.mp-diagram.split i { width: 21px; height: 29px; }
+.mp-diagram.rotate i:first-child { transform: rotate(90deg); width: 27px; height: 36px; }
+.mp-diagram.rotate i:nth-child(2), .mp-diagram.fit i:nth-child(2) { display: none; }
+.mp-diagram.fit i:first-child { width: 49px; height: 25px; }
+.mp-zoom { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.mp-zoom .zoom-field input, .mp-zoom .zoom-field input:focus { flex: 1; width: auto; min-width: 0; }
+/* The list opens in the panel, pushing what follows down, so the panel never clips it. */
+.mp-zoom .zoom-list { position: relative; top: auto; right: auto; margin-top: 2px; min-width: 0; max-height: none; box-shadow: none; }
+.mp-zoom .zoom-list .menu-item { padding: 6px 12px; }
+.mp-zoom .zoom-list .menu-sep { margin: 2px 6px; }
+.mp-zoom .seg { width: 100%; }
+.mp-zoom .seg button { flex: 1; }
+.mp-diagram.portrait i:nth-child(2), .mp-diagram.landscape i:nth-child(2) { display: none; }
+.mp-diagram.portrait i:first-child { width: 22px; height: 34px; }
+.mp-diagram.landscape i:first-child { width: 40px; height: 26px; }
+.mp-diagram.rtl:after, .mp-diagram.ltr:after { position: absolute; bottom: -2px; font-size: 19px; font-weight: 700; background: var(--panel-2); width: 100%; line-height: 17px; }
+.mp-diagram.rtl:after { content: '2 ← 1'; }.mp-diagram.ltr:after { content: '1 → 2'; }
+.mp-diagram.trim i:first-child { outline: 3px solid var(--panel-2); outline-offset: -5px; }
+.mp-diagram.manual:after { content: ''; position: absolute; height: 27px; width: 16px; border: 2px solid #ffffff; box-shadow: 0 0 0 4px rgba(0,0,0,0.6); }
+.mp-diagram.smooth, .mp-diagram.atkinson, .mp-diagram.ordered, .mp-diagram.none { border-radius: 3px; background: linear-gradient(135deg,#fff,#888 50%,#111); height: 52px; width: 100%; }
+.mp-diagram.smooth i, .mp-diagram.atkinson i, .mp-diagram.ordered i, .mp-diagram.none i { display: none; }
+.mp-diagram.smooth { background: radial-gradient(#222 20%,transparent 22%) 0 0 / 3px 3px,linear-gradient(135deg,#fff,#999,#111); }
+.mp-diagram.atkinson { background: radial-gradient(#111 25%,transparent 27%) 0 0 / 4px 4px,linear-gradient(135deg,#fff 25%,#aaa,#111 75%); }
+.mp-diagram.ordered { background: repeating-conic-gradient(#222 0 25%,#ddd 0 50%) 0 0 / 5px 5px; }
+.mp-diagram.none { background: linear-gradient(135deg,#fff 0 25%,#aaa 25% 50%,#555 50% 75%,#111 75%); }
+.mp-shading-sample { width: 100%; height: 68px; object-fit: cover; border-radius: 3px; background: white; }
+.mp-contrast-track { position: relative; width: 100%; }
+.mp-contrast-track input { width: 100%; accent-color: var(--accent); }
+.mp-neutral-marker { position: absolute; left: 50%; bottom: -2px; height: 5px; border-left: 1px solid #8a8a8a; pointer-events: none; }
+.mp-contrast-labels { display: flex; justify-content: space-between; font-size: .68rem; color: var(--muted); padding-top: 3px; }
+
+.mp-tuning { border: 1px solid var(--line-strong); border-radius: 7px; padding: 9px; margin: 10px 0; background: var(--panel); }
+.mp-tuning summary { cursor: pointer; color: var(--muted); font-size: .8rem; }.mp-tuning .field { margin-top: 10px; }
+.mp-conversion .field { margin-top: 12px; }.mp-conversion .hint { color: var(--muted); }.mp-conversion .advanced-toggle { width: 100%; margin-top: 15px; border: 1px solid var(--line-strong); }
+/* Keep the inspector readable in narrow panes and Settings alike. */
+.controls.mp-conversion h3.group { margin: 22px 0 10px; text-transform: none; letter-spacing: 0; font-size: .95rem; color: var(--text); }
+.controls.mp-conversion h3.group:first-child { margin-top: 0; }
+.controls.mp-conversion .field { grid-template-columns: 1fr; gap: 6px; }
+.controls.mp-conversion .field .hint { grid-column: 1; margin-top: 0; }
+.controls.mp-conversion .check-line { color: var(--muted); }
+@media (max-width: 520px) { .mp-choice-grid { gap: 5px; } .mp-choice { padding: 8px 4px; } }
+
+/* the two ways of cutting a long strip */
+.mp-diagram.cutquiet, .mp-diagram.cutrepeat { flex-direction: column; gap: 3px; }
+.mp-diagram.cutquiet i, .mp-diagram.cutrepeat i { width: 30px; height: 17px; flex-shrink: 0; display: block; }
+.mp-diagram.cutrepeat { gap: 0; }
+.mp-diagram.cutrepeat i:nth-child(2) { margin-top: -6px; border-top: 6px solid var(--warn); }
+
+/* The controls in four folded groups: one line each while closed. */
+.mp-group { border-top: 1px solid var(--line); }
+.mp-group:first-child { border-top: 0; }
+.mp-group-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 12px 2px; border: 0; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.mp-group-head:hover .mp-group-title { color: var(--accent-hover, var(--text)); }
+.mp-group-head .icon { flex: none; color: var(--muted); transition: transform 0.2s ease; transform: rotate(-90deg); }
+.mp-group.open .mp-group-head .icon { transform: none; }
+.mp-group-title { flex: none; font-size: .95rem; font-weight: 600; }
+.mp-group-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: .78rem; text-align: right; }
+/* A group eases its height between 0 and its own, and its contents leave the tab order once shut. */
+.mp-group-fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.28s ease; }
+.mp-group.open .mp-group-fold { grid-template-rows: 1fr; }
+.mp-group-fold-inner { overflow: hidden; min-height: 0; visibility: hidden; transition: visibility 0s 0.28s; }
+.mp-group.open .mp-group-fold-inner { visibility: visible; transition-delay: 0s; }
+.app[data-motion="snappy"] .mp-group-fold { transition-duration: 0.08s; }
+.mp-group-body { padding: 0 2px 14px; }
+.mp-group-body > .mp-control-heading:first-child { margin-top: 2px; }
+.mp-manual-crop { margin: 0 0 12px; }

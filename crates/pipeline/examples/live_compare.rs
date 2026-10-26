@@ -100,6 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             pages,
             spread_sources: false,
             race_sources: false,
+            keep_color: false,
         },
         &RetryPolicy::default(),
         Some(tx),

@@ -13,13 +13,14 @@ pub mod health;
 pub mod json;
 pub mod paths;
 pub mod presets;
+pub mod reading;
 pub mod settings;
 pub mod sources;
 pub mod speeds;
 
 pub use downloads::{
     chapter_key, remove_inside, series_id, status_label, DownloadedChapter, DownloadedSeries,
-    LibraryDb, LibraryFiles, SavedSource, SeriesInfo, SAMPLE_TITLE,
+    ImportInfo, LibraryDb, LibraryFiles, SavedSource, SeriesInfo, IMPORT_SOURCE, SAMPLE_TITLE,
 };
 pub use exports::{delete_exported_file, ExportRecord, ExportedFileRecord, ExportsDb};
 pub use health::{HealthDb, StepTiming, TestRecord, Verdict};
@@ -34,6 +35,7 @@ pub use settings::{
     Settings,
     SetupStep,
 };
+pub use reading::{ChapterRead, PageDirection, ReadFit, ReadMode, ReadProgress, ReaderPrefs};
 pub use sources::{Choice, SourceState};
 pub use speeds::{SourceSpeed, SpeedDb};
 pub mod crops;

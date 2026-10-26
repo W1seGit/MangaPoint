@@ -103,7 +103,7 @@ pub fn Setup(#[props(default = false)] onboarding: bool) -> Element {
                                 button {
                                     class: "btn primary small",
                                     onclick: move |_| {
-                                        let browser_off = !state.settings.read().browser_support;
+                                        let browser_off = !state.ui.settings.read().browser_support;
                                         if needs_browser && browser_off {
                                             ask_enable_browser(state, Some(id.to_string()));
                                         } else {
