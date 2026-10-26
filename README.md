@@ -33,9 +33,10 @@ result over. MangaPoint does all of it for you, in one app:
 | Sending it | Work out the format, then copy files around | Export to a folder, USB drive, SD card or Wi-Fi |
 | Reading it | Another app for each format | Read it in MangaPoint, on your computer or in your phone's browser |
 
-It was built for the Xteink readers (X4, X4 Pro, X3), and it also makes
-standard EPUB files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ comic archives for the readers that open them.
-Everything runs on your computer. There is no account and no server of ours.
+It was built for the Xteink readers (X4, X4 Pro, X3), and it also makes standard EPUB
+files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ comic archives for the
+readers that open them. Everything runs on your computer. There is no account and no
+server of ours.
 The [website](#on-the-web) does the same for books you already have, in any browser,
 and keeps them on your device.
 
@@ -99,31 +100,37 @@ series, so **Continue** in the Library takes you back to it.
 
 ### Bring in what you already have
 
-Import comics, books and pictures from your own computer, with the Library's
-**Import** button or by dropping them on the Library: **CBZ, ZIP, CBR, RAR,
-CB7, 7Z, EPUB and PDF** books, **folders** (a folder of folders is a series of
-chapters, a folder of archives has one chapter in each) and loose **JPG, PNG,
-WEBP, GIF and TIFF** pictures. A book's own details are read where it has them
-(its title, author, description, genres, direction, cover and chapters), and a
-dialog shows what was found so you can correct names and chapter numbers before
-anything is written. Imported series are tagged **Imported** in the Library,
-their details and cover can be edited by hand, and **Import pages** adds more
-chapters to one, numbering them from their names or the next free number. They
-export like any other series. A series folder from MangaPoint's own library (on this
-computer or another) comes in as that series, with its chapters and cover. PDFs must have pictures for pages (scans, comics);
-MOBI and AZW3 are locked formats and are not read.
+Press **Import** in the Library, or drop files and folders on it:
+
+- **Books:** CBZ, ZIP, CBR, RAR, CB7, 7Z, EPUB and PDF (a PDF needs pictures for
+  pages, like scans and comics).
+- **Folders:** a folder of folders is a series of chapters; a folder of archives has
+  one chapter in each.
+- **Pictures:** loose JPG, PNG, WEBP, GIF and TIFF files.
+- **A series folder from MangaPoint's own library**, on this computer or another,
+  comes in as that series, with its chapters and cover.
+
+A book's own details are read where it has them (title, author, description, genres,
+reading direction, cover and chapters), and you check what was found, and correct names
+and chapter numbers, before anything is written. Imported series are tagged
+**Imported**, their details and cover can be edited, **Import pages** adds more
+chapters, and they export like any other series. MOBI and AZW3 are locked formats and
+are not read.
 
 ### Convert for your reader's own screen
 
-Pages are made at your reader's exact size and density, so nothing is scaled
-again on the device. Automatic or manual cropping, double-page spreads, long
-strips cut into screen-sized slices, contrast and dithering are all there, and so
-is **Landscape** for a reader held sideways (turn it counter-clockwise for XTC and
-XTCH; EPUB and CBZ get wide pictures) and a **Zoom** (Fit, or 100–300%) that
-either cuts a zoomed page into screens in reading order or keeps its middle,
-and optional **guide arrows** that point from a half page or a zoomed screen to the
-next one, with a live preview that shows the source next to the result. Start from a preset
-(Manga, Manhwa, Manhua) or keep your own.
+Pages are made at your reader's exact size and density, so nothing is scaled again
+on the device, and a live preview shows the page as downloaded next to the page your
+reader will get.
+
+- **Cropping**, automatic or by hand, and **double-page spreads**.
+- **Long strips** (manhwa, webtoons) cut into screen-sized slices.
+- **Contrast** and **dithering** for gray screens.
+- **Landscape** for a reader held sideways: XTC and XTCH are turned counter-clockwise,
+  EPUB and CBZ get wide pictures.
+- **Zoom** (Fit, or 100–300%), which cuts a zoomed page into screens in reading order
+  or keeps its middle, with optional **guide arrows** from one piece to the next.
+- **Presets** for manga, manhwa and manhua, or your own.
 
 <div align="center">
 <img src="docs/screenshots/export.jpg" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it" width="780" />
@@ -131,23 +138,25 @@ next one, with a live preview that shows the source next to the result. Start fr
 
 ### Send it where it needs to go
 
-Choose a format, how many files, and where to put them: a folder, a USB drive or
-SD card (found automatically, with a "Safe to unplug" message), or Wi-Fi.
+Choose where the files go: a folder, a USB drive or SD card (found automatically,
+with a "Safe to unplug" message when it is done), or Wi-Fi. Then pick the format, and
+one file per series, per chapter or every few chapters (long EPUBs are cut into parts).
 
-| | |
-|---|---|
-| **XTC**: black and white; the smallest files and the quickest to open | **XTCH**: four grays; twice the size |
-| **EPUB**: a fixed-layout EPUB 3 that nearly every reader opens, with the chapters as its table of contents | **CBZ**: a comic archive with a `ComicInfo.xml` (series, author, summary, genres, reading direction) and the chapters as page bookmarks |
-| **One file** per series, per chapter, or every N chapters; long EPUBs are cut into parts | |
+| Format | What it is | Opened by |
+|---|---|---|
+| **XTC** | Black and white; the smallest files and the quickest to open | Xteink readers |
+| **XTCH** | Four grays; twice the size of XTC | Xteink readers |
+| **EPUB** | A fixed-layout EPUB 3, with the chapters as its table of contents | Nearly every reader |
+| **CBZ** | A comic archive with a `ComicInfo.xml` (series, author, summary, genres, reading direction) and the chapters as bookmarks | Kobo, PocketBook, Boox, KOReader and comic apps |
+| **Original quality** | CBZ or PDF with the pages exactly as downloaded | Phones and tablets |
 
-**Keep color.** For a color reader (Kobo Libra and Clara Colour, Kindle Colorsoft,
-Boox Go Color, Palma 2 Pro, Tab Ultra C Pro and Note Air3 C, PocketBook InkPad Color 3, or any
-reader you mark with **Color screen**), an EPUB or CBZ can keep the pages in color: each is resized
-to the screen and saved as a normal color JPEG, with no tone changes, dithering or sharpening, and
-the reader's firmware does the rest. Choose **Black & white | Color** under Format on the Export
-screen (XTC and XTCH are always gray). Pages are shrunk to gray when they are downloaded unless
-you turn on **Keep colors (uses more space)** in Settings, Downloads, so turn it on before
-downloading what you want in color.
+**Keep color.** On a color reader (Kobo Libra and Clara Colour, Kindle Colorsoft, Boox
+Go Color, Palma 2 Pro, Tab Ultra C Pro and Note Air3 C, PocketBook InkPad Color 3, or any
+reader you mark **Color screen**), EPUB and CBZ can keep the pages in color: choose
+**Color** under Format on the Export screen. Each page is resized to the screen and
+saved as a plain color JPEG, and the reader does the rest. Pages are stored in gray when
+they are downloaded unless **Keep colors (uses more space)** is on in Settings →
+Downloads, so turn it on before downloading what you want in color.
 
 <div align="center">
 <img src="docs/screenshots/send-to.png" alt="The Send to panel: reader, destination, format and files" width="300" />
@@ -289,11 +298,12 @@ you use that.
 ## On the web
 
 The MangaPoint website, at **[app.mangapoint.org](https://app.mangapoint.org/)**, reads and
-exports **your own** books, in any browser, on a computer, a tablet or a phone. It works like the app: a Library (import a CBZ, ZIP, EPUB
-with pictures, a folder of pictures, or a series folder from MangaPoint's own library),
-a page for each book with its chapters, the same reader, the same Export screen and the
-same reader settings. **Install** it from Settings → App and it opens like an app from
-your home screen and reads with no connection at all.
+exports **your own** books, in any browser, on a computer, a tablet or a phone. It works
+like the app: a Library (import a CBZ, ZIP, EPUB with pictures, a folder of pictures, or a
+series folder from MangaPoint's own library), a page for each book with its chapters, the
+same reader, the same Export screen and the same reader settings. **Install** it from
+Settings → App and it opens like an app from your home screen and reads with no
+connection at all.
 
 It does not search or download manga (the desktop app does), and RAR, 7z and PDF are not
 supported on the web yet. Everything runs on your device; nothing is uploaded and the host
@@ -361,16 +371,23 @@ through the app with real mouse events.
  Download queue ──► page files on disk ──► converter ──► XTC / XTCH / EPUB / CBZ ──► folder · USB · Wi-Fi
 ```
 
-| Crate | Role |
+| Folder | What it is |
 |---|---|
-| `apps/desktop` | The app: screens (Dioxus), queue, notifications, covers |
+| `apps/desktop` | The desktop app: its own screens (Dioxus), the download queue, notifications, covers |
+| `apps/web` | The website (app.mangapoint.org): the browser shell, storage and import |
+| `apps/site` | The home page (mangapoint.org) |
+| `crates/ui` | The screens, styles and pictures both apps share |
 | `crates/converter` | Page processing and the XTC/XTCH encoders and parser (no I/O) |
+| `crates/formats` | EPUB, CBZ, PDF and ComicInfo writing, for the app and the website |
+| `crates/pipeline` | Downloads, conversion and export targets |
+| `crates/web-engine` | The website's import and export engine (WebAssembly) |
 | `crates/device-profiles` | The catalog of readers |
 | `crates/catalog` | Installs and talks to the Suwayomi server |
 | `crates/sources` | Source and extension management, health checks |
 | `crates/search` | Fan-out search, grouping, ranking, chapter merging |
-| `crates/pipeline` | Downloads, conversion, EPUB and CBZ writing and export targets |
 | `crates/library` | Settings, library, presets and exports on disk |
+
+How the folders depend on each other is in [docs/architecture.md](docs/architecture.md).
 
 ## Releases and versions
 
