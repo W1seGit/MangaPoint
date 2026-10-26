@@ -52,10 +52,9 @@ b { color: var(--heading); font-weight: 600; }
 .top-links a:hover { background: var(--sub); color: var(--heading); }
 /* GitHub, with how many stars the repository has once GitHub says (on phones too). */
 .top-links .gh { display: flex; align-items: center; gap: 8px; padding: 8px 9px; margin-left: 4px; background: var(--sub); border-radius: var(--radius-lg); }
-.top-links .gh:has(.stars:not([hidden])) { padding: 8px 13px 8px 11px; }
-.stars { display: flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.top-links .gh:has(.stars:not([hidden])) { padding: 8px 10px 8px 14px; }
+.stars { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .stars[hidden] { display: none; }
-.stars .i { width: 14px; height: 14px; }
 @media (max-width: 640px) { .top-links a:not(.gh):not([href="#download"]) { display: none; } }
 /* On a phone the first screen's own Download button is just below; the name and GitHub keep the room. */
 @media (max-width: 440px) { .top-links a[href="#download"] { display: none; } }

@@ -9,9 +9,9 @@ use super::mascot::*;
 use std::path::Path;
 
 /// The Lucide icons the home page uses.
-const ICONS: [&str; 15] = [
+const ICONS: [&str; 14] = [
     "download", "globe", "search", "book-open", "wifi-off", "smartphone", "hard-drive", "refresh-cw", "arrow-right",
-    "crop", "layers", "lock", "check", "list-checks", "star",
+    "crop", "layers", "lock", "check", "list-checks",
 ];
 
 /// The motion of `art.css` (not how the scenes sit in a page), without comments or extra spaces.

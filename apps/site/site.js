@@ -49,14 +49,15 @@ function fromGitHub(path) {
     });
 }
 
-// How many stars the repository has, next to the GitHub mark at the top (1234 is shown as 1.2k).
+// How many stars the repository has, just before the GitHub mark at the top (1234 is shown as 1.2k).
 fromGitHub('')
   .then((repo) => {
     const n = repo.stargazers_count;
     if (typeof n !== 'number') return;
     const text = n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '')}k` : String(n);
-    document.getElementById('star-count').textContent = text;
-    document.getElementById('stars').hidden = false;
+    const count = document.getElementById('star-count');
+    count.textContent = text;
+    count.hidden = false;
     document.querySelector('.top-links .gh').setAttribute('aria-label', `MangaPoint on GitHub, ${n} ${n === 1 ? 'star' : 'stars'}`);
   })
   .catch(() => {});
