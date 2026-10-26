@@ -9,4 +9,6 @@ pub mod icons;
 pub mod mascot;
 pub mod pixels;
 pub mod placeholder;
+#[cfg(test)]
+mod site;
 mod sprite;

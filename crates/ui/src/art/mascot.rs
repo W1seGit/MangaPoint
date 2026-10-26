@@ -562,6 +562,13 @@ pub(super) fn updating_markup() -> String { updating() }
 pub(super) fn walking_markup() -> String { walking() }
 #[cfg(test)]
 pub(super) fn loader_markup() -> String { mascot(0, 0, Eyes::Open) }
+/// Awake with both paws on an edge, as on the bookcase, for the website's home page, where it leans on the
+/// picture of the app.
+#[cfg(test)]
+pub(super) fn leaning_markup() -> String {
+    let arms = [((10.5, 42.0), (10.5, 46.5)), ((33.5, 42.0), (33.5, 46.5))];
+    posed(0, 0, Eyes::Open, Lift::Both, &arms, "")
+}
 
 #[cfg(test)]
 mod tests {
