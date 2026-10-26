@@ -102,6 +102,9 @@ jobs:
           path: apps/web/dist
       - uses: cloudflare/wrangler-action@v3
         with:
+          # Without this the action installs its own old Wrangler (3.90), which can't deploy a
+          # Worker that only serves files ("Missing entry-point").
+          wranglerVersion: "4.153.0"
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: apps/web
