@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>MangaPoint: manga for your e-reader</title>
-<meta name="description" content="A free app that finds manga across many sources, downloads the chapters you pick, and makes files sized for your e-reader's screen, then sends them over. With its own reader, and a website for the books you already have.">
+<meta name="description" content="Search, download, read, crop and convert manga in one free app, then send it to your e-reader. Or read your own books in the browser, on any computer or phone.">
 <meta name="theme-color" content="#1e1916">
 <meta property="og:title" content="MangaPoint">
 <meta property="og:description" content="The easiest way to get manga onto your e-reader. Free and open source, for Windows, macOS, Linux and the web.">
@@ -27,7 +27,7 @@
     <span>MangaPoint</span>
   </a>
   <nav class="top-links" aria-label="On this page">
-    <a href="#how">How it works</a>
+    <a href="#features">Features</a>
     <a href="#web">On the web</a>
     <a href="#download">Download</a>
     <a href="https://github.com/W1seGit/MangaPoint" class="gh" aria-label="MangaPoint on GitHub">
@@ -45,7 +45,7 @@
     <img class="bd rock-1" src="art/search-rock-1.svg" alt="">
     <img class="bd rock-2" src="art/search-rock-2.svg" alt="">
   </div>
-  <h1 class="title">MangaPoint</h1>
+  <h1 class="title" aria-label="MangaPoint"><span class="letters" aria-hidden="true"><span style="--i:0">M</span><span style="--i:1">a</span><span style="--i:2">n</span><span style="--i:3">g</span><span style="--i:4">a</span><span style="--i:5">P</span><span style="--i:6">o</span><span style="--i:7">i</span><span style="--i:8">n</span><span style="--i:9">t</span></span></h1>
   <p class="lead">The easiest way to get manga onto your e-reader.</p>
   <p class="sub">Search, download, read, crop and convert in one app, then send it to your device. Or read your own books in the browser, on any computer or phone.</p>
   <div class="cta">
@@ -54,126 +54,94 @@
   </div>
   <p class="fine">Free and open source · Windows, macOS, Linux and the web</p>
   <div class="showcase">
-    <img class="sitting" src="art/mascot.svg" alt="The MangaPoint mascot" width="176" height="228">
-    <figure class="frame">
-      <img src="img/library.jpg" width="1440" height="900" alt="The MangaPoint Library: the series you keep, with their covers, how much is downloaded and exported, and where you are in each">
-    </figure>
+    <img class="hero-art" src="art/hero.svg" width="848" height="288" alt="Manga from the web going to an e-reader, past the MangaPoint mascot">
   </div>
 </section>
 
-<section class="section what" id="what">
-  <div class="copy">
-    <h2 class="heading">What is MangaPoint?</h2>
-    <p>MangaPoint is a free app for Windows, macOS and Linux that gets manga onto your e-reader. Type a title, tick the chapters you want, and it downloads them, makes files your reader opens at the exact size of its screen, and sends them over.</p>
-    <p>It has its own reader too, so you can read on your computer, and a website that reads the books you already have on any phone or tablet.</p>
-    <p class="muted">It was made for the Xteink readers (X4, X4 Pro, X3) and also makes EPUB files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ comic archives for the readers that open them.</p>
-  </div>
-  <div class="compare" role="table" aria-label="Getting manga onto an e-reader, without and with MangaPoint">
-    <div class="compare-head" role="row"><span role="columnheader"></span><span role="columnheader">Without</span><span role="columnheader">With MangaPoint</span></div>
-    <div class="compare-row" role="row"><b role="rowheader">Finding it</b><span role="cell">Hunt for a site, one title at a time</span><span role="cell">Search many sources at once</span></div>
-    <div class="compare-row" role="row"><b role="rowheader">Getting it</b><span role="cell">Save page images by hand, or run a script</span><span role="cell">Tick chapters, press download</span></div>
-    <div class="compare-row" role="row"><b role="rowheader">Making it fit</b><span role="cell">Crop, resize and convert in other tools</span><span role="cell">Made for your reader's screen, with a live preview</span></div>
-    <div class="compare-row" role="row"><b role="rowheader">Sending it</b><span role="cell">Work out the format, then copy files around</span><span role="cell">To a folder, USB drive, SD card or Wi-Fi</span></div>
-    <div class="compare-row" role="row"><b role="rowheader">Reading it</b><span role="cell">Another app for each format</span><span role="cell">In MangaPoint, or in your phone's browser</span></div>
+<section class="section" id="features">
+  <h2 class="heading">From finding a manga to reading it</h2>
+  <p class="intro">Getting manga onto an e-reader used to be a long chain of chores: find a site, save hundreds of pages, crop, resize, convert, copy. MangaPoint does all of it, in one app.</p>
+  <div class="steps">
+    <article class="step">
+      <img src="art/search.svg" alt="" width="168" height="144">
+      <h3>Find it</h3>
+      <p>Type a title and every source you installed is asked at once. The same series from several sources becomes one card.</p>
+    </article>
+    <article class="step">
+      <img src="art/waiting.svg" alt="" width="152" height="144">
+      <h3>Get it</h3>
+      <p>Pick chapters, or type a range like <code>1-20, 25, 30-</code>. Downloads pick up where they stopped, and a failed page is tried on another source.</p>
+    </article>
+    <article class="step">
+      <img src="art/shelf.svg" alt="" width="176" height="152">
+      <h3>Read it</h3>
+      <p>Your library keeps every series with its cover and your place, and <b>Continue</b> opens the reader where you stopped.</p>
+    </article>
+    <article class="step">
+      <img src="art/update.svg" alt="" width="164" height="136">
+      <h3>Send it</h3>
+      <p>Pages are made for your reader's own screen, then go to a folder, a USB drive or SD card, or over Wi-Fi.</p>
+    </article>
   </div>
 </section>
 
-<section class="section" id="how">
-  <h2 class="heading">How it works</h2>
-  <p class="intro">From a title to a book on your reader, in one app. This is the whole way through, with the screens you will see.</p>
-
-  <div class="walk-through">
-    <div class="row-feature">
-      <div class="copy">
-        <img class="scene" src="art/browse.svg" alt="" width="252" height="132">
-        <span class="step-no">Step 1</span>
-        <h3 class="heading">Search every source at once</h3>
-        <p>Type a title and every source you installed is asked at the same time. The same series from several sources becomes one card, with its cover, how many chapters it has and when it was last updated. You choose your sources once, when you first start the app.</p>
-      </div>
-      <figure class="frame"><img src="img/search-results.jpg" loading="lazy" width="1440" height="700" alt="Search results: one card per series, with its cover, chapter count and when it was last updated"></figure>
+<section class="section rows">
+  <div class="row-feature">
+    <div class="copy">
+      <h2 class="heading">Every chapter, in one list</h2>
+      <p>Open a series to see every chapter from all its sources merged into one list, with the sources that have each one and any gaps flagged. Filter it, sort it, or type a range, and add them to the downloads.</p>
+      <ul class="ticks">
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Many sources searched at the same time</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>A queue with pause, resume, retry and reordering</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Picks up where it stopped if you close the app</li>
+      </ul>
     </div>
+    <figure class="frame"><img src="img/series.jpg" loading="lazy" width="1440" height="900" alt="A series page: its cover, details and description, then every chapter merged from its sources"></figure>
+  </div>
 
-    <div class="row-feature flip">
-      <div class="copy">
-        <img class="scene" src="art/search.svg" alt="" width="168" height="144">
-        <span class="step-no">Step 2</span>
-        <h3 class="heading">Pick the chapters you want</h3>
-        <p>A series page shows its details and every chapter from all its sources in one list, with the sources that have each one and any gaps flagged. Tick chapters, filter and sort them, or type a range like <code>1-20, 25, 30-</code>.</p>
-      </div>
-      <figure class="frame"><img src="img/series.jpg" loading="lazy" width="1440" height="900" alt="A series page: its cover, details and description, then every chapter merged from its sources"></figure>
+  <div class="row-feature flip">
+    <div class="copy">
+      <h2 class="heading">Read it right there</h2>
+      <p>Downloaded and imported series open in MangaPoint's own reader: a chapter is one long strip at a width that suits the window, with the chapter picker at the top, <b>Previous</b> and <b>Next</b> at the end, and zoom that keeps your place.</p>
+      <ul class="ticks">
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Your place is kept for every series</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Bring in your own CBZ, ZIP, CBR, RAR, 7Z, EPUB and PDF books, folders and pictures</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Drop files on the Library to import them</li>
+      </ul>
     </div>
+    <figure class="frame"><img src="img/read.jpg" loading="lazy" width="1440" height="900" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom"></figure>
+  </div>
 
-    <div class="row-feature">
-      <div class="copy">
-        <img class="scene" src="art/waiting.svg" alt="" width="152" height="144">
-        <span class="step-no">Step 3</span>
-        <h3 class="heading">Download, and let it run</h3>
-        <p>Downloads go one series after another in Tasks, with pause, resume, retry and reordering. If a page fails, another source is tried. Close the app and it picks up where it stopped; a notification tells you when something is done.</p>
-      </div>
-      <figure class="frame"><img src="img/tasks.jpg" loading="lazy" width="1440" height="600" alt="The Tasks page: a download in progress, chapter by chapter, and the exports made before"></figure>
+  <div class="row-feature">
+    <div class="copy">
+      <h2 class="heading">Made for your reader's screen</h2>
+      <p>Pages are made at your reader's exact size and density, so nothing is scaled again on the device. A live preview shows the page as downloaded next to the page made for your reader.</p>
+      <ul class="ticks">
+        <li><svg class="i"><use href="art/icons.svg#crop"/></svg>Automatic or manual cropping, spreads and long strips cut into screens</li>
+        <li><svg class="i"><use href="art/icons.svg#layers"/></svg>Contrast, dithering, landscape, zoom and guide arrows</li>
+        <li><svg class="i"><use href="art/icons.svg#book-open"/></svg>Presets for manga, manhwa and manhua, or your own</li>
+      </ul>
     </div>
+    <figure class="frame"><img src="img/export.jpg" loading="lazy" width="1440" height="900" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it"></figure>
+  </div>
 
-    <div class="row-feature flip">
-      <div class="copy">
-        <img class="scene" src="art/shelf.svg" alt="" width="176" height="152">
-        <span class="step-no">Step 4</span>
-        <h3 class="heading">Keep a library, and read it there</h3>
-        <p>What you download is in your Library, with how much is downloaded and exported and where you stopped. <b>Continue</b> opens MangaPoint's own reader on that page: each chapter is one long strip, with the chapter picker at the top and zoom that keeps your place.</p>
-        <ul class="ticks">
-          <li><svg class="i"><use href="art/icons.svg#check"/></svg>Bring in books you already have: CBZ, ZIP, CBR, RAR, 7Z, EPUB and PDF, folders and pictures</li>
-          <li><svg class="i"><use href="art/icons.svg#check"/></svg>Drop them on the Library, or press Import</li>
-        </ul>
-      </div>
-      <figure class="frame"><img src="img/read.jpg" loading="lazy" width="1440" height="900" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom"></figure>
-    </div>
-
-    <div class="row-feature">
-      <div class="copy">
-        <span class="step-no">Step 5</span>
-        <h3 class="heading">Made for your reader's screen</h3>
-        <p>Tick a series and press <b>Export</b>. Pages are made at your reader's exact size and density, so nothing is scaled again on the device, and the preview shows the page as downloaded next to the page your reader will get.</p>
-        <ul class="ticks">
-          <li><svg class="i"><use href="art/icons.svg#crop"/></svg>Automatic or manual cropping, double-page spreads, long strips cut into screens</li>
-          <li><svg class="i"><use href="art/icons.svg#layers"/></svg>Contrast, dithering, landscape, zoom and guide arrows</li>
-          <li><svg class="i"><use href="art/icons.svg#book-open"/></svg>Start from a preset for manga, manhwa or manhua, or keep your own</li>
-        </ul>
-      </div>
-      <figure class="frame"><img src="img/export.jpg" loading="lazy" width="1440" height="900" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it"></figure>
-    </div>
-
-    <div class="row-feature flip">
-      <div class="copy">
-        <img class="scene" src="art/update.svg" alt="" width="164" height="136">
-        <span class="step-no">Step 6</span>
-        <h3 class="heading">Send it to your reader</h3>
-        <p>Choose your reader and where the files go: a folder, a USB drive or SD card (found for you, with a "Safe to unplug" message when it is done), or Wi-Fi. Then pick the format, and one file per series, per chapter or every few chapters.</p>
-        <ul class="chips formats" aria-label="File formats">
-          <li><b>XTC</b> black and white</li><li><b>XTCH</b> four grays</li><li><b>EPUB</b> for most readers</li><li><b>CBZ</b> comic archive</li><li><b>Color</b> for color screens</li>
-        </ul>
-      </div>
-      <figure class="frame narrow"><img src="img/send-to.png" loading="lazy" width="349" height="478" alt="The Send to panel: the reader, and where to send it"></figure>
-    </div>
-
-    <div class="row-feature">
-      <div class="copy">
-        <span class="step-no">Once</span>
-        <h3 class="heading">Your reader, set up once</h3>
-        <p>A catalog of 29 readers comes with their screen sizes, densities and formats; yours not there? Add it by its name and size. Each reader keeps its own folder, way of sending, firmware and formats, and the Export screen only offers what your reader opens.</p>
-        <ul class="chips" aria-label="Readers">
-          <li>Xteink</li><li>Kindle</li><li>Kobo</li><li>Boox</li><li>PocketBook</li><li>reMarkable</li>
-        </ul>
-      </div>
-      <figure class="frame"><img src="img/reader-settings.jpg" loading="lazy" width="1440" height="800" alt="Settings: your reader, its size, color screen, formats, firmware and export method"></figure>
-    </div>
+  <div class="readers">
+    <h2 class="heading">Works with your reader</h2>
+    <p class="intro">Built for the Xteink readers, with standard EPUB files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ for the readers that open it. A catalog of 29 readers comes with their screens and formats, and you can add your own by its size.</p>
+    <ul class="chips" aria-label="Readers">
+      <li>Xteink X4 · X4 Pro · X3</li><li>Kindle</li><li>Kobo</li><li>Boox</li><li>PocketBook</li><li>reMarkable</li>
+    </ul>
+    <ul class="chips formats" aria-label="File formats">
+      <li><b>XTC</b> black and white</li><li><b>XTCH</b> four grays</li><li><b>EPUB</b> fixed layout</li><li><b>CBZ</b> with ComicInfo</li><li><b>Color</b> for color screens</li>
+    </ul>
   </div>
 </section>
 
 <section class="section" id="web">
   <div class="web-card">
     <div class="copy">
-      <span class="step-no">On the web</span>
       <h2 class="heading">Read on any device</h2>
-      <p>The MangaPoint website reads and exports the books you already have, in any browser, on a computer, a tablet or a phone. It works like the app, with the same Library, reader and Export screen. It does not search or download manga; the desktop app does.</p>
+      <p>The MangaPoint website reads and exports the books you already have, in any browser, on a computer, a tablet or a phone. It works like the app: the same Library, reader and Export screen. It does not search or download manga; the desktop app does.</p>
       <ul class="points">
         <li><svg class="i"><use href="art/icons.svg#wifi-off"/></svg><span><b>Read offline</b>Install it and it opens with no connection at all.</span></li>
         <li><svg class="i"><use href="art/icons.svg#smartphone"/></svg><span><b>From your home screen</b>It opens like an app, without the browser around it.</span></li>

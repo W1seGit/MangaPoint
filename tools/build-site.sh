@@ -23,10 +23,9 @@ for name in search-cloud-1 search-cloud-2 search-rock-1 search-rock-2; do
   cp "$root/crates/ui/assets/svg/$name.svg" "$dist/art/"
 done
 cp "$root/apps/web/assets/icons/favicon-32.png" "$root/apps/web/assets/icons/apple-touch-icon.png" "$dist/icons/"
-for name in library search-results series tasks read export reader-settings web-phone; do
+for name in series read export web-phone; do
   cp "$root/docs/screenshots/$name.jpg" "$dist/img/"
 done
-cp "$root/docs/screenshots/send-to.png" "$dist/img/"
 cp "$root/docs/banner.png" "$dist/img/banner.png"
 
 echo "built $dist"
