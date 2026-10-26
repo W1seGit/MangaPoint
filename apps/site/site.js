@@ -33,10 +33,37 @@ if (os === 'phone') {
   document.querySelector(`.os[data-os="${os}"]`)?.classList.add('yours');
 }
 
+// GitHub's answers are kept for ten minutes in this tab, so moving round the page does not ask again (GitHub
+// allows a visitor 60 questions an hour).
+function fromGitHub(path) {
+  const key = `gh:${path}`;
+  try {
+    const kept = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (kept && Date.now() - kept.at < 10 * 60 * 1000) return Promise.resolve(kept.value);
+  } catch {}
+  return fetch(`https://api.github.com/repos/W1seGit/MangaPoint${path}`, { headers: { Accept: 'application/vnd.github+json' } })
+    .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+    .then((value) => {
+      try { sessionStorage.setItem(key, JSON.stringify({ at: Date.now(), value })); } catch {}
+      return value;
+    });
+}
+
+// How many stars the repository has, next to the GitHub mark at the top (1234 is shown as 1.2k).
+fromGitHub('')
+  .then((repo) => {
+    const n = repo.stargazers_count;
+    if (typeof n !== 'number') return;
+    const text = n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, '')}k` : String(n);
+    document.getElementById('star-count').textContent = text;
+    document.getElementById('stars').hidden = false;
+    document.querySelector('.top-links .gh').setAttribute('aria-label', `MangaPoint on GitHub, ${n} ${n === 1 ? 'star' : 'stars'}`);
+  })
+  .catch(() => {});
+
 // The latest release's files, so each button downloads its file straight away. The names carry the version
 // (MangaPoint-2.0.0-windows-x86_64-setup.exe), so they are matched by how they end.
-fetch('https://api.github.com/repos/W1seGit/MangaPoint/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
-  .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+fromGitHub('/releases/latest')
   .then((release) => {
     const assets = release.assets || [];
     for (const button of document.querySelectorAll('[data-asset]')) {
