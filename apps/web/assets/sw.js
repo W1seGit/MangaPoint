@@ -11,12 +11,34 @@ const CACHE = `mangapoint-${VERSION}`;
 const SHELL = __PRECACHE__;
 const KNOWN = new Set(SHELL);
 
+// A browser refuses to show a page that came through a redirect when a service worker hands it over
+// ("ERR_FAILED"), and hosts redirect: Cloudflare sends /index.html to /. So a file that arrived
+// through one is kept as a fresh copy of what it led to.
+async function unredirected(response) {
+  if (!response.redirected) return response;
+  return new Response(await response.blob(), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
+      // A worker from before this fix kept the redirect for the page itself, so the app would not
+      // open again until it was replaced: replace it now rather than wait for its pages to close.
+      const old = await caches.match('index.html');
+      if (old && old.redirected) self.skipWaiting();
       const cache = await caches.open(CACHE);
-      // `reload` so a stale HTTP cache cannot put an old file in the new version.
-      await cache.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })));
+      await Promise.all(
+        SHELL.map(async (u) => {
+          // `reload` so a stale HTTP cache cannot put an old file in the new version.
+          const response = await fetch(new Request(u, { cache: 'reload' }));
+          if (!response.ok) throw new Error(`${u}: ${response.status}`);
+          await cache.put(u, await unredirected(response));
+        }),
+      );
     })(),
   );
 });
@@ -56,13 +78,13 @@ self.addEventListener('fetch', (event) => {
       const cache = await caches.open(CACHE);
       // The app opens at any address inside its scope: it is one page.
       const hit = await cache.match(request.mode === 'navigate' ? 'index.html' : key, { ignoreSearch: true });
-      if (hit) return hit;
+      if (hit) return unredirected(hit);
       try {
         return await fetch(request);
       } catch (error) {
         if (request.mode === 'navigate') {
           const fallback = await cache.match('index.html');
-          if (fallback) return fallback;
+          if (fallback) return unredirected(fallback);
         }
         throw error;
       }
