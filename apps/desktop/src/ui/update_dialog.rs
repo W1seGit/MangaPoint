@@ -37,11 +37,13 @@ fn start_update(state: AppState, update: Update) {
             Ok(Applied::Replacing) => {
                 info!("Updating to {}: the installer is running", update.version);
                 phase.set(UpdatePhase::Replacing);
-                // Let the installer take over, then close so it can replace us.
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-                // Anything changed in the last second is still waiting to be saved.
+                // Save what is waiting and stop the engine now, then close a moment later (long
+                // enough to show "Installing"). The installer starts closing this window itself
+                // about a second in (1.1.1 waited 1.5 s and was torn down mid-wait, leaving the
+                // engine running), so it must be gone before then.
                 state.flush_saves();
                 crate::backend::shutdown();
+                tokio::time::sleep(Duration::from_millis(300)).await;
                 std::process::exit(0);
             }
             Ok(Applied::Handed { path, command }) => {

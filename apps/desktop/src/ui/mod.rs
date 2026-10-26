@@ -95,6 +95,14 @@ pub fn App() -> Element {
     // otherwise write what is still waiting to be saved and stop the server,
     // so no process is left behind.
     use_wry_event_handler(move |event, _| {
+        // Quitting the whole app (Cmd+Q or the app menu on macOS) ends the event loop without
+        // closing the window first, so there is no asking: save and stop the server here too.
+        // After a window close this finds nothing left to do.
+        if let Event::LoopDestroyed = event {
+            state.flush_saves();
+            backend::shutdown();
+            return;
+        }
         if let Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
