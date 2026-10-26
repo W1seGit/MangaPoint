@@ -562,6 +562,27 @@ pub(super) fn updating_markup() -> String { updating() }
 pub(super) fn walking_markup() -> String { walking() }
 #[cfg(test)]
 pub(super) fn loader_markup() -> String { mascot(0, 0, Eyes::Open) }
+/// Delighted, for the website's home page when it is pointed at: the drawing at (10, 6) like the resting one,
+/// with its eyes open (a glint in each) and its smile open.
+#[cfg(test)]
+pub(super) fn delighted_markup() -> String {
+    let mut rows: Vec<Vec<u8>> = BODY.iter().map(|r| r.as_bytes().to_vec()).collect();
+    rows[23][17..=26].fill(b'k'); // the top of the open mouth
+    rows[24][17..=26].fill(b'e'); // inside it
+    rows[25][18..=25].fill(b'e');
+    rows[25][20..=23].fill(b'c'); // the tongue
+    let rows: Vec<String> = rows.into_iter().map(|r| String::from_utf8(r).unwrap_or_default()).collect();
+    let mut eyes = String::new();
+    for (x, y, w, h) in EYES_OPEN {
+        rect(&mut eyes, x, y, w, h, LINE);
+        rect(&mut eyes, x, y, 1, 1, FUR);
+    }
+    format!(
+        "<g transform=\"translate(10 6)\"><g class=\"m-body\">{}</g><g class=\"m-head\">{}<g class=\"m-eyes\">{eyes}</g></g></g>",
+        rows_markup(&rows, NECK, rows.len()),
+        rows_markup(&rows, 0, NECK),
+    )
+}
 #[cfg(test)]
 mod tests {
     use super::*;

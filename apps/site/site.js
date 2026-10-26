@@ -60,3 +60,30 @@ fetch('https://api.github.com/repos/W1seGit/MangaPoint/releases/latest', { heade
     }
   })
   .catch(() => {});
+
+// Rullo: pointed at, he is delighted and his name follows the pointer just above it, in whole steps of three
+// pixels like the pixel font. A tap on a touch screen shows both for a moment.
+const rullo = document.getElementById('rullo');
+const nameTag = document.getElementById('name-tag');
+const snap = (v) => Math.round(v / 3) * 3;
+function follow(e) {
+  nameTag.style.left = `${snap(e.clientX)}px`;
+  nameTag.style.top = `${snap(e.clientY)}px`;
+}
+function greet(on) {
+  rullo.classList.toggle('glad', on);
+  nameTag.classList.toggle('on', on);
+}
+let tapTimer = 0;
+rullo.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') { follow(e); greet(true); } });
+rullo.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') follow(e); });
+rullo.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') greet(false); });
+rullo.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse') return;
+  follow(e);
+  greet(true);
+  clearTimeout(tapTimer);
+  tapTimer = setTimeout(() => greet(false), 1600);
+});
+// A scroll moves the page under a still pointer; the name goes until the pointer moves again.
+window.addEventListener('scroll', () => { if (!rullo.matches(':hover')) greet(false); }, { passive: true });

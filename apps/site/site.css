@@ -5,6 +5,7 @@
   --px: 4px;                 /* one pixel of the mascot's drawing */
   --page: 1120px;
   --gutter: 24px;
+  --bar: 60px;               /* the height of the bar at the top */
   scroll-behavior: smooth;
   scroll-padding-top: 80px;
 }
@@ -38,7 +39,7 @@ b { color: var(--heading); font-weight: 600; }
 .top {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; gap: 20px;
-  padding: 12px max(var(--gutter), calc((100% - var(--page)) / 2));
+  height: var(--bar); padding: 0 max(var(--gutter), calc((100% - var(--page)) / 2));
   background: color-mix(in srgb, var(--bg) 86%, transparent);
   -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   border-bottom: 1px solid transparent; transition: border-color 0.2s;
@@ -53,7 +54,14 @@ b { color: var(--heading); font-weight: 600; }
 @media (max-width: 640px) { .top-links a:not(.gh):not([href="#download"]) { display: none; } }
 
 /* ---- the first screen: the app's Search page, and a picture of what the app does ---- */
-.hero { position: relative; padding: 72px var(--gutter) 56px; text-align: center; isolation: isolate; }
+/* It fills the window under the bar, so nothing below it shows until the page is scrolled; the words sit in the
+   middle of the room above Rullo, who sits on the bottom edge. */
+.hero {
+  position: relative; isolation: isolate; text-align: center;
+  min-height: calc(100vh - var(--bar)); min-height: calc(100svh - var(--bar));
+  display: flex; flex-direction: column; align-items: center; padding: 0 var(--gutter);
+}
+.hero-words { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 32px 0 28px; }
 .scenery { position: absolute; inset: -80px 0 0; z-index: -1; overflow: hidden; pointer-events: none; }
 .scenery .bd { position: absolute; image-rendering: pixelated; }
 /* As on the app's Search page: the clouds come in from their own sides and then drift in pixel steps, the rocks
@@ -77,7 +85,7 @@ b { color: var(--heading); font-weight: 600; }
   75% { transform: translateX(-16px); animation-timing-function: steps(12); }
   100% { transform: translateX(0); }
 }
-.title { font: 400 clamp(56px, 10vw, 104px)/1 var(--font-pixel); color: var(--heading); margin: 0 0 22px; letter-spacing: 1px; }
+.title { font: 400 clamp(48px, min(10vw, 12.5vh), 104px)/1 var(--font-pixel); color: var(--heading); margin: 0 0 22px; letter-spacing: 1px; }
 /* The letters of the name come up one after another, as in the app; then the words under it, one line at a
    time, coming into focus. */
 .letters span { display: inline-block; animation: letter-in 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) calc(0.25s + var(--i) * 0.055s) backwards; }
@@ -99,8 +107,41 @@ b { color: var(--heading); font-weight: 600; }
 @keyframes top-in { from { opacity: 0; transform: translateY(-100%); } to { opacity: 1; transform: none; } }
 
 /* The picture: the sites, the mascot and the reader come in by themselves (their motion is in the picture). */
-.showcase { margin: 44px auto 0; }
-.hero-art { display: block; margin: 0 auto; width: min(100%, calc(212 * var(--px))); height: auto; image-rendering: pixelated; }
+/* Rullo comes up from below last. Pointed at (or tapped), he is delighted: the second drawing, the same size,
+   lies on top of the first. */
+.rullo { --rp: var(--px); position: relative; flex: none; width: calc(44 * var(--rp)); animation: rock-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 1.15s backwards; }
+/* In a short window he is drawn a step smaller, so all of him still fits on the first screen. */
+@media (max-height: 760px) { .rullo { --rp: 3px; } }
+@media (max-height: 560px) { .rullo { --rp: 2px; } }
+/* A short phone, where the words take more lines: smaller still, with less room around the words. */
+@media (max-height: 720px) and (max-width: 700px) { .rullo { --rp: 2px; } .hero-words { padding: 16px 0 14px; } .hero .sub { margin-bottom: 22px; } }
+.rullo img { display: block; width: 100%; height: auto; image-rendering: pixelated; -webkit-user-drag: none; user-select: none; }
+.rullo-glad { position: absolute; inset: 0; opacity: 0; }
+.rullo.glad .rullo-glad { opacity: 1; }
+.rullo.glad .rullo-calm { opacity: 0; }
+@media (hover: hover) {
+  .rullo:hover .rullo-glad { opacity: 1; }
+  .rullo:hover .rullo-calm { opacity: 0; }
+}
+
+/* His name, following the pointer just above it: the pixel font in a box with stepped pixel corners and a
+   little stepped tail pointing down at the pointer. */
+.name-tag {
+  --s: 3px;
+  position: fixed; left: 0; top: 0; z-index: 60; pointer-events: none;
+  transform: translate(-50%, calc(-100% - 14px));
+  font: 400 18px/1 var(--font-pixel); color: var(--dark); letter-spacing: 1px; white-space: nowrap;
+  opacity: 0; transition: opacity 0.12s steps(2);
+}
+.name-tag.on { opacity: 1; }
+.tag-box { display: block; padding: var(--s); background: #000; clip-path: polygon(0 var(--s), var(--s) var(--s), var(--s) 0, calc(100% - var(--s)) 0, calc(100% - var(--s)) var(--s), 100% var(--s), 100% calc(100% - var(--s)), calc(100% - var(--s)) calc(100% - var(--s)), calc(100% - var(--s)) 100%, var(--s) 100%, var(--s) calc(100% - var(--s)), 0 calc(100% - var(--s))); }
+.tag-box span { display: block; padding: 5px 11px 6px; background: var(--icon); clip-path: polygon(0 var(--s), var(--s) var(--s), var(--s) 0, calc(100% - var(--s)) 0, calc(100% - var(--s)) var(--s), 100% var(--s), 100% calc(100% - var(--s)), calc(100% - var(--s)) calc(100% - var(--s)), calc(100% - var(--s)) 100%, var(--s) 100%, var(--s) calc(100% - var(--s)), 0 calc(100% - var(--s))); }
+/* The tail: a stepped triangle of black pixels, with the box's colour inside its first row. */
+.name-tag::after {
+  content: ""; position: absolute; left: 50%; top: 100%; width: var(--s); height: var(--s); margin: calc(var(--s) * -1) 0 0 calc(var(--s) * -0.5);
+  background: var(--icon);
+  box-shadow: calc(var(--s) * -1) 0 #000, var(--s) 0 #000, 0 var(--s) #000, calc(var(--s) * -1) calc(var(--s) * -1) var(--icon), var(--s) calc(var(--s) * -1) var(--icon);
+}
 
 .frame { margin: 0; padding: 10px; background: var(--sub); border-radius: var(--radius-lg); box-shadow: 0 30px 80px -30px var(--dark), 0 0 0 1px var(--third) inset; }
 .frame img { display: block; width: 100%; height: auto; border-radius: 16px; }
