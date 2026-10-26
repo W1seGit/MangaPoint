@@ -33,9 +33,10 @@ foreach ($name in 'search-cloud-1', 'search-cloud-2', 'search-rock-1', 'search-r
 }
 $icons = Join-Path $root 'apps\web\assets\icons'
 Copy-Item (Join-Path $icons 'favicon-32.png'), (Join-Path $icons 'apple-touch-icon.png') (Join-Path $dist 'icons')
-foreach ($name in 'library', 'series', 'read', 'export', 'web-phone') {
+foreach ($name in 'library', 'search-results', 'series', 'tasks', 'read', 'export', 'reader-settings', 'web-phone') {
     Copy-Item (Join-Path $root "docs\screenshots\$name.jpg") (Join-Path $dist 'img')
 }
+Copy-Item (Join-Path $root 'docs\screenshots\send-to.png') (Join-Path $dist 'img')
 Copy-Item (Join-Path $root 'docs\banner.png') (Join-Path $dist 'img\banner.png')
 
 Write-Host "built $dist"

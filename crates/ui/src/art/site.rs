@@ -50,15 +50,14 @@ fn icons() -> String {
 fn files() -> Vec<(&'static str, String)> {
     vec![
         // The head alone, for the name at the top of the page.
-        ("mark.svg", scene("3 0 38 35", "MangaPoint", &loader_markup())),
-        // Cut off below the paws: the rest of it is behind the edge it leans on.
-        ("leaning.svg", scene("0 0 44 52", "The mascot, leaning on the picture of the app", &leaning_markup())),
+        ("mark.svg", scene("13 6 38 35", "MangaPoint", &rest_markup())),
+        // The drawing just as it was drawn, eyes shut and smiling (the resting scene, without the room round it).
+        ("mascot.svg", scene("10 6 44 57", "The MangaPoint mascot", &rest_markup())),
+        ("browse.svg", scene("0 0 126 66", "The mascot looking through websites", &browsing_markup())),
         ("search.svg", scene("0 0 84 72", "The mascot looking through a magnifying glass", &search_markup())),
         ("waiting.svg", scene("0 0 76 72", "The mascot, waiting with a cup of tea", &waiting_markup())),
         ("shelf.svg", scene("0 0 88 76", "The mascot, asleep on a bookcase", &shelf_markup())),
         ("update.svg", scene("0 0 82 68", "The mascot with a parcel", &updating_markup())),
-        ("rest.svg", scene("0 0 64 66", "The mascot, asleep", &rest_markup())),
-        ("walk.svg", scene("0 0 128 44", "The mascot walking along a road", &walking_markup())),
         ("icons.svg", icons()),
     ]
 }
