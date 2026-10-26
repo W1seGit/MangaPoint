@@ -9,6 +9,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Web-lightgrey)
 
+[Website](https://mangapoint.org/) ·
 [Download](https://github.com/W1seGit/MangaPoint/releases/latest) ·
 [Features](#features) ·
 [Getting started](#getting-started) ·
@@ -287,8 +288,8 @@ you use that.
 
 ## On the web
 
-The MangaPoint website reads and exports **your own** books, in any browser, on a
-computer, a tablet or a phone. It works like the app: a Library (import a CBZ, ZIP, EPUB
+The MangaPoint website, at **[app.mangapoint.org](https://app.mangapoint.org/)**, reads and
+exports **your own** books, in any browser, on a computer, a tablet or a phone. It works like the app: a Library (import a CBZ, ZIP, EPUB
 with pictures, a folder of pictures, or a series folder from MangaPoint's own library),
 a page for each book with its chapters, the same reader, the same Export screen and the
 same reader settings. **Install** it from Settings → App and it opens like an app from

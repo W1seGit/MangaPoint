@@ -10,7 +10,8 @@ All notable changes to MangaPoint are written down here. The format follows [Kee
 - **A new mascot** replaces the cat everywhere, and is the new app icon. It sleeps on an empty bookcase, holds up a magnifying glass when a search finds nothing, has a cup of tea when there is nothing to do, walks along a road while the app starts, and goes round a circle while something loads.
 - **Read in the app.** Downloaded and imported series open in a reader that shows a chapter as one long strip, with a chapter picker, Previous and Next at the end of a chapter, reading settings, and zoom (Ctrl + and Ctrl −) that keeps your place.
 - **Import your own comics and books** from the Library, with its Import button or by dropping them on it: CBZ, CBR, ZIP, 7z, EPUB, PDF, folders of pictures, and a series folder from MangaPoint's own library. You check each book's chapters before they are added.
-- **The MangaPoint website.** Read, import and export your own books in the browser, on a computer, a tablet or a phone. It works like the app (Library, a book's overview, the reader, Export and Settings) and keeps everything on your device.
+- **The MangaPoint website**, at [app.mangapoint.org](https://app.mangapoint.org/). Read, import and export your own books in the browser, on a computer, a tablet or a phone. It works like the app (Library, a book's overview, the reader, Export and Settings) and keeps everything on your device.
+- **A home page**, at [mangapoint.org](https://mangapoint.org/): what MangaPoint does, with its screens, and the downloads for each system. Its mascot is called Rullo.
 - **Keep colour** in EPUB and CBZ exports for colour e-readers, with a colour preview.
 - **Original quality** exports for phones and tablets, as CBZ or PDF, with the pages exactly as they were downloaded.
 - **Pause an export** and resume it later, even after closing the app. The running task shows in the corner bar with the series cover.
@@ -34,6 +35,7 @@ All notable changes to MangaPoint are written down here. The format follows [Kee
 ### Changes under the hood
 
 - The app and the website share one set of screens, styles and page scripts (`crates/ui`), and one set of file writers (`crates/formats`).
+- The website and the home page are hosted on Cloudflare; the website is deployed by GitHub on every change to `main`.
 
 ## [1.1.1] - 2026-10-18
 
