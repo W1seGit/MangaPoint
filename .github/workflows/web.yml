@@ -1,10 +1,24 @@
 name: Web
 
 # The website (apps/web, crates/web-engine). Pull requests that touch it
-# build the WebAssembly and run the tests. NOTHING is deployed automatically:
-# publishing to GitHub Pages is a manual run of this workflow ("Run workflow").
+# build the WebAssembly and run the tests. A push to main that touches it also
+# deploys it to Cloudflare, at app.mangapoint.org (apps/web/wrangler.jsonc), as
+# does "Run workflow". That needs the repository secrets CLOUDFLARE_API_TOKEN
+# and CLOUDFLARE_ACCOUNT_ID (docs/web.md, Hosting).
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "crates/web-engine/**"
+      - "tools/*web*"
+      - "tools/web-e2e/**"
+      - "tools/check-architecture.mjs"
+      - "tools/shared-ui.test.mjs"
+      - "crates/ui/**"
+      - "crates/formats/**"
+      - ".github/workflows/web.yml"
   pull_request:
     paths:
       - "apps/web/**"
@@ -17,11 +31,6 @@ on:
       - "crates/formats/**"
       - ".github/workflows/web.yml"
   workflow_dispatch:
-    inputs:
-      deploy:
-        description: "Deploy the built site to GitHub Pages"
-        type: boolean
-        default: false
 
 concurrency:
   group: web-${{ github.ref }}
@@ -71,22 +80,29 @@ jobs:
         run: node --test apps/web/js/test/*.test.js
 
       - name: Keep the built site
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
+          name: web-dist
           path: apps/web/dist
 
   deploy:
-    name: Deploy to GitHub Pages (manual)
-    # Only when someone starts this workflow by hand and asks for it.
-    if: github.event_name == 'workflow_dispatch' && inputs.deploy
+    name: Deploy to app.mangapoint.org
+    # Main only: pull requests build and test, and never deploy.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
-    permissions:
-      pages: write
-      id-token: write
     environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      name: app.mangapoint.org
+      url: https://app.mangapoint.org/
     steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-dist
+          path: apps/web/dist
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          command: deploy

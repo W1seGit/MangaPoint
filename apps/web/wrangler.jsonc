@@ -1,0 +1,14 @@
+// The website (the web app) on Cloudflare (Workers static assets), at app.mangapoint.org.
+// It needs Rust to build, so GitHub builds it (.github/workflows/web.yml) and deploys apps/web/dist with this
+// file (see docs/web.md, Hosting).
+{
+  "name": "mangapoint-app",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    // Every address the app's router knows (/export, /book/...) is the app's page.
+    "not_found_handling": "single-page-application"
+  },
+  // Made on the first deploy; the domain's DNS is already on this Cloudflare account.
+  "routes": [{ "pattern": "app.mangapoint.org", "custom_domain": true }]
+}

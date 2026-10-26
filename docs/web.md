@@ -136,6 +136,22 @@ Any static host works: copy `apps/web/dist` to it. Requirements: serve `.wasm` a
 `application/wasm` and `.js` as a JavaScript type; HTTPS (or `localhost`) so the
 service worker and OPFS are available. All URLs are relative, so a sub-path
 such as `https://user.github.io/MangaPoint/` works. No special headers are
-needed (no `SharedArrayBuffer`). `.github/workflows/web.yml` builds on pull
-requests and has a **manual** deploy to GitHub Pages (Run workflow, tick
-"deploy"); nothing deploys by itself.
+needed (no `SharedArrayBuffer`).
+
+The two sites are on Cloudflare (Workers with static assets), on the domain's own
+Cloudflare account:
+
+* **The web app, app.mangapoint.org** (`apps/web/wrangler.jsonc`). It needs Rust to
+  build, so GitHub builds it: `.github/workflows/web.yml` builds and tests pull
+  requests, and on a push to `main` (or "Run workflow" on `main`) it also deploys
+  `apps/web/dist` with `wrangler deploy`. That needs two repository secrets:
+  `CLOUDFLARE_API_TOKEN` (a token made from the "Edit Cloudflare Workers" template,
+  for this account and the mangapoint.org zone) and `CLOUDFLARE_ACCOUNT_ID`.
+  Unknown addresses get the app's page (`single-page-application`), so its routes work.
+* **The home page, mangapoint.org** (`apps/site/wrangler.jsonc`). It needs no
+  compiler, so Cloudflare builds it from the repository: Workers & Pages, Create,
+  import the repository, project name `mangapoint`, root directory `apps/site`,
+  build command `bash ../../tools/build-site.sh`, deploy command `npx wrangler deploy`.
+
+Both domains are made by the first deploy (`custom_domain` in each file); there must
+be no other DNS record for that name.
