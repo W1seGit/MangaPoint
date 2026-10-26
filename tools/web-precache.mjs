@@ -4,7 +4,7 @@
 //
 //     node tools/web-precache.mjs [apps/web/dist]
 //
-// The version is a hash of every file's path and content, so any change to the
+// The version is a hash of every file's path and content (and of the worker itself), so any change to the
 // site gives a new cache name, and an unchanged site gives the same one.
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
@@ -36,14 +36,16 @@ const entries = files.map((path) => {
   return { path, size: bytes.length, hash: createHash('sha256').update(bytes).digest('hex').slice(0, 16) };
 });
 
+// The worker itself counts too, so a change to how it caches starts a fresh cache.
+const template = readFileSync(join(root, 'apps', 'web', 'assets', 'sw.js'), 'utf8');
 const version = createHash('sha256')
   .update(entries.map((e) => `${e.path}:${e.hash}`).join('\n'))
+  .update(`\nsw.js:${template.replace(/\r\n/g, '\n')}`)
   .digest('hex')
   .slice(0, 12);
 
 // "index.html" doubles as the address of the app itself.
 const precache = entries.map((e) => e.path);
-const template = readFileSync(join(root, 'apps', 'web', 'assets', 'sw.js'), 'utf8');
 if (!template.includes("'__VERSION__'") || !template.includes('__PRECACHE__')) throw new Error('apps/web/assets/sw.js lost its placeholders');
 writeFileSync(join(dist, 'sw.js'), template.replace("'__VERSION__'", JSON.stringify(version)).replace('__PRECACHE__', JSON.stringify(precache, null, 2)));
 writeFileSync(join(dist, 'precache.json'), JSON.stringify({ version, files: entries }, null, 2));

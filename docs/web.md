@@ -124,7 +124,9 @@ tools\serve-web.ps1            # http://127.0.0.1:8080/
 `web-engine` for `wasm32`, runs `wasm-bindgen --target web`, copies `apps/web/assets`, `apps/web/js`, `apps/web/css` and
 the desktop style sheets, then `tools/web-precache.mjs` hashes every file and
 writes `sw.js` with a versioned precache list (the version is a hash of all
-files, so any change is a new cache and the old one is deleted).
+files and of the worker itself, so any change is a new cache and the old one is deleted).
+Hosts may redirect a file (Cloudflare sends `/index.html` to `/`); the worker stores what the
+redirect led to, since a browser refuses to show a page that a worker answers with a redirect.
 
 Tests: `cargo test -p formats -p mangapoint-ui -p mangapoint-web -p web-engine`,
 `node --test apps/web/js/test`,
