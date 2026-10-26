@@ -12,7 +12,7 @@ if (!window.mpKeysReady) {
       el.isContentEditable);
 
   const goSearch = () => {
-    const nav = [...document.querySelectorAll('.nav .nav-item')].find((b) => /^\s*search\b/i.test(b.innerText));
+    const nav = document.getElementById('nav-Search');
     if (nav && !nav.classList.contains('active')) nav.click();
     let tries = 0;
     const focus = () => {
@@ -71,6 +71,14 @@ if (!window.mpKeysReady) {
     if (e.key === 'Escape') {
       if (closeOpen()) e.preventDefault();
       else if (typing(document.activeElement)) document.activeElement.blur();
+      else {
+        // An open series goes back to where it was opened from (the library or the results).
+        const back = document.getElementById('series-back');
+        if (back) {
+          e.preventDefault();
+          back.click();
+        }
+      }
       return;
     }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {

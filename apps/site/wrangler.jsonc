@@ -1,0 +1,10 @@
+// The home page on Cloudflare (Workers static assets), at mangapoint.org.
+// Cloudflare builds it from the repository: root directory apps/site, build command
+// `bash ../../tools/build-site.sh`, deploy command `npx wrangler deploy` (see docs/web.md, Hosting).
+{
+  "name": "mangapoint",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./dist" },
+  // Made on the first deploy; the domain's DNS is already on this Cloudflare account.
+  "routes": [{ "pattern": "mangapoint.org", "custom_domain": true }]
+}

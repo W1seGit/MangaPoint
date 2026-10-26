@@ -1,0 +1,10 @@
+/* Covers: the placeholder for a missing one, and the mascot while one arrives. */
+
+/* ---- the picture for a missing cover ---- */
+.cover.empty.art { display: block; padding: 0; border: 0; background: none; overflow: hidden; aspect-ratio: 2 / 3; border-radius: inherit; }
+.cover.empty.art svg { display: block; width: 100%; height: 100%; }
+
+/* A cover that has not arrived yet is a quiet panel, not a black hole. */
+img.cover { background: var(--panel-2); }
+/* A cover on its way: the mascot nods where the picture will be. */
+.cover-box { position: relative; display: block; width: 100%; border-radius: inherit; }

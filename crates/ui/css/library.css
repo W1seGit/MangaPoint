@@ -1,0 +1,102 @@
+/* The Library: its tools, the cards, and the bar for the ticked ones (Figma "Library"). */
+
+/* ---- the series overview ---- */
+.overview-cover .cover { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--radius-lg); display: block; }
+.overview-cover .cover.empty { font-size: 1.6rem; }
+.overview { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; align-items: start; }
+.overview-cover { position: sticky; top: 12px; }
+.overview .description { white-space: pre-line; line-height: 1.6; margin: 16px 0 6px; color: var(--text); }
+.overview .description.clamp { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+
+@media (max-width: 760px) { .overview { grid-template-columns: 1fr; } .overview-cover { position: static; width: 160px; } }
+
+/* ---- the tools above the cards ---- */
+.lib-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0 30px; }
+/* The Library's title and views stay at the top while the cards scroll under them: the block reaches over the
+   page's padding, so nothing shows above or beside it. */
+.lib-top { position: sticky; top: -28px; z-index: 20; margin: -28px -36px 16px; padding: 28px 36px 14px; background: var(--bg); }
+.lib-top .lib-tools { margin-bottom: 0; }
+.lib-top:has(.menu-scrim) { z-index: 55; }
+.lib-tools .pillrow { display: flex; gap: 10px; flex: 1; flex-wrap: wrap; }
+.lib-filter { width: 240px; }
+.lib-sort { width: auto; }
+
+/* ---- the cards: one rounded panel. The two counts are joined into a pill at its top, the cover is
+   under them, and the title and the Read button are on the panel under the cover. The cards are
+   as wide as the search results, and the cover keeps its shape at any width. ---- */
+.poster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 26px 22px; padding-top: 4px; }
+.poster {
+  position: relative; display: flex; flex-direction: column; width: 100%; min-width: 0; container-type: inline-size;
+  background: var(--third); border-radius: var(--radius-lg);
+  /* No filter at rest: a filter would hold the menu's click-away layer (position: fixed) inside the card. */
+  transition: transform 0.32s cubic-bezier(0.34, 1.45, 0.64, 1), filter 0.2s ease, opacity 0.3s ease;
+}
+.poster:hover { transform: translateY(-7px); filter: drop-shadow(0 16px 18px rgba(0, 0, 0, 0.4)); }
+.poster:active { transform: translateY(-3px) scale(0.99); }
+.poster.on { outline: 3px solid var(--icon); outline-offset: 3px; }
+/* A card that is leaving the view (another view was chosen) fades away, then is taken out. */
+.poster-grid > .poster.leaving { pointer-events: none; animation: poster-out 0.3s ease forwards; animation-delay: 0s; }
+/* Without motion a card still has to leave: its animation only gets shorter. */
+.app[data-motion="snappy"] .poster-grid > .poster.leaving { animation: poster-out 0.05s ease forwards; }
+@media (prefers-reduced-motion: reduce) { .poster-grid > .poster.leaving { animation: poster-out 0.01s forwards; } }
+@keyframes poster-out { to { opacity: 0; transform: scale(0.88); } }
+.poster-art { position: relative; z-index: 2; aspect-ratio: 238 / 337; overflow: hidden; cursor: pointer; background: var(--sub); }
+.poster > .poster-art:first-child { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+/* The picture fills the cover whatever its shape. */
+.poster-art > .cover, .poster-art > .cover-box { position: absolute; inset: 0; width: 100%; height: 100%; }
+.poster-art .cover { height: 100%; aspect-ratio: auto; object-fit: cover; border-radius: 0; transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.poster:hover .poster-art .cover { transform: scale(1.04); }
+.poster-art .cover.empty { font-size: 2rem; background: var(--sub); }
+.poster-info {
+  position: relative; z-index: 1; padding: 12px 12px 14px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.poster-title { display: block; max-width: 100%; margin: 0; font: 600 18px/normal var(--font-ui); color: var(--icon); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.poster-note { margin-top: -4px; font: 400 12px/normal var(--font-ui); color: var(--muted); text-align: center; }
+.poster-read {
+  position: relative; width: 100%; height: 35px; padding: 0 10px; border: 0; border-radius: var(--radius-lg);
+  display: flex; align-items: center; justify-content: center; gap: 9px; white-space: nowrap; overflow: hidden;
+  background: var(--icon); color: var(--third); font: 500 17px/normal var(--font-ui); cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.6, 0.64, 1);
+}
+.poster-read:hover { background: var(--accent-hover); transform: scale(1.03); }
+.poster-read:active { transform: scale(0.97); }
+
+/* The counts: downloaded (dark) and exported (light), joined into one pill at the top of the panel. */
+.poster-tabs { order: -1; display: flex; padding: 9px 10px 8px; }
+.poster-tab { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; height: 26px; padding: 0 8px; font: 600 12px/normal var(--font-ui); white-space: nowrap; }
+.poster-tab.down { background: var(--sub); color: var(--icon); border-radius: var(--radius-lg) 0 0 var(--radius-lg); }
+.poster-tab.up { background: var(--icon); color: var(--third); border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
+.poster-tabs.one .poster-tab.down { border-radius: var(--radius-lg); }
+.poster-tab.notice { color: var(--icon); }
+.poster-badge { position: absolute; left: 10px; bottom: 52px; padding: 2px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background: rgba(22, 18, 16, 0.85); color: var(--text); }
+.poster-badge.saved { background: var(--third); }
+.poster-badge.queued { left: auto; right: 10px; top: 10px; bottom: auto; padding: 4px 6px; display: inline-flex; background: var(--accent); color: var(--accent-text); }
+
+/* ---- library selection: the tick box at the bottom left of the cover, the menu at the bottom right ---- */
+.poster-check { position: absolute; top: 8px; left: 8px; width: 32px; height: 32px; border-radius: 10px; border: 2px solid var(--icon); background: rgba(22, 18, 16, 0.75); color: var(--accent-text); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; opacity: 0; transition: opacity 0.12s; }
+.poster:hover .poster-check, .poster-grid.selecting .poster-check, .poster-check.on { opacity: 1; }
+.poster-check.on { background: var(--accent); border-color: var(--accent); }
+.poster-badge, .poster-check, .poster-more { z-index: 4; }
+/* The edges of the picture darken while a card is hovered, and on every card while any is ticked, so the
+   tick box and the menu button stand out. */
+.poster-art::after { content: ""; position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; box-shadow: inset 0 0 38px 16px rgba(10, 8, 7, 0.78); }
+.poster:hover .poster-art::after, .poster-grid.selecting .poster-art::after { opacity: 1; }
+.poster-more { position: absolute; top: 8px; right: 8px; width: 32px; height: 32px; border-radius: 50%; border: 0; background: rgba(22, 18, 16, 0.8); color: var(--icon); display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; opacity: 0; transition: opacity 0.12s, background 0.12s; }
+.poster:hover .poster-more, .poster-more.open { opacity: 1; }
+.poster-more:hover, .poster-more.open { background: var(--dark); }
+/* The menu opens upwards from the three dots: its bottom is 48px above the foot of the cover (the
+   tabs are 43px, the cover is as tall as 1.416 times the card is wide). */
+.poster .menu.down { left: auto; right: 8px; bottom: auto; top: calc(43px + 48px); min-width: 0; width: min(210px, calc(100cqw - 16px)); }
+
+/* ---- the Information sheet of a card ---- */
+.info-sheet { width: min(520px, 94vw); }
+.info-facts { margin: 4px 0 16px; display: grid; gap: 8px; }
+.info-facts > div { display: flex; justify-content: space-between; gap: 18px; padding: 8px 12px; border-radius: var(--radius); background: var(--sub); }
+.info-facts dt { color: var(--muted); }
+.info-facts dd { margin: 0; color: var(--text); font-weight: 600; text-align: right; }
+.info-head { font: 400 1.05rem var(--font-pixel); color: var(--heading); margin: 6px 0 8px; }
+.info-files { list-style: none; margin: 0; padding: 0; max-height: 240px; overflow-y: auto; display: grid; gap: 8px; }
+.info-files li { padding: 8px 12px; border-radius: var(--radius); background: var(--sub); min-width: 0; }
+.info-file { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-place { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

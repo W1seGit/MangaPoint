@@ -74,9 +74,71 @@ pub fn estimate_output_bytes(pages: usize, output: library::OutputFormat) -> u64
     }
 }
 
+/// The size of a series' book, kept in colour or not: colour pages are
+/// JPEGs of a picture, about five times a gray page.
+pub fn estimate_series_bytes(
+    pages: usize,
+    settings: &library::ConversionSettings,
+    device: &device_profiles::DeviceProfile,
+) -> u64 {
+    if settings.keeps_color(device) {
+        pages as u64 * pipeline::epub::typical_color_page_bytes()
+    } else {
+        estimate_output_bytes(pages, settings.output())
+    }
+}
+
+/// What the "Black & white | Color" control on the Export screen shows: `None`
+/// where it is not offered (the book is an XTC or XTCH, or the reader's screen
+/// is not colour), otherwise whether Color is the one chosen. A choice made
+/// earlier is kept while the control is hidden and applies again when it is back.
+pub fn color_choice(
+    settings: &library::ConversionSettings,
+    device: &device_profiles::DeviceProfile,
+) -> Option<bool> {
+    settings.offers_color(device).then_some(!settings.black_and_white)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_colour_control_is_shown_only_for_a_colour_reader_and_a_format_that_carries_colour() {
+        use library::{ConversionSettings, OutputFormat};
+        let colour = device_profiles::known("kobo-libra-colour").unwrap();
+        let gray = device_profiles::known("kobo-libra-2").unwrap();
+        let xteink = device_profiles::x4_pro();
+        let with = |output, black_and_white| {
+            let mut c = ConversionSettings::default();
+            c.set_output(output);
+            c.black_and_white = black_and_white;
+            c
+        };
+        for (output, shown) in [
+            (OutputFormat::Xtc, false),
+            (OutputFormat::Xtch, false),
+            (OutputFormat::Epub, true),
+            (OutputFormat::Cbz, true),
+        ] {
+            // Colour is what a colour reader starts on.
+            assert_eq!(color_choice(&with(output, false), &colour), shown.then_some(true), "{output:?}");
+            assert_eq!(color_choice(&with(output, true), &colour), shown.then_some(false), "{output:?}");
+            assert_eq!(color_choice(&with(output, false), &gray), None, "{output:?} on a gray screen");
+            assert_eq!(color_choice(&with(output, false), &xteink), None);
+        }
+        // The choice made for an EPUB comes back with the control.
+        let mut c = with(OutputFormat::Epub, true);
+        c.set_output(OutputFormat::Xtc);
+        assert_eq!(color_choice(&c, &colour), None);
+        c.set_output(OutputFormat::Cbz);
+        assert_eq!(color_choice(&c, &colour), Some(false));
+        // And the size guess follows what is made.
+        let epub = with(OutputFormat::Epub, false);
+        let bw = with(OutputFormat::Epub, true);
+        assert!(estimate_series_bytes(100, &epub, &colour) > 2 * estimate_series_bytes(100, &bw, &colour));
+        assert_eq!(estimate_series_bytes(100, &epub, &gray), estimate_series_bytes(100, &bw, &gray));
+    }
 
     #[test]
     fn export_targets_follow_the_choice_and_settings() {

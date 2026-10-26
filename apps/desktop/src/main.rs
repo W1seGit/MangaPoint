@@ -9,7 +9,9 @@ mod covers;
 mod logfile;
 mod logic;
 mod notify;
+mod pages;
 mod queue;
+mod reading_state;
 mod sample;
 mod state;
 mod updates;
@@ -96,9 +98,9 @@ fn main() {
         env!("CARGO_PKG_VERSION"),
         state::paths().root().display()
     );
-    // The cat is the window and taskbar icon (Windows and Linux; macOS takes
+    // The mascot is the window and taskbar icon (Windows and Linux; macOS takes
     // its Dock icon from the app bundle, which the installer provides).
-    let (rgba, w, h) = ui::cat::icon_rgba(8);
+    let (rgba, w, h) = ui::mascot::icon_rgba(4);
     let window = WindowBuilder::new()
         .with_window_icon(Icon::from_rgba(rgba, w, h).ok())
         .with_title("MangaPoint")
@@ -118,6 +120,10 @@ fn main() {
         .with_window(window)
         .with_asynchronous_custom_protocol(covers::SCHEME, |_id, request, responder| {
             covers::serve(request, responder)
+        })
+        // The reader's pages, straight from the library on disk; see `pages`.
+        .with_asynchronous_custom_protocol(pages::SCHEME, |_id, request, responder| {
+            pages::serve(request, responder)
         });
     // No menu bar on Windows and Linux. On macOS the menu is also where copy,
     // paste, select all, quit and hide come from, so the default one stays.

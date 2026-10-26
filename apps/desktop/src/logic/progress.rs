@@ -27,6 +27,9 @@ pub struct JobProgress {
     pub stopping: bool,
     /// Set once the finished files are being sent to their target.
     pub writing: Option<WriteProgress>,
+    /// After a pause: the chapters that were done and the total, so the numbers do not start over
+    /// while the converted chapters are read back in.
+    pub resumed: (usize, usize),
 }
 
 /// How far the finished files have got to the drive, folder or reader.
@@ -176,22 +179,33 @@ impl JobProgress {
             .then(|| (seconds * (1.0 - done) / done).round() as u64)
     }
 
+    /// Chapters done, counting those done before a pause.
+    pub fn done(&self) -> usize {
+        self.finished.max(self.resumed.0)
+    }
+
+    /// Chapters in the job, as far as known.
+    pub fn total(&self) -> usize {
+        self.chapter_total.max(self.resumed.1)
+    }
+
     /// Overall progress, 0.0 to 1.0.
     pub fn fraction(&self) -> f32 {
         // Once the files are being sent, the bar is about that.
         if let Some(fraction) = self.writing.as_ref().and_then(WriteProgress::fraction) {
             return fraction;
         }
-        if self.chapter_total == 0 {
+        if self.total() == 0 {
             return 0.0;
         }
+        let before = if self.resumed.1 > 0 { self.resumed.0 as f32 / self.resumed.1 as f32 } else { 0.0 };
         let partial: f32 = self
             .active
             .values()
             .filter(|c| c.pages_total > 0)
             .map(|c| c.pages_done as f32 / c.pages_total as f32)
             .sum();
-        ((self.finished as f32 + partial) / self.chapter_total as f32).clamp(0.0, 1.0)
+        (((self.finished as f32 + partial) / self.chapter_total.max(1) as f32).max(before)).clamp(0.0, 1.0)
     }
 
     pub fn label(&self) -> String {

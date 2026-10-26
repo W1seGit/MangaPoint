@@ -92,7 +92,7 @@ pub fn SourceCanvas(
             div { id: "editor-source-art", class, style: "{image_style}",
                 onmounted: move |_| { spawn(async move { let _ = document::eval(DRAG_SCRIPT).await; }); },
                 img { src: source.url.clone(), alt: "Source artwork before manual crop and reader shading", draggable: "false" }
-                super::preview::SourceMarks { marks }
+                mangapoint_ui::page_editor::SourceMarks { marks }
                 if guide || editing {
                     div { class: "editor-crop-box", style: "{box_style}", "data-crop-handle": "move",
                         if editing {

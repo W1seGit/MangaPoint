@@ -2,6 +2,41 @@
 
 All notable changes to MangaPoint are written down here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/).
 
+## [2.0.0] - 2026-10-25
+
+### What's new
+
+- **A new look.** The app follows a new design: a dock at the bottom, a corner bar for Tasks and Settings, pixel-style headings and figures, and calm page-to-page motion.
+- **A new mascot** replaces the cat everywhere, and is the new app icon. It sleeps on an empty bookcase, holds up a magnifying glass when a search finds nothing, has a cup of tea when there is nothing to do, walks along a road while the app starts, and goes round a circle while something loads.
+- **Read in the app.** Downloaded and imported series open in a reader that shows a chapter as one long strip, with a chapter picker, Previous and Next at the end of a chapter, reading settings, and zoom (Ctrl + and Ctrl −) that keeps your place.
+- **Import your own comics and books** from the Library, with its Import button or by dropping them on it: CBZ, CBR, ZIP, 7z, EPUB, PDF, folders of pictures, and a series folder from MangaPoint's own library. You check each book's chapters before they are added.
+- **The MangaPoint website**, at [app.mangapoint.org](https://app.mangapoint.org/). Read, import and export your own books in the browser, on a computer, a tablet or a phone. It works like the app (Library, a book's overview, the reader, Export and Settings) and keeps everything on your device.
+- **A home page**, at [mangapoint.org](https://mangapoint.org/): what MangaPoint does, with its screens, and the downloads for each system. Its mascot is called Rullo.
+- **Keep colour** in EPUB and CBZ exports for colour e-readers, with a colour preview.
+- **Original quality** exports for phones and tablets, as CBZ or PDF, with the pages exactly as they were downloaded.
+- **Pause an export** and resume it later, even after closing the app. The running task shows in the corner bar with the series cover.
+- **A new Library**: smaller cards with a tick and a menu, a title and views that stay at the top while you scroll, a selection bar in the bottom left, an Information sheet for each series, and Esc goes back from an open series.
+- **Your places travel**: the app saves and loads the same reading-state file as the website.
+
+### Changes
+
+- The reader has one mode, a long strip at a width that suits the window. The paged mode and the reading direction setting are gone.
+- New settings start with mixing sources off.
+
+### Fixes
+
+- A damaged library file no longer starts the app with an empty library.
+- Importing can be cancelled, is all-or-nothing, and is safe against deleted, renamed and oversized files.
+- Pressing Pause near the end of an export holds the exports waiting behind it, and deleting a paused series moves the next export up.
+- Menus open above everything on the page, and dialogs cover the dock.
+- A series page lists the chapters on this computer even when none of its sources answers.
+- Install all recommended installs the recommended sources again when the catalog engine has lost them, instead of saying they are installed.
+
+### Changes under the hood
+
+- The app and the website share one set of screens, styles and page scripts (`crates/ui`), and one set of file writers (`crates/formats`).
+- The website and the home page are hosted on Cloudflare; the website is deployed by GitHub on every change to `main`.
+
 ## [1.1.1] - 2026-10-18
 
 ### Fixes

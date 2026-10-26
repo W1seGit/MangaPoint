@@ -44,6 +44,15 @@ pub fn ChaptersTab() -> Element {
     let Some(ws) = state.workspace.read().clone() else {
         return rsx! {};
     };
+    // Files imported have no source: only what is saved here, which can be edited.
+    if state
+        .library
+        .read()
+        .find(&ws.series_id)
+        .is_some_and(|s| s.is_imported())
+    {
+        return rsx! { super::downloads::ImportedChapters {} };
+    }
     let mut range_text = use_signal(String::new);
     let mut range_error = use_signal(|| None::<String>);
     // What the list needs of the queue: only this series. A download of another
@@ -118,6 +127,11 @@ pub fn ChaptersTab() -> Element {
         }
         ChaptersState::Ready(loaded) => loaded.clone(),
     };
+    // No source answered (offline, or the catalog engine forgot the series): what is downloaded is still
+    // listed, as when loading fails, instead of an empty table.
+    if loaded.merged.is_empty() && loaded.unreachable > 0 && has_downloads {
+        return rsx! { super::downloads::DownloadsTab {} };
+    }
 
     let have = downloaded_keys(state, &ws.series_id);
     let has_downloads = !have.is_empty();
@@ -257,6 +271,13 @@ pub fn ChaptersTab() -> Element {
         )
     };
 
+    // The chapters the reader has read to the end.
+    let read_keys: std::collections::HashSet<String> = state
+        .library
+        .read()
+        .reading_of(&ws.series_id)
+        .map(|p| p.chapters.iter().filter(|(_, c)| c.read).map(|(k, _)| k.clone()).collect())
+        .unwrap_or_default();
     let grid_rows: Vec<GridRow> = order
         .iter()
         .map(|&i| {
@@ -296,6 +317,8 @@ pub fn ChaptersTab() -> Element {
                     .map(|(bytes, _)| logic::human_bytes(*bytes))
                     .unwrap_or_default(),
                 from: copy.map(|(_, id)| source_label(id)).unwrap_or_default(),
+                read_key: copy.map(|_| key.clone()),
+                read: copy.is_some() && read_keys.contains(&key),
             }
         })
         .collect();
@@ -380,6 +403,10 @@ pub fn ChaptersTab() -> Element {
             picked: selected_now.clone(),
             sort: current_sort,
             lock_done: false,
+            on_read: {
+                let series_id = ws.series_id.clone();
+                move |key: String| state.open_reader(&series_id, Some(key))
+            },
             on_sort: move |key| {
                 let current = table.peek().sort;
                 table.write().sort = logic::next_sort(current, key);
@@ -410,6 +437,7 @@ pub fn ChaptersTab() -> Element {
 
         if picked > 0 {
             div { class: "action-bar",
+                div { class: "bar-left",
                 div { class: "bar-count",
                     strong { "{picked} selected" }
                     span { class: "muted small",
@@ -418,7 +446,8 @@ pub fn ChaptersTab() -> Element {
                         if queued_picked > 0 { "{queued_picked} in the queue" }
                     }
                 }
-                span { class: "grow" }
+                }
+                div { class: "bar-right",
                 if per_source.len() >= 2 && to_download > 0 {
                     div { class: "bar-source",
                         title: "Adaptive uses the source with the most of your chapters, tests which is fastest, and fills any gaps from the others. Pick one source to use only that one.",
@@ -466,6 +495,7 @@ pub fn ChaptersTab() -> Element {
                         },
                         Icon { name: "download", size: 16 } "Add {to_download - not_offered} to downloads"
                     }
+                }
                 }
             }
         }

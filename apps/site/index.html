@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MangaPoint: manga for your e-reader</title>
+<meta name="description" content="Search, download, read, crop and convert manga in one free app, then send it to your e-reader. Or read your own books in the browser, on any computer or phone.">
+<meta name="theme-color" content="#1e1916">
+<meta property="og:title" content="MangaPoint">
+<meta property="og:description" content="The easiest way to get manga onto your e-reader. Free and open source, for Windows, macOS, Linux and the web.">
+<meta property="og:image" content="https://mangapoint.org/img/banner.png">
+<meta property="og:url" content="https://mangapoint.org/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<!-- The app's own fonts, colours and type (crates/ui/css), then what this page adds -->
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="site.css">
+<script src="site.js" defer></script>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="#top" aria-label="MangaPoint, back to the top">
+    <img class="mark" src="art/mark.svg" alt="" width="38" height="35">
+    <span>MangaPoint</span>
+  </a>
+  <nav class="top-links" aria-label="On this page">
+    <a href="#features">Features</a>
+    <a href="#web">On the web</a>
+    <a href="#download">Download</a>
+    <a href="https://github.com/W1seGit/MangaPoint" class="gh" aria-label="MangaPoint on GitHub">
+      <span class="stars" id="star-count" hidden></span>
+      <svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+    </a>
+  </nav>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="scenery" aria-hidden="true">
+    <img class="bd cloud-1" src="art/search-cloud-1.svg" alt="">
+    <img class="bd cloud-2" src="art/search-cloud-2.svg" alt="">
+    <img class="bd rock-1" src="art/search-rock-1.svg" alt="">
+    <img class="bd rock-2" src="art/search-rock-2.svg" alt="">
+  </div>
+  <div class="hero-words">
+    <h1 class="title" aria-label="MangaPoint"><span class="letters" aria-hidden="true"><span style="--i:0">M</span><span style="--i:1">a</span><span style="--i:2">n</span><span style="--i:3">g</span><span style="--i:4">a</span><span style="--i:5">P</span><span style="--i:6">o</span><span style="--i:7">i</span><span style="--i:8">n</span><span style="--i:9">t</span></span></h1>
+    <p class="lead">The easiest way to get manga onto your e-reader.</p>
+    <p class="sub">Search, download, read, crop and convert in one app, then send it to your device. Or read your own books in the browser, on any computer or phone.</p>
+    <div class="cta">
+      <a class="btn primary" id="get" href="#download"><svg class="i"><use href="art/icons.svg#download"/></svg><span>Download</span></a>
+      <a class="btn" id="open-web" href="https://app.mangapoint.org/"><svg class="i"><use href="art/icons.svg#globe"/></svg><span>Open the web app</span></a>
+    </div>
+    <p class="fine">Free and open source · Windows, macOS, Linux and the web</p>
+  </div>
+  <!-- Rullo, at the bottom of the first screen: pointed at, he is delighted and his name follows the pointer. -->
+  <div class="rullo" id="rullo">
+    <img class="rullo-calm" src="art/mascot.svg" alt="Rullo, the MangaPoint mascot" width="176" height="228">
+    <img class="rullo-glad" src="art/mascot-glad.svg" alt="" width="176" height="228" aria-hidden="true">
+  </div>
+</section>
+
+<section class="section" id="features">
+  <h2 class="heading">From finding a manga to reading it</h2>
+  <p class="intro">Getting manga onto an e-reader used to be a long chain of chores: find a site, save hundreds of pages, crop, resize, convert, copy. MangaPoint does all of it, in one app.</p>
+  <div class="steps">
+    <article class="step">
+      <img src="art/search.svg" alt="" width="168" height="144">
+      <h3>Find it</h3>
+      <p>Type a title and every source you installed is asked at once. The same series from several sources becomes one card.</p>
+    </article>
+    <article class="step">
+      <img src="art/waiting.svg" alt="" width="152" height="144">
+      <h3>Get it</h3>
+      <p>Pick chapters, or type a range like <code>1-20, 25, 30-</code>. Downloads pick up where they stopped, and a failed page is tried on another source.</p>
+    </article>
+    <article class="step">
+      <img src="art/shelf.svg" alt="" width="176" height="152">
+      <h3>Read it</h3>
+      <p>Your library keeps every series with its cover and your place, and <b>Continue</b> opens the reader where you stopped.</p>
+    </article>
+    <article class="step">
+      <img src="art/update.svg" alt="" width="164" height="136">
+      <h3>Send it</h3>
+      <p>Pages are made for your reader's own screen, then go to a folder, a USB drive or SD card, or over Wi-Fi.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section rows">
+  <div class="row-feature">
+    <div class="copy">
+      <h2 class="heading">Every chapter, in one list</h2>
+      <p>Open a series to see every chapter from all its sources merged into one list, with the sources that have each one and any gaps flagged. Filter it, sort it, or type a range, and add them to the downloads.</p>
+      <ul class="ticks">
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Many sources searched at the same time</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>A queue with pause, resume, retry and reordering</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Picks up where it stopped if you close the app</li>
+      </ul>
+    </div>
+    <figure class="frame"><img src="img/series.jpg" loading="lazy" width="1440" height="900" alt="A series page: its cover, details and description, then every chapter merged from its sources"></figure>
+  </div>
+
+  <div class="row-feature flip">
+    <div class="copy">
+      <h2 class="heading">Read it right there</h2>
+      <p>Downloaded and imported series open in MangaPoint's own reader: a chapter is one long strip at a width that suits the window, with the chapter picker at the top, <b>Previous</b> and <b>Next</b> at the end, and zoom that keeps your place.</p>
+      <ul class="ticks">
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Your place is kept for every series</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Bring in your own CBZ, ZIP, CBR, RAR, 7Z, EPUB and PDF books, folders and pictures</li>
+        <li><svg class="i"><use href="art/icons.svg#check"/></svg>Drop files on the Library to import them</li>
+      </ul>
+    </div>
+    <figure class="frame"><img src="img/read.jpg" loading="lazy" width="1440" height="900" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom"></figure>
+  </div>
+
+  <div class="row-feature">
+    <div class="copy">
+      <h2 class="heading">Made for your reader's screen</h2>
+      <p>Pages are made at your reader's exact size and density, so nothing is scaled again on the device. A live preview shows the page as downloaded next to the page made for your reader.</p>
+      <ul class="ticks">
+        <li><svg class="i"><use href="art/icons.svg#crop"/></svg>Automatic or manual cropping, spreads and long strips cut into screens</li>
+        <li><svg class="i"><use href="art/icons.svg#layers"/></svg>Contrast, dithering, landscape, zoom and guide arrows</li>
+        <li><svg class="i"><use href="art/icons.svg#book-open"/></svg>Presets for manga, manhwa and manhua, or your own</li>
+      </ul>
+    </div>
+    <figure class="frame"><img src="img/export.jpg" loading="lazy" width="1440" height="900" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it"></figure>
+  </div>
+
+  <div class="readers">
+    <h2 class="heading">Works with your reader</h2>
+    <p class="intro">Built for the Xteink readers, with standard EPUB files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ for the readers that open it. A catalog of 29 readers comes with their screens and formats, and you can add your own by its size.</p>
+    <ul class="chips" aria-label="Readers">
+      <li>Xteink X4 · X4 Pro · X3</li><li>Kindle</li><li>Kobo</li><li>Boox</li><li>PocketBook</li><li>reMarkable</li>
+    </ul>
+    <ul class="chips formats" aria-label="File formats">
+      <li><b>XTC</b> black and white</li><li><b>XTCH</b> four grays</li><li><b>EPUB</b> fixed layout</li><li><b>CBZ</b> with ComicInfo</li><li><b>Color</b> for color screens</li>
+    </ul>
+  </div>
+</section>
+
+<section class="section" id="web">
+  <div class="web-card">
+    <div class="copy">
+      <h2 class="heading">Read on any device</h2>
+      <p>The MangaPoint website reads and exports the books you already have, in any browser, on a computer, a tablet or a phone. It works like the app: the same Library, reader and Export screen. It does not search or download manga; the desktop app does.</p>
+      <ul class="points">
+        <li><svg class="i"><use href="art/icons.svg#wifi-off"/></svg><span><b>Read offline</b>Install it and it opens with no connection at all.</span></li>
+        <li><svg class="i"><use href="art/icons.svg#smartphone"/></svg><span><b>From your home screen</b>It opens like an app, without the browser around it.</span></li>
+        <li><svg class="i"><use href="art/icons.svg#hard-drive"/></svg><span><b>Kept on this device</b>Your books are never uploaded.</span></li>
+      </ul>
+      <a class="btn primary" href="https://app.mangapoint.org/"><svg class="i"><use href="art/icons.svg#globe"/></svg><span>Open the web app</span></a>
+    </div>
+    <figure class="phones"><img src="img/web-phone.jpg" loading="lazy" width="1282" height="900" alt="The website on a phone: the Library, a book's page with its chapters, and the reader"></figure>
+  </div>
+</section>
+
+<section class="section privacy">
+  <img src="art/mascot.svg" alt="" width="176" height="228">
+  <div>
+    <h2 class="heading">No account. No server of ours.</h2>
+    <p>Everything runs on your computer, or in your browser on the web. There is nothing to sign up for, and nothing you read is sent anywhere. MangaPoint is free and open source under the MIT license.</p>
+    <a class="link" href="https://github.com/W1seGit/MangaPoint">See the code on GitHub <svg class="i"><use href="art/icons.svg#arrow-right"/></svg></a>
+  </div>
+</section>
+
+<section class="section" id="download">
+  <h2 class="heading">Download MangaPoint</h2>
+  <p class="intro" id="version">The latest version, free.</p>
+  <div class="downloads">
+    <article class="os" data-os="windows">
+      <h3>Windows</h3>
+      <p class="muted">Windows 10 and 11, 64-bit</p>
+      <a class="btn primary" data-asset="windows-x86_64-setup.exe" href="https://github.com/W1seGit/MangaPoint/releases/latest"><svg class="i"><use href="art/icons.svg#download"/></svg><span>Installer</span></a>
+      <a class="btn" data-asset="windows-x86_64-portable.exe" href="https://github.com/W1seGit/MangaPoint/releases/latest"><span>Portable program</span></a>
+      <p class="note">Installs without asking for administrator rights. Needs the WebView2 runtime, which Windows 11 has.</p>
+    </article>
+    <article class="os" data-os="mac">
+      <h3>macOS</h3>
+      <p class="muted">Apple silicon and Intel</p>
+      <a class="btn primary" data-asset="macos-arm64.dmg" href="https://github.com/W1seGit/MangaPoint/releases/latest"><svg class="i"><use href="art/icons.svg#download"/></svg><span>Apple silicon</span></a>
+      <a class="btn" data-asset="macos-x86_64.dmg" href="https://github.com/W1seGit/MangaPoint/releases/latest"><span>Intel</span></a>
+      <p class="note">Not signed yet, so macOS asks the first time. <a href="https://github.com/W1seGit/MangaPoint#install">How to open it</a>.</p>
+    </article>
+    <article class="os" data-os="linux">
+      <h3>Linux</h3>
+      <p class="muted">64-bit</p>
+      <a class="btn primary" data-asset="linux-x86_64.deb" href="https://github.com/W1seGit/MangaPoint/releases/latest"><svg class="i"><use href="art/icons.svg#download"/></svg><span>Debian, Ubuntu (.deb)</span></a>
+      <a class="btn" data-asset="linux-x86_64.rpm" href="https://github.com/W1seGit/MangaPoint/releases/latest"><span>Fedora, openSUSE (.rpm)</span></a>
+      <a class="btn" data-asset="linux-x86_64" href="https://github.com/W1seGit/MangaPoint/releases/latest"><span>Any other Linux</span></a>
+    </article>
+  </div>
+  <p class="fine">Every release has <code>SHA256SUMS.txt</code> to check your download. <a href="https://github.com/W1seGit/MangaPoint/releases/latest">All files and release notes</a>.</p>
+</section>
+
+</main>
+
+<div class="name-tag" id="name-tag" aria-hidden="true"><span class="tag-box"><span>Rullo</span></span></div>
+
+<footer class="foot">
+  <div class="foot-brand">
+    <img class="mark" src="art/mark.svg" alt="" width="38" height="35">
+    <span>MangaPoint</span>
+  </div>
+  <nav aria-label="Links">
+    <a href="https://github.com/W1seGit/MangaPoint">GitHub</a>
+    <a href="https://github.com/W1seGit/MangaPoint/releases">Releases</a>
+    <a href="https://github.com/W1seGit/MangaPoint/issues">Report a problem</a>
+    <a href="https://github.com/W1seGit/MangaPoint/blob/main/LICENSE">MIT license</a>
+  </nav>
+  <p class="small muted">MangaPoint does not host or provide any manga: sources are third-party extensions, and whether you may download from one depends on the source and your country's law. Please support the creators where you can. Not affiliated with any reader maker or manga source.</p>
+</footer>
+
+</body>
+</html>

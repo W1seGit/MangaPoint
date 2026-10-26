@@ -1,0 +1,85 @@
+/* The mascot and its scenes. Everything moves slowly: a one-pixel nod every few seconds, steam that drifts and
+   fades, a magnifying glass that tilts, a slow walk round a circle while something loads. */
+
+.mascot { display: block; overflow: visible; shape-rendering: crispEdges; image-rendering: pixelated; flex: none; }
+.desk-scene { shape-rendering: crispEdges; image-rendering: pixelated; }
+
+/* ---- the motion ---- */
+.m-head { animation: m-nod 6s steps(1, end) infinite; }
+.m-head.m-walk { animation-duration: 2.6s; }
+@keyframes m-nod { 0% { transform: translateY(0); } 50% { transform: translateY(1px); } 100% { transform: translateY(0); } }
+/* Eyes that are open now blink once in a while. */
+.look-blink { opacity: 0; animation: look-blink 7s steps(1, end) infinite; }
+.look-open { animation: look-open 7s steps(1, end) infinite; }
+@keyframes look-open { 0%, 92% { opacity: 1; } 92.01%, 96% { opacity: 0; } 96.01%, 100% { opacity: 1; } }
+@keyframes look-blink { 0%, 92% { opacity: 0; } 92.01%, 96% { opacity: 1; } 96.01%, 100% { opacity: 0; } }
+.m-steam { opacity: 0; animation: m-steam 4.5s ease-out infinite; }
+.m-steam.s1 { animation-delay: 1.5s; }
+.m-steam.s2 { animation-delay: 3s; }
+@keyframes m-steam { 0% { opacity: 0; transform: translateY(2px); } 30% { opacity: 0.85; } 100% { opacity: 0; transform: translateY(-7px); } }
+.m-glass { animation: m-sway 9s ease-in-out infinite; }
+@keyframes m-sway { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg); } }
+.m-window .m-lit { opacity: 0; animation: m-lit 9s steps(1, end) infinite; }
+.m-window.w1 .m-lit { animation-delay: 3s; }
+.m-window.w2 .m-lit { animation-delay: 6s; }
+@keyframes m-lit { 0% { opacity: 1; } 33% { opacity: 0; } }
+.m-drop { animation: m-drop 4.5s ease-in-out infinite; }
+@keyframes m-drop { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(4px); } }
+/* Walking, seen from the side: one leg forward, the legs passing, the other leg forward, passing again; the road
+   and the hills go by. */
+.m-step.pass, .m-step.two { opacity: 0; }
+.m-step.one { animation: m-step-one 2.8s steps(1, end) infinite; }
+.m-step.pass { animation: m-step-pass 2.8s steps(1, end) infinite; }
+.m-step.two { animation: m-step-two 2.8s steps(1, end) infinite; }
+@keyframes m-step-one { 0% { opacity: 1; } 25% { opacity: 0; } }
+@keyframes m-step-pass { 0% { opacity: 0; } 25% { opacity: 1; } 50% { opacity: 0; } 75% { opacity: 1; } }
+@keyframes m-step-two { 0% { opacity: 0; } 50% { opacity: 1; } 75% { opacity: 0; } }
+.m-road { animation: m-road 2.8s steps(14) infinite; }
+@keyframes m-road { from { transform: translateX(0); } to { transform: translateX(-14px); } }
+.m-hills { animation: m-hills 64s steps(128) infinite; }
+@keyframes m-hills { from { transform: translateX(0); } to { transform: translateX(-128px); } }
+@media (prefers-reduced-motion: reduce) {
+  .m-head, .m-steam, .m-glass, .m-window .m-lit, .m-drop, .m-step, .m-road, .m-hills, .look-open, .look-blink, .m-orbit, .m-orbit .mascot { animation: none; }
+  .m-steam.s0 { opacity: 0.8; }
+  .look-blink { opacity: 0; }
+}
+
+/* ---- the scenes in a page ---- */
+.mascot.scene { height: auto; margin-bottom: 10px; max-width: 92%; }
+.mascot.scene.walk { -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent); }
+.mascot.scene.rest, .mascot.scene.search, .mascot.scene.waiting, .mascot.scene.update, .mascot.scene.browse {
+  -webkit-mask-image: linear-gradient(#000 84%, transparent); mask-image: linear-gradient(#000 84%, transparent);
+}
+.empty .mascot.scene { width: 190px; margin-bottom: 8px; }
+.empty .mascot.scene.shelf { width: 290px; }
+.empty .mascot.scene.search, .empty .mascot.scene.waiting { width: 220px; }
+.empty.compact .mascot.scene { width: 120px; }
+.empty.side .mascot.scene { margin-bottom: 0; }
+.walker { width: min(520px, 100%); margin: 0 auto 6px; }
+.walker .mascot { width: 100%; max-width: none; }
+.upd-top .mascot { width: 150px; }
+.step-hero .mascot.browse { width: min(520px, 100%); }
+.step-hero .mascot.shelf { width: 240px; }
+
+/* ---- empty screens ---- */
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 44px 16px 36px; color: var(--muted); }
+.empty h2 { color: var(--text); margin: 0 0 4px; font-size: 1.1rem; justify-content: center; }
+.empty p { max-width: 380px; margin: 0; }
+.empty.compact { padding: 18px 8px; }
+.empty.side { flex-direction: row; justify-content: center; gap: 36px; padding: 18px 8px; margin: 0 0 8px; text-align: left; }
+.empty.side .empty-words { max-width: 420px; }
+.empty .btn { margin-top: 14px; }
+
+/* ---- something is loading: the mascot goes round a dotted circle, upright all the way ---- */
+.mloader { --m: 120px; display: inline-block; position: relative; width: var(--m); height: var(--m); flex: none; }
+.mloader::before { content: ""; position: absolute; inset: 20%; border: 2px dashed var(--line-strong); border-radius: 50%; }
+.m-orbit { position: absolute; inset: 0; animation: m-orbit 4s linear infinite; }
+/* The mascot sits on the circle and turns back as the circle turns, so it never tips over. */
+.m-orbit .mascot { position: absolute; left: 50%; top: 20%; width: calc(var(--m) * 0.28); height: auto; transform: translate(-50%, -50%); animation: m-upright 4s linear infinite; }
+@keyframes m-orbit { to { transform: rotate(360deg); } }
+@keyframes m-upright { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(-360deg); } }
+.loading { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 24px 0; color: var(--muted); text-align: center; width: 100%; }
+.busy { display: inline-flex; align-items: center; gap: 6px; vertical-align: middle; }
+.m-idle { width: 96px; height: auto; margin-bottom: 8px; }
+/* A series that is not in the library yet has the same top as one that is. */
+.overview.found { margin-bottom: 8px; }

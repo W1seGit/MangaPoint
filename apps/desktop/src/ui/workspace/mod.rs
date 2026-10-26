@@ -3,6 +3,7 @@
 mod chapters;
 pub(super) mod crop_editor;
 mod downloads;
+mod edit_info;
 mod overview;
 pub(super) mod preview;
 
@@ -80,7 +81,7 @@ pub fn WorkspacePage() -> Element {
 
     rsx! {
         div { class: "rise-in",
-        button { class: "btn ghost small", onclick: move |_| state.close_series(origin),
+        button { class: "btn ghost small", id: "series-back", onclick: move |_| state.close_series(origin),
             Icon { name: "arrow-left", size: 16 }
             "{back_label}"
         }

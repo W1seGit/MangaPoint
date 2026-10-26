@@ -2,9 +2,9 @@
 //! skipped once it is reached. Where it got to is kept, so closing the app
 //! part way through picks up again where it stopped.
 
-use super::devices::DeviceAdder;
+use super::readers::ReaderAdder;
 use super::setup::Setup;
-use super::walker::WalkingCat;
+use super::mascot::Walking;
 use super::widgets::{Icon, ProgressBar};
 use crate::backend;
 use crate::state::{spawn_forever, AppState, BootState};
@@ -17,9 +17,9 @@ type View = Signal<Option<SetupStep>>;
 
 /// Move first-run setup on to `step` and remember it. It never goes back.
 fn set_step(state: AppState, step: SetupStep) {
-    let reached = state.settings.peek().setup_step;
+    let reached = state.ui.settings.peek().setup_step;
     if step == SetupStep::Done || position(step) > position(reached) {
-        let mut settings = state.settings;
+        let mut settings = state.ui.settings;
         settings.write().setup_step = step;
         state.save_settings();
     }
@@ -43,7 +43,7 @@ fn position(step: SetupStep) -> usize {
 #[component]
 pub fn Onboarding() -> Element {
     let state = use_context::<AppState>();
-    let reached = state.settings.read().setup_step;
+    let reached = state.ui.settings.read().setup_step;
     let mut view: View = use_signal(|| None);
     // Which way the page came in from, so it slides in from that side.
     let mut forward = use_signal(|| true);
@@ -146,7 +146,7 @@ pub fn Onboarding() -> Element {
     }
 }
 
-/// The engine: what it is and why, a button to install it, and the cat walking
+/// The engine: what it is and why, a button to install it, and the mascot walking
 /// while it downloads.
 #[component]
 fn EngineStep() -> Element {
@@ -155,7 +155,7 @@ fn EngineStep() -> Element {
     let folder = crate::state::paths().suwayomi_dir().display().to_string();
     rsx! {
         div { class: "engine-step",
-            WalkingCat {}
+            Walking {}
             {match boot {
                 BootState::NeedsEngine => rsx! {
                     h1 { "Install the catalog engine" }
@@ -189,11 +189,11 @@ fn EngineStep() -> Element {
 #[component]
 fn ReaderStep() -> Element {
     let state = use_context::<AppState>();
-    let devices = state.settings.read().devices();
+    let devices = state.ui.settings.read().devices();
     let added = !devices.is_empty();
     rsx! {
         div { class: "onboard-head",
-            div { class: "step-hero", WalkingCat { day: true } }
+            div { class: "step-hero", Walking {} }
             h1 { "Choose your reader" }
             p { class: "muted",
                 "Pages are made at the size of your reader\u{2019}s screen. Search for it, or type a name to add one of your own. "
@@ -216,7 +216,7 @@ fn ReaderStep() -> Element {
         }
         div { class: "reader-pick",
             // The page slides in for 0.6 s; the cursor goes into the box after that.
-            DeviceAdder { always_open: !added, focus_after_ms: 700, on_added: move |_| {} }
+            ReaderAdder { always_open: !added, focus_after_ms: 700, on_added: move |_| {} }
         }
     }
 }

@@ -105,11 +105,11 @@ pub fn open_series_from_search(state: AppState, ranked: RankedSeries) {
 
 /// Open a downloaded series from the Library, ready to preview.
 pub fn open_series_from_library(state: AppState, series_id: &str) {
-    let Some((title, sources)) = state
+    let Some((title, sources, imported)) = state
         .library
         .peek()
         .find(series_id)
-        .map(|s| (s.title.clone(), s.sources.clone()))
+        .map(|s| (s.title.clone(), s.sources.clone(), s.is_imported()))
     else {
         return;
     };
@@ -123,6 +123,11 @@ pub fn open_series_from_library(state: AppState, series_id: &str) {
     }));
     let mut chapters = state.chapters;
     state.go(Page::Series);
+    // An imported series has no source to ask: its chapters are the files here.
+    if imported {
+        chapters.set(ChaptersState::Idle);
+        return;
+    }
     chapters.set(ChaptersState::Loading);
     let id = series_id.to_string();
     spawn_forever(async move {
@@ -427,7 +432,11 @@ pub fn ensure_series_info(state: AppState, series_id: &str) {
     let Some(series) = state.library.peek().find(series_id).cloned() else {
         return;
     };
-    if series.info.is_some() || series.is_sample() || state.info_busy.peek().contains(series_id) {
+    if series.info.is_some()
+        || series.is_sample()
+        || series.is_imported()
+        || state.info_busy.peek().contains(series_id)
+    {
         return;
     }
     let Some(client) = state.client() else {

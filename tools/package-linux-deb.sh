@@ -18,6 +18,8 @@ mkdir -p "$stage/DEBIAN" "$stage/usr/bin" \
   "$stage/usr/share/applications" "$stage/usr/share/icons/hicolor/256x256/apps"
 
 install -m 0755 "$binary" "$stage/usr/bin/mangapoint"
+mkdir -p "$stage/usr/share/doc/mangapoint"
+install -m 0644 "$root/LICENSE" "$root/THIRD-PARTY-LICENSES.md" "$stage/usr/share/doc/mangapoint/"
 install -m 0644 "$root/apps/desktop/assets/icon.png" \
   "$stage/usr/share/icons/hicolor/256x256/apps/mangapoint.png"
 

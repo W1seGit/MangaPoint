@@ -1,0 +1,11 @@
+/* A book's or a series' page: the overview, then the chapters. */
+
+/* ---- one page for a series: the overview, then the chapters ---- */
+.overview-title { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.overview-title h1 { flex: 1; min-width: 200px; margin: 0; font-size: 1.8rem; line-height: 1.15; }
+.overview + .chapters-summary { margin-top: 26px; }
+.overview { margin-bottom: 8px; }
+/* ---- the overview ---- */
+.overview { grid-template-columns: 150px minmax(0, 1fr); }
+/* A narrow window: the cover above, so the title and the buttons have the whole width. */
+@media (max-width: 760px) { .overview { grid-template-columns: minmax(0, 1fr); } .overview-cover { width: 140px; } }

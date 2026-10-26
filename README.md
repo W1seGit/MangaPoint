@@ -1,23 +1,20 @@
 <div align="center">
 
-<img src="apps/desktop/assets/icon.png" alt="MangaPoint" width="120" />
+<img src="docs/banner.png" alt="MangaPoint" width="100%" />
 
-# MangaPoint
-
-**The easiest way to get manga onto your e-reader.**<br>Search, download, crop and convert in one app, then send it to your device.
+**The easiest way to get manga onto your e-reader.**<br>Search, download, read, crop and convert in one app, then send it to your device.<br>Or read and convert your own books in the browser, on any computer or phone.
 
 [![CI](https://github.com/W1seGit/MangaPoint/actions/workflows/ci.yml/badge.svg)](https://github.com/W1seGit/MangaPoint/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/W1seGit/MangaPoint?display_name=tag&sort=semver)](https://github.com/W1seGit/MangaPoint/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Web-lightgrey)
 
+[Website](https://mangapoint.org/) ·
 [Download](https://github.com/W1seGit/MangaPoint/releases/latest) ·
 [Features](#features) ·
 [Getting started](#getting-started) ·
 [Build from source](#build-from-source) ·
 [Contributing](CONTRIBUTING.md)
-
-<img src="docs/screenshots/search.png" alt="The MangaPoint search page" width="780" />
 
 </div>
 
@@ -34,10 +31,14 @@ result over. MangaPoint does all of it for you, in one app:
 | Getting it | Save page images by hand, or run a script | Pick chapters, press download |
 | Making it fit | Crop, resize and convert in other tools | Done for your reader's own screen, with a live preview |
 | Sending it | Work out the format, then copy files around | Export to a folder, USB drive, SD card or Wi-Fi |
+| Reading it | Another app for each format | Read it in MangaPoint, on your computer or in your phone's browser |
 
-It was built for the Xteink readers (X4, X4 Pro, X3), and it also makes
-standard EPUB files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ comic archives for the readers that open them.
-Everything runs on your computer. There is no account and no server of ours.
+It was built for the Xteink readers (X4, X4 Pro, X3), and it also makes standard EPUB
+files for Kindle, Kobo, Boox, PocketBook and reMarkable, and CBZ comic archives for the
+readers that open them. Everything runs on your computer. There is no account and no
+server of ours.
+The [website](#on-the-web) does the same for books you already have, in any browser,
+and keeps them on your device.
 
 ## Features
 
@@ -49,7 +50,7 @@ has, and the best source for each is picked by looking at its chapter list.
 Covers, descriptions and details come from whichever source answers first.
 
 <div align="center">
-<img src="docs/screenshots/search-results.png" alt="Search results: one card per series, with its sources and chapter count" width="780" />
+<img src="docs/screenshots/search-results.jpg" alt="Search results: one card per series, with its cover, chapter count and when it was last updated" width="780" />
 </div>
 
 ### Pick chapters, and download them
@@ -60,7 +61,7 @@ range like `1-20, 25, 30-`, then add them to the downloads. If a page fails,
 another source is tried.
 
 <div align="center">
-<img src="docs/screenshots/series.png" alt="A series page with its merged chapter table" width="780" />
+<img src="docs/screenshots/series.jpg" alt="A series page: its cover, details and description, then every chapter merged from its sources" width="780" />
 </div>
 
 ### A download queue that keeps going
@@ -71,35 +72,91 @@ when something finishes. Your library lists what you have, with sizes, and lets
 you delete a series or only some of its chapters.
 
 <div align="center">
-<img src="docs/screenshots/tasks.png" alt="The Tasks page with a download in progress" width="780" />
+<img src="docs/screenshots/tasks.jpg" alt="The Tasks page: a download in progress, chapter by chapter, and the exports made before" width="780" />
 </div>
+
+### Your library
+
+Every series you keep is a card with its cover, how many chapters are downloaded and
+exported, and a **Continue** button that opens the reader where you stopped. Filter it,
+sort it, switch between what is downloaded, exported, saved for later or imported, and
+tick several series to download, export or remove them together.
+
+<div align="center">
+<img src="docs/screenshots/library.jpg" alt="The MangaPoint Library: the series you keep, with their covers, how much is downloaded and exported, and where you are in each" width="780" />
+</div>
+
+### Read it right there
+
+Downloaded and imported series open in MangaPoint's own reader: a chapter is one long
+strip at a width that suits the window, with the chapter picker and arrows at the top,
+**Previous** and **Next** at the end of a chapter, reading settings, and zoom
+(`Ctrl` `+` and `Ctrl` `-`) that keeps your place. Where you stopped is kept for every
+series, so **Continue** in the Library takes you back to it.
+
+<div align="center">
+<img src="docs/screenshots/read.jpg" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom" width="780" />
+</div>
+
+### Bring in what you already have
+
+Press **Import** in the Library, or drop files and folders on it:
+
+- **Books:** CBZ, ZIP, CBR, RAR, CB7, 7Z, EPUB and PDF (a PDF needs pictures for
+  pages, like scans and comics).
+- **Folders:** a folder of folders is a series of chapters; a folder of archives has
+  one chapter in each.
+- **Pictures:** loose JPG, PNG, WEBP, GIF and TIFF files.
+- **A series folder from MangaPoint's own library**, on this computer or another,
+  comes in as that series, with its chapters and cover.
+
+A book's own details are read where it has them (title, author, description, genres,
+reading direction, cover and chapters), and you check what was found, and correct names
+and chapter numbers, before anything is written. Imported series are tagged
+**Imported**, their details and cover can be edited, **Import pages** adds more
+chapters, and they export like any other series. MOBI and AZW3 are locked formats and
+are not read.
 
 ### Convert for your reader's own screen
 
-Pages are made at your reader's exact size and density, so nothing is scaled
-again on the device. Automatic or manual cropping, double-page spreads, long
-strips cut into screen-sized slices, contrast and dithering are all there, and so
-is **Landscape** for a reader held sideways (turn it counter-clockwise for XTC and
-XTCH; EPUB and CBZ get wide pictures) and a **Zoom** (Fit, or 100–300%) that
-either cuts a zoomed page into screens in reading order or keeps its middle,
-and optional **guide arrows** that point from a half page or a zoomed screen to the
-next one, with a live preview that shows the source next to the result. Start from a preset
-(Manga, Manhwa, Manhua) or keep your own.
+Pages are made at your reader's exact size and density, so nothing is scaled again
+on the device, and a live preview shows the page as downloaded next to the page your
+reader will get.
+
+- **Cropping**, automatic or by hand, and **double-page spreads**.
+- **Long strips** (manhwa, webtoons) cut into screen-sized slices.
+- **Contrast** and **dithering** for gray screens.
+- **Landscape** for a reader held sideways: XTC and XTCH are turned counter-clockwise,
+  EPUB and CBZ get wide pictures.
+- **Zoom** (Fit, or 100–300%), which cuts a zoomed page into screens in reading order
+  or keeps its middle, with optional **guide arrows** from one piece to the next.
+- **Presets** for manga, manhwa and manhua, or your own.
 
 <div align="center">
-<img src="docs/screenshots/export.png" alt="The Export screen: presets, layout and crop options, and the source next to the converted page" width="780" />
+<img src="docs/screenshots/export.jpg" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it" width="780" />
 </div>
 
 ### Send it where it needs to go
 
-Choose a format, how many files, and where to put them: a folder, a USB drive or
-SD card (found automatically, with a "Safe to unplug" message), or Wi-Fi.
+Choose where the files go: a folder, a USB drive or SD card (found automatically,
+with a "Safe to unplug" message when it is done), or Wi-Fi. Then pick the format, and
+one file per series, per chapter or every few chapters (long EPUBs are cut into parts).
 
-| | |
-|---|---|
-| **XTC**: black and white; the smallest files and the quickest to open | **XTCH**: four grays; twice the size |
-| **EPUB**: a fixed-layout EPUB 3 that nearly every reader opens, with the chapters as its table of contents | **CBZ**: a comic archive with a `ComicInfo.xml` (series, author, summary, genres, reading direction) and the chapters as page bookmarks |
-| **One file** per series, per chapter, or every N chapters; long EPUBs are cut into parts | |
+| Format | What it is | Opened by |
+|---|---|---|
+| **XTC** | Black and white; the smallest files and the quickest to open | Xteink readers |
+| **XTCH** | Four grays; twice the size of XTC | Xteink readers |
+| **EPUB** | A fixed-layout EPUB 3, with the chapters as its table of contents | Nearly every reader |
+| **CBZ** | A comic archive with a `ComicInfo.xml` (series, author, summary, genres, reading direction) and the chapters as bookmarks | Kobo, PocketBook, Boox, KOReader and comic apps |
+| **Original quality** | CBZ or PDF with the pages exactly as downloaded | Phones and tablets |
+
+**Keep color.** On a color reader (Kobo Libra and Clara Colour, Kindle Colorsoft, Boox
+Go Color, Palma 2 Pro, Tab Ultra C Pro and Note Air3 C, PocketBook InkPad Color 3, or any
+reader you mark **Color screen**), EPUB and CBZ can keep the pages in color: choose
+**Color** under Format on the Export screen. Each page is resized to the screen and
+saved as a plain color JPEG, and the reader does the rest. Pages are stored in gray when
+they are downloaded unless **Keep colors (uses more space)** is on in Settings →
+Downloads, so turn it on before downloading what you want in color.
 
 <div align="center">
 <img src="docs/screenshots/send-to.png" alt="The Send to panel: reader, destination, format and files" width="300" />
@@ -114,7 +171,7 @@ a name and a size. Each reader keeps its own folder, export method, firmware
 that reader opens.
 
 <div align="center">
-<img src="docs/screenshots/reader.png" alt="Settings: your reader, its size, formats, firmware and export method" width="780" />
+<img src="docs/screenshots/reader-settings.jpg" alt="Settings: your reader, its size, color screen, formats, firmware and export method" width="780" />
 </div>
 
 ## Supported readers
@@ -138,8 +195,9 @@ name, the screen size in inches and its pixels per inch) and pick EPUB or CBZ.
 
 > **A note on testing.** The conversion, the file formats and the app are tested
 > automatically and by hand on Windows. The Linux build, its tests and the `.deb`
-> install were checked on Ubuntu 24.04; the macOS build and the `.dmg` have not yet
-> been tried on a Mac. The Xteink formats are checked against a parser that follows
+> install were checked on Ubuntu 24.04, and the macOS build and its tests were run
+> and the app used on an Apple silicon Mac (macOS 26); the `.dmg` itself has not been
+> tried yet. The Xteink formats are checked against a parser that follows
 > the firmware's own, but files have not yet been tried on every reader listed.
 > Reports are very welcome.
 
@@ -211,11 +269,13 @@ The first start walks you through three steps:
 1. **Search** a title (press `/` or `Ctrl+K`), open a result, tick chapters, and
    add them to the downloads.
 2. Watch them in **Tasks**; the finished ones are in your **Library**.
-3. Select a series in the library, press **Export**, check the preview, choose
+3. Press **Read** (or **Continue**) on a series to read it in the app.
+4. Tick a series in the library, press **Export**, check the preview, choose
    where to send it, and export.
 
-Keyboard: `/` or `Ctrl+K` (`⌘K` on a Mac) search, `Esc` closes what is open,
-arrows and `Space` move and tick in the chapter table.
+Keyboard: `/` or `Ctrl+K` (`⌘K` on a Mac) search, `Esc` closes what is open (and goes
+back from a series), arrows and `Space` move and tick in the chapter table, and in the
+reader `Ctrl` `+`/`-` zoom.
 
 ## Your data
 
@@ -234,6 +294,30 @@ changed in **Settings → Downloads**), the engine, and `logs/mangapoint.log`
 The only things MangaPoint contacts are the sources you install, GitHub (for the engine,
 the source lists and the daily check for a newer version), and your reader over Wi-Fi if
 you use that.
+
+## On the web
+
+The MangaPoint website, at **[app.mangapoint.org](https://app.mangapoint.org/)**, reads and
+exports **your own** books, in any browser, on a computer, a tablet or a phone. It works
+like the app: a Library (import a CBZ, ZIP, EPUB with pictures, a folder of pictures, or a
+series folder from MangaPoint's own library), a page for each book with its chapters, the
+same reader, the same Export screen and the same reader settings. **Install** it from
+Settings → App and it opens like an app from your home screen and reads with no
+connection at all.
+
+It does not search or download manga (the desktop app does), and RAR, 7z and PDF are not
+supported on the web yet. Everything runs on your device; nothing is uploaded and the host
+stores nothing. Your places in your books can be saved to a file and opened in the desktop
+app, and back.
+
+<div align="center">
+<img src="docs/screenshots/web-library.jpg" alt="The website's Library in a browser on a computer" width="780" />
+<br><br>
+<img src="docs/screenshots/web-phone.jpg" alt="The website on a phone: the Library, a book's page with its chapters, and the reader" width="780" />
+</div>
+
+Build it with `tools/build-web.ps1` (or `tools/build-web.sh`) and serve `apps/web/dist` from any
+static host. Details, limits and the reading-state file are in [docs/web.md](docs/web.md).
 
 ## Build from source
 
@@ -287,16 +371,23 @@ through the app with real mouse events.
  Download queue ──► page files on disk ──► converter ──► XTC / XTCH / EPUB / CBZ ──► folder · USB · Wi-Fi
 ```
 
-| Crate | Role |
+| Folder | What it is |
 |---|---|
-| `apps/desktop` | The app: screens (Dioxus), queue, notifications, covers |
+| `apps/desktop` | The desktop app: its own screens (Dioxus), the download queue, notifications, covers |
+| `apps/web` | The website (app.mangapoint.org): the browser shell, storage and import |
+| `apps/site` | The home page (mangapoint.org) |
+| `crates/ui` | The screens, styles and pictures both apps share |
 | `crates/converter` | Page processing and the XTC/XTCH encoders and parser (no I/O) |
+| `crates/formats` | EPUB, CBZ, PDF and ComicInfo writing, for the app and the website |
+| `crates/pipeline` | Downloads, conversion and export targets |
+| `crates/web-engine` | The website's import and export engine (WebAssembly) |
 | `crates/device-profiles` | The catalog of readers |
 | `crates/catalog` | Installs and talks to the Suwayomi server |
 | `crates/sources` | Source and extension management, health checks |
 | `crates/search` | Fan-out search, grouping, ranking, chapter merging |
-| `crates/pipeline` | Downloads, conversion, EPUB and CBZ writing and export targets |
 | `crates/library` | Settings, library, presets and exports on disk |
+
+How the folders depend on each other is in [docs/architecture.md](docs/architecture.md).
 
 ## Releases and versions
 
@@ -322,6 +413,8 @@ in the [changelog](CHANGELOG.md).
   `ComicInfo.xml`; apart from the cover, XTC, XTCH and EPUB files do not yet carry the
   author or description.
 - macOS builds are unsigned.
+- Import reads PDFs only when their pages are pictures (it does not draw text or vector
+  pages), and cannot open password-protected archives, MOBI or AZW3 files.
 
 ## Responsible use
 
@@ -341,6 +434,8 @@ which devices it works with.
   Mihon/Tachiyomi extension community, which make the sources possible.
 - [CrossPoint](https://github.com/crosspoint-reader/crosspoint-reader), the
   open firmware for the Xteink readers.
+- The [UnRAR](https://www.rarlab.com/rar_add.htm) source code, which reads RAR and CBR
+  archives (its licence is in `THIRD-PARTY-LICENSES.md`).
 - [Dioxus](https://dioxuslabs.com), the UI framework, and the Rust crates this
   project stands on (see `Cargo.lock`).
 

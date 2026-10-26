@@ -13,6 +13,12 @@
 //!   if it is not, a quarantine copy is made first.
 //! * Lists marked with [`lenient_vec`] keep their good entries when one entry
 //!   does not parse; the skipped entries go to the `<name>.skipped.bad` file.
+//! * A document in which one top-level field does not parse keeps every other
+//!   field; only that field falls back to its default, and its value goes to
+//!   the `<name>.skipped.bad` file.
+//! * `save` keeps a copy of the last good file as `<name>.prev` (renewed about
+//!   once a minute). When the file itself cannot be parsed at all (cut short,
+//!   for one), `load` takes that copy instead of starting empty.
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -67,6 +73,25 @@ where
     Ok(out)
 }
 
+/// Like [`lenient_vec`] for a map: entries that do not parse are skipped.
+pub fn lenient_map<'de, D, T>(d: D) -> Result<std::collections::BTreeMap<String, T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let raw = std::collections::BTreeMap::<String, serde_json::Value>::deserialize(d)?;
+    let mut out = std::collections::BTreeMap::new();
+    for (k, v) in raw {
+        match serde_json::from_value::<T>(v.clone()) {
+            Ok(t) => {
+                out.insert(k, t);
+            }
+            Err(_) => SKIPPED.with(|s| s.borrow_mut().push(v)),
+        }
+    }
+    Ok(out)
+}
+
 fn locks() -> &'static Mutex<HashMap<PathBuf, Arc<Mutex<()>>>> {
     static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
     LOCKS.get_or_init(Default::default)
@@ -107,6 +132,37 @@ fn read_retry(path: &Path) -> io::Result<Vec<u8>> {
             },
         }
     }
+}
+
+/// How old the `.prev` copy gets before a save renews it.
+const PREV_EVERY: Duration = Duration::from_secs(60);
+
+/// Parse `text` as a `T`. When that fails but the text is a JSON object, keep every field that does
+/// parse and use the default for the others; those come back as `{"field": .., "value": ..}`.
+fn parse_keeping_fields<T: Serialize + DeserializeOwned + Default>(text: &str) -> Option<(T, Vec<serde_json::Value>)> {
+    if let Ok(v) = serde_json::from_str::<T>(text) {
+        return Some((v, Vec::new()));
+    }
+    let serde_json::Value::Object(file) = serde_json::from_str::<serde_json::Value>(text).ok()? else {
+        return None;
+    };
+    let serde_json::Value::Object(mut base) = serde_json::to_value(T::default()).ok()? else {
+        return None;
+    };
+    let mut dropped = Vec::new();
+    for (key, value) in file {
+        let mut trial = base.clone();
+        trial.insert(key.clone(), value.clone());
+        if serde_json::from_value::<T>(serde_json::Value::Object(trial.clone())).is_ok() {
+            base = trial;
+        } else {
+            dropped.push(serde_json::json!({ "field": key, "value": value }));
+        }
+    }
+    // (the trials may have skipped list entries; only what the final parse skips is kept)
+    SKIPPED.with(|s| s.borrow_mut().clear());
+    let value = serde_json::from_value::<T>(serde_json::Value::Object(base)).ok()?;
+    Some((value, dropped))
 }
 
 /// Make room for a new `.bad` (shifting older ones up, dropping the oldest).
@@ -192,12 +248,11 @@ impl<T: Serialize + DeserializeOwned + Default> JsonFile<T> {
         };
         self.clear_protection();
         SKIPPED.with(|s| s.borrow_mut().clear());
-        let parsed = std::str::from_utf8(&bytes)
-            .ok()
-            .and_then(|text| serde_json::from_str::<T>(text).ok());
-        let skipped = SKIPPED.with(|s| std::mem::take(&mut *s.borrow_mut()));
+        let parsed = std::str::from_utf8(&bytes).ok().and_then(parse_keeping_fields::<T>);
+        let mut skipped = SKIPPED.with(|s| std::mem::take(&mut *s.borrow_mut()));
         match parsed {
-            Some(value) => {
+            Some((value, dropped)) => {
+                skipped.extend(dropped);
                 if !skipped.is_empty() {
                     if let Ok(raw) = serde_json::to_vec_pretty(&skipped) {
                         let _ = quarantine_bytes(&with_suffix(&self.path, ".skipped"), &raw);
@@ -210,10 +265,28 @@ impl<T: Serialize + DeserializeOwned + Default> JsonFile<T> {
                     // Could not move it aside; do not let a save replace it.
                     self.unread.set(true);
                     let _ = fs::write(self.marker(), "the file could not be set aside");
+                    return T::default();
                 }
-                T::default()
+                // The last good copy beats starting empty.
+                let recovered = fs::read(with_suffix(&self.path, ".prev"))
+                    .ok()
+                    .and_then(|b| String::from_utf8(b).ok())
+                    .and_then(|text| parse_keeping_fields::<T>(&text));
+                SKIPPED.with(|s| s.borrow_mut().clear());
+                recovered.map(|(v, _)| v).unwrap_or_default()
             }
         }
+    }
+
+    /// Whether `old` (the file about to be replaced) should become the `.prev` copy: it parses as
+    /// a whole, and the copy there is missing or not recent.
+    fn keeps_prev(&self, old: &[u8]) -> bool {
+        let fresh = fs::metadata(with_suffix(&self.path, ".prev"))
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age < PREV_EVERY);
+        !fresh && std::str::from_utf8(old).ok().is_some_and(|t| serde_json::from_str::<T>(t).is_ok())
     }
 
     fn clear_protection(&self) {
@@ -246,6 +319,8 @@ impl<T: Serialize + DeserializeOwned + Default> JsonFile<T> {
                     .is_some_and(|t| serde_json::from_str::<serde::de::IgnoredAny>(t).is_ok());
                 if !valid && !old.is_empty() {
                     quarantine_bytes(&self.path, &old).map_err(io_err)?;
+                } else if valid && self.keeps_prev(&old) {
+                    let _ = fs::write(with_suffix(&self.path, ".prev"), &old);
                 }
             }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
@@ -263,6 +338,7 @@ impl<T: Serialize + DeserializeOwned + Default> JsonFile<T> {
             let mut f = fs::File::create(&tmp)?;
             io::Write::write_all(&mut f, text.as_bytes())?;
             f.sync_all()?;
+            #[allow(clippy::drop_non_drop)] // (nothing to close in the browser build)
             drop(f);
             fs::rename(&tmp, &self.path)
         };
@@ -333,10 +409,9 @@ mod tests {
         // Older file lacking `n`, and a field from a newer version.
         fs::write(&path, r#"{"name":"old","future":1}"#).unwrap();
         let f = JsonFile::<Doc>::new(&path);
-        // serde errors on a missing field without a default, so the file is
-        // set aside rather than half-loaded.
+        // `n` is missing, so it is the default; `name` is kept.
         let loaded = f.load();
-        assert_eq!(loaded, Doc::default());
+        assert_eq!(loaded, Doc { name: "old".into(), n: 0 });
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -443,6 +518,7 @@ mod tests {
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
+        let names: Vec<_> = names.into_iter().filter(|n| !n.ends_with(".prev")).collect();
         assert_eq!(names, vec!["doc.json".to_string()], "{names:?}");
         let _ = fs::remove_dir_all(dir);
     }
@@ -470,6 +546,41 @@ mod tests {
         let skipped = fs::read_to_string(dir.join("list.json.skipped.bad")).unwrap();
         assert!(skipped.contains("oops"));
         assert!(path.exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn one_bad_field_keeps_the_rest_of_the_document() {
+        let dir = temp("field");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("doc.json");
+        fs::write(&path, r#"{"name":"kept","n":"not a number"}"#).unwrap();
+        let doc = JsonFile::<Doc>::new(&path).load();
+        assert_eq!(doc, Doc { name: "kept".into(), n: 0 });
+        let skipped = fs::read_to_string(dir.join("doc.json.skipped.bad")).unwrap();
+        assert!(skipped.contains("not a number"));
+        // The file itself is not set aside.
+        assert!(path.exists() && !dir.join("doc.json.bad").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_cut_short_file_comes_back_from_the_last_good_copy() {
+        let dir = temp("prev");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("doc.json");
+        let f = JsonFile::<Doc>::new(&path);
+        f.save(&Doc { name: "one".into(), n: 1 }).unwrap();
+        // The second save keeps the first file as the good copy.
+        f.save(&Doc { name: "two".into(), n: 2 }).unwrap();
+        assert!(dir.join("doc.json.prev").exists());
+        let whole = fs::read_to_string(&path).unwrap();
+        fs::write(&path, &whole[..whole.len() / 2]).unwrap();
+        assert_eq!(JsonFile::<Doc>::new(&path).load(), Doc { name: "one".into(), n: 1 });
+        // What was cut short is kept aside, and saving works again.
+        assert!(dir.join("doc.json.bad").exists());
+        JsonFile::<Doc>::new(&path).save(&Doc { name: "three".into(), n: 3 }).unwrap();
+        assert_eq!(JsonFile::<Doc>::new(&path).load().n, 3);
         let _ = fs::remove_dir_all(dir);
     }
 }

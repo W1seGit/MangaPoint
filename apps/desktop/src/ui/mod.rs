@@ -1,47 +1,43 @@
 //! The app's screens.
 
-pub mod cat;
-mod browse;
-mod chapter_table;
-mod conversion;
-mod devices;
 mod download_dialog;
+mod host;
+mod task_chip;
 mod tasks_page;
 mod update_dialog;
 mod export_page;
-mod hang;
+mod import;
 mod onboarding;
-mod walker;
-mod icons;
 mod library_page;
-mod ocean;
-mod pixels;
-mod placeholder;
 mod plan_page;
 mod presets;
-mod scenes;
+mod reader;
 mod search;
 mod settings;
 mod setup;
-mod shelf;
-mod sidebar;
 mod sources_page;
 mod widgets;
 pub mod work;
 mod workspace;
 
+// The art and the chapter table are shared with the website.
+pub use mangapoint_ui::art::mascot;
+use mangapoint_ui::chapter_table;
+use mangapoint_ui::readers;
+use mangapoint_ui::dialogs::{ToastHost, UnsavedHost};
+use mangapoint_ui::shell::{Backdrop, BarItem, CornerBar, Dock};
+
 use crate::backend;
 use crate::state::spawn_forever;
-use crate::state::{AppState, BootState, Modal, ModalAction, Page, ToastKind};
+use crate::state::{AppState, BootState, Modal, ModalAction, Page};
 use dioxus::desktop::tao::event::{Event, WindowEvent};
 use dioxus::desktop::use_wry_event_handler;
 use dioxus::prelude::*;
 use sources::SourceManager;
-use widgets::{Icon, ProgressBar};
+use widgets::ProgressBar;
 
-const CSS: &str = include_str!("../style.css");
-/// Floats the explanation of a question mark above everything else.
-const TOOLTIP_SCRIPT: &str = include_str!("../js/tooltip.js");
+/// What only the desktop app shows, after the shared style sheets (`mangapoint_ui::CSS`).
+const DESKTOP_CSS: &str = include_str!("../../css/desktop.css");
 /// Keyboard shortcuts.
 const KEYS_SCRIPT: &str = include_str!("../js/keys.js");
 /// Remembers the scroll position of each page.
@@ -53,6 +49,8 @@ const SLIDE_SCRIPT: &str = include_str!("../js/slide.js");
 pub fn App() -> Element {
     let state = AppState::init();
     use_context_provider(|| state);
+    use_context_provider(|| state.ui);
+    use_hook(|| state.ui.set_host(std::rc::Rc::new(host::DesktopHost(state))));
 
     // Dev flag: `-- --toast-demo` shows one of each kind of toast.
     use_hook(|| {
@@ -64,6 +62,8 @@ pub fn App() -> Element {
             crate::notify::finished(state, "Export finished", "The Greatest Estate Developer: Exported 1 file(s).");
         }
     });
+    // Debug builds can start an import from a file dropped in a folder (for trying it).
+    use_hook(|| import::watch_for_test_imports(state));
     // Start the catalog server once, when the app opens.
     use_hook(|| {
         spawn_forever(backend::boot(state, false));
@@ -73,12 +73,36 @@ pub fn App() -> Element {
         crate::updates::clear_leftovers();
         spawn_forever(update_dialog::check_at_startup(state));
     });
+    // A staging folder an import left when the app was closed in the middle of it
+    // (only ones it marked as its own, whose process is gone) is cleared away, and
+    // a chapter that was being replaced is put back.
+    use_hook(|| {
+        spawn_forever(async move {
+            let library = state.library.peek().clone();
+            let files = crate::state::library_files();
+            let removed =
+                tokio::task::spawn_blocking(move || pipeline::import::sweep_leftovers(&files, &library))
+                    .await
+                    .unwrap_or(0);
+            if removed > 0 {
+                tracing::info!("Removed {removed} unfinished import folder(s) left by an earlier run");
+            }
+        });
+    });
     // Changes to the library and the queue are written in the background.
     use_hook(|| state.start_saver());
     // When the window closes: ask first if a download or export is running;
     // otherwise write what is still waiting to be saved and stop the server,
     // so no process is left behind.
     use_wry_event_handler(move |event, _| {
+        // Quitting the whole app (Cmd+Q or the app menu on macOS) ends the event loop without
+        // closing the window first, so there is no asking: save and stop the server here too.
+        // After a window close this finds nothing left to do.
+        if let Event::LoopDestroyed = event {
+            state.flush_saves();
+            backend::shutdown();
+            return;
+        }
         if let Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
@@ -90,7 +114,8 @@ pub fn App() -> Element {
                 .peek()
                 .as_ref()
                 .is_some_and(|v| v.result.is_none() && !v.paused);
-            if let Some(warning) = crate::logic::quit_warning(download, export) {
+            let importing = work::import_running();
+            if let Some(warning) = crate::logic::quit_warning(download, export, importing) {
                 // The window would close (or hide) once this returns. Make it
                 // only hide, then show it again at once with the question.
                 let window = dioxus::desktop::window();
@@ -119,20 +144,25 @@ pub fn App() -> Element {
 
     use_hook(|| {
         spawn(async move {
-            let _ = document::eval(TOOLTIP_SCRIPT).await;
+            // Floats the explanation of a question mark above everything else.
+            if let Some(tip) = mangapoint_ui::scripts::call("tooltip", "") {
+                let _ = document::eval(&tip).await;
+            }
+            if let Some(anchor) = mangapoint_ui::scripts::call("zoom_anchor", "") {
+                let _ = document::eval(&anchor).await;
+            }
             let _ = document::eval(KEYS_SCRIPT).await;
             let _ = document::eval(SCROLL_SCRIPT).await;
             let _ = document::eval(SLIDE_SCRIPT).await;
         });
     });
 
-    let snappy = state.settings.read().animations == library::Animations::Snappy;
+    let snappy = state.ui.settings.read().animations == library::Animations::Snappy;
     let boot = state.boot.read().clone();
-    let setup_step = state.settings.read().setup_step;
+    let setup_step = state.ui.settings.read().setup_step;
     rsx! {
-        style { "{CSS}" }
-        style { {include_str!("../page-editor.css")} }
-        style { {include_str!("../editor-controls.css")} }
+        style { {mangapoint_ui::CSS} }
+        style { {DESKTOP_CSS} }
         div { class: "app", "data-motion": if snappy { "snappy" } else { "clean" },
             {match boot {
                 BootState::Failed(message) => rsx! { Failed { message } },
@@ -143,10 +173,11 @@ pub fn App() -> Element {
                 BootState::Starting { message, percent } if !state.engine_installed => rsx! { Splash { message, percent } },
                 _ => rsx! { Shell {} },
             }}
-            ModalHost {}
+            DesktopConfirmation {}
             UnsavedHost {}
             download_dialog::DownloadDialogHost {}
             update_dialog::UpdateDialogHost {}
+            import::ImportHost {}
             ToastHost {}
         }
     }
@@ -157,7 +188,7 @@ fn Splash(message: String, percent: Option<u8>) -> Element {
     let fraction = percent.map(|p| p as f32 / 100.0);
     rsx! {
         div { class: "splash",
-            walker::WalkingCat {}
+            mascot::Walking {}
             h1 { "MangaPoint" }
             p { class: "muted", "{message}" }
             ProgressBar { fraction }
@@ -190,33 +221,67 @@ fn Failed(message: String) -> Element {
 fn Shell() -> Element {
     let state = use_context::<AppState>();
     let page = *state.page.read();
-    // How many batches are downloading or waiting, for the badge on Downloads.
-    // The count is all the nav shows: it changes when a batch comes or goes,
-    // not with every page that arrives.
+    // How many batches are downloading or waiting, for the badge on Tasks. The count is all the
+    // dock shows: it changes when a batch comes or goes, not with every page that arrives.
     let in_queue = use_memo(move || {
         let (running, waiting, _) = state.queue.read().counts();
         running + waiting
     })();
+    // An open series belongs to wherever it was opened from.
+    let opened_from_library = state.workspace.read().as_ref().is_some_and(|w| w.origin == Page::Library);
+    let owner = match page {
+        Page::Series if opened_from_library => Page::Library,
+        Page::Series => Page::Search,
+        other => other,
+    };
+    // Leaving a page: the scenery flies away and the page fades, then the other page comes in.
+    let leaving = use_signal(|| false);
+    // The chapter table takes what is left of the window, so the page around it does not scroll.
+    use_effect(move || state.ui.host().run_script("fit_table", String::new()));
+    let scene = if page == Page::Search { "search" } else { "" };
+    let mut tasks = BarItem::new("tasks", "Tasks", "pulse", owner == Page::Tasks);
+    tasks.badge = (in_queue > 0).then(|| in_queue.to_string());
     rsx! {
-        nav { class: "nav",
-            div { class: "brand",
-                cat::Cat {}
-                span { "MangaPoint" }
-            }
-            NavItem { page: Page::Search, label: "Search", icon: "search" }
-            NavItem { page: Page::Library, label: "Library", icon: "book-open" }
-            NavItem { page: Page::Export, label: "Export", icon: "file-down" }
-            div { class: "nav-spacer" }
-            sidebar::SidebarJobs {}
-            NavItem {
-                page: Page::Tasks, label: "Tasks", icon: "list-checks",
-                badge: (in_queue > 0).then(|| in_queue.to_string()),
-            }
-            NavItem { page: Page::Sources, label: "Sources", icon: "layers" }
-            NavItem { page: Page::Settings, label: "Settings", icon: "settings" }
+        Backdrop { scene, leaving: leaving() }
+        if page != Page::Reader {
+        Dock {
+            items: vec![
+                BarItem::new("search", "Search", "nav-search", owner == Page::Search),
+                BarItem::new("library", "Library", "nav-library", owner == Page::Library),
+                BarItem::new("export", "Export", "nav-export", owner == Page::Export),
+            ],
+            on_pick: move |id| pick_with_exit(state, id, leaving),
+        }
+        CornerBar {
+            items: vec![tasks, BarItem::new("settings", "Settings", "gear", owner == Page::Settings)],
+            on_pick: move |id| pick_with_exit(state, id, leaving),
+            task_chip::TaskChip { on_open: move |_| pick_with_exit(state, "tasks", leaving) }
+        }
         }
         main { class: "content",
-            div { class: "page",
+            // Files and folders dropped on the Library are imported, as with its Import button (or added to
+            // the import dialog that is open). On the other pages a drop does nothing.
+            ondragover: move |e| {
+                if *state.page.peek() == Page::Library {
+                    e.prevent_default();
+                }
+            },
+            ondrop: move |e| {
+                if *state.page.peek() != Page::Library {
+                    return;
+                }
+                e.prevent_default();
+                let paths: Vec<std::path::PathBuf> = dioxus::html::HasFileData::files(&*e.data()).iter().map(|f| f.path()).collect();
+                if paths.is_empty() {
+                    return;
+                }
+                if state.import.peek().is_some() {
+                    work::add_paths_to_import(state, paths);
+                } else {
+                    work::import_paths(state, None, paths);
+                }
+            },
+            div { class: if leaving() { "page leaving" } else { "page" },
                 // The search stays built while another page is open, so coming
                 // back to it is instant and it is as it was left.
                 div { class: if page == Page::Search { "keep" } else { "keep gone" },
@@ -226,162 +291,93 @@ fn Shell() -> Element {
                     library_page::LibraryPage {}
                 }
                 {match page {
-                    Page::Setup => rsx! { setup::Setup {} },
                     Page::Search => rsx! {},
                     Page::Series => rsx! { workspace::WorkspacePage {} },
                     Page::Library => rsx! {},
                     Page::Tasks => rsx! { tasks_page::TasksPage {} },
                     Page::Plan => rsx! { plan_page::PlanPage {} },
                     Page::Export => rsx! { export_page::ExportPage {} },
-                    Page::Sources => rsx! { sources_page::SourcesPage {} },
-                    Page::Settings => rsx! { settings::SettingsPage {} },
+                    Page::Settings | Page::Sources => rsx! { settings::SettingsPage {} },
+                    Page::Reader => rsx! { reader::ReaderPage {} },
                 }}
             }
         }
     }
 }
 
-#[component]
-fn NavItem(page: Page, label: &'static str, icon: &'static str, badge: Option<String>) -> Element {
-    let state = use_context::<AppState>();
+/// A press on the dock or the corner bar. A series left open is where you come back to; pressing
+/// the place it belongs to while looking at it goes to the list.
+/// Pages that are left with a flourish: the page fades (and the clouds and rocks of Search fly
+/// away) before the next one comes in. Export, the reader and an open series just change.
+fn calm(page: Page) -> bool {
+    matches!(page, Page::Search | Page::Library | Page::Settings | Page::Tasks)
+}
+
+fn page_of(id: &str) -> Page {
+    match id {
+        "search" => Page::Search,
+        "library" => Page::Library,
+        "export" => Page::Export,
+        "tasks" => Page::Tasks,
+        _ => Page::Settings,
+    }
+}
+
+fn pick_with_exit(state: AppState, id: &'static str, mut leaving: Signal<bool>) {
+    let current = *state.page.peek();
+    let target = page_of(id);
+    let snappy = state.ui.settings.peek().animations == library::Animations::Snappy;
+    if leaving() {
+        return;
+    }
+    if current == target || !calm(current) || !calm(target) || snappy {
+        return pick(state, id);
+    }
+    leaving.set(true);
+    spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(340)).await;
+        pick(state, id);
+        leaving.set(false);
+    });
+}
+
+fn pick(state: AppState, id: &str) {
+    let page = match id {
+        "search" => Page::Search,
+        "library" => Page::Library,
+        "export" => Page::Export,
+        "tasks" => Page::Tasks,
+        _ => Page::Settings,
+    };
     let current = *state.page.read();
-    // An open series belongs to wherever it was opened from; first-run
-    // setup belongs to Sources.
-    let opened_from_library = state
-        .workspace
-        .read()
-        .as_ref()
-        .is_some_and(|w| w.origin == Page::Library);
     // On the Export screen the series that was open waits to be put back.
     let open_from = if current == Page::Export {
         state.parked_workspace.read().as_ref().map(|w| w.origin)
     } else {
         state.workspace.read().as_ref().map(|w| w.origin)
     };
-    let active = current == page
-        || (page == Page::Search && current == Page::Series && !opened_from_library)
-        || (page == Page::Library && current == Page::Series && opened_from_library)
-        || (page == Page::Sources && current == Page::Setup);
-    let class = if active {
-        "nav-item active"
-    } else {
-        "nav-item"
-    };
-    rsx! {
-        button { class: "{class}",
-            onclick: move |_| {
-                // A series left open is where you come back to; pressing the
-                // tab it belongs to while looking at it goes to the list.
-                match open_from {
-                    Some(origin) if origin == page && current == Page::Series => state.close_series(page),
-                    Some(origin) if origin == page && current != Page::Series => state.go(Page::Series),
-                    _ => state.go(page),
-                }
-            },
-            Icon { name: icon, size: 17 }
-            span { class: "grow", "{label}" }
-            if page == Page::Search { ShortcutKeys {} }
-            if let Some(count) = badge { span { class: "nav-badge", "{count}" } }
-        }
-    }
-}
-
-/// The shortcut to the search, as keys: Command K on a Mac, Ctrl K elsewhere.
-#[component]
-fn ShortcutKeys() -> Element {
-    let mac = cfg!(target_os = "macos");
-    rsx! {
-        span { class: "kbds", title: if mac { "Press Command+K (or /) to search" } else { "Press Ctrl+K (or /) to search" },
-            kbd {
-                if mac { Icon { name: "command", size: 11 } } else { "Ctrl" }
-            }
-            kbd { "K" }
-        }
-    }
-}
-
-/// Asked when the user leaves the reader form with changes that are not saved.
-#[component]
-fn UnsavedHost() -> Element {
-    let state = use_context::<AppState>();
-    let Some(to) = state.leave_prompt.read().clone() else { return rsx! {} };
-    let (save_to, discard_to) = (to.clone(), to);
-    rsx! {
-        div { class: "overlay",
-            div { class: "modal",
-                h2 { "You have unsaved settings" }
-                p { "Would you like to save or discard them?" }
-                div { class: "actions",
-                    button { class: "btn",
-                        onclick: move |_| { let mut p = state.leave_prompt; p.set(None); },
-                        "Keep editing"
-                    }
-                    button { class: "btn danger",
-                        onclick: move |_| {
-                            let mut p = state.leave_prompt;
-                            p.set(None);
-                            let mut unsaved = state.unsaved_reader;
-                            unsaved.set(None);
-                            state.leave_now(discard_to.clone());
-                        },
-                        "Discard"
-                    }
-                    button { class: "btn primary",
-                        onclick: move |_| {
-                            let saved = state.unsaved_reader.peek().clone().is_none_or(|u| (u.0)());
-                            if saved {
-                                let mut p = state.leave_prompt;
-                                p.set(None);
-                                let mut unsaved = state.unsaved_reader;
-                                unsaved.set(None);
-                                state.leave_now(save_to.clone());
-                            }
-                        },
-                        "Save"
-                    }
-                }
-            }
-        }
+    match open_from {
+        Some(origin) if origin == page && current == Page::Series => state.close_series(page),
+        Some(origin) if origin == page && current != Page::Series => state.go(Page::Series),
+        _ => state.go(page),
     }
 }
 
 /// Confirmation dialogs.
 #[component]
-fn ModalHost() -> Element {
+fn DesktopConfirmation() -> Element {
     let state = use_context::<AppState>();
-    let modal = state.modal.read().clone();
-    let Some(modal) = modal else { return rsx! {} };
-    let confirm_class = if modal.danger {
-        "btn danger"
-    } else {
-        "btn primary"
-    };
-    let action = modal.action.clone();
+    let Some(modal) = state.modal.read().clone() else { return rsx! {} };
     rsx! {
-        div { class: "overlay",
-            div { class: "modal",
-                h2 { "{modal.title}" }
-                p { "{modal.body}" }
-                div { class: "actions",
-                    button {
-                        class: "btn",
-                        onclick: move |_| {
-                            let mut m = state.modal;
-                            m.set(None);
-                        },
-                        "{modal.cancel}"
-                    }
-                    button {
-                        class: "{confirm_class}",
-                        onclick: move |_| {
-                            let mut m = state.modal;
-                            m.set(None);
-                            run_action(state, action.clone());
-                        },
-                        "{modal.confirm}"
-                    }
-                }
-            }
+        mangapoint_ui::dialogs::Confirmation {
+            title: modal.title, body: modal.body, confirm: modal.confirm, cancel: modal.cancel,
+            danger: modal.danger, dismiss_outside: false,
+            on_cancel: move |_| { let mut m = state.modal; m.set(None); },
+            on_confirm: move |_| {
+                let mut m = state.modal;
+                m.set(None);
+                run_action(state, modal.action.clone());
+            },
         }
     }
 }
@@ -407,7 +403,7 @@ fn run_action(state: AppState, action: ModalAction) {
             }
             ModalAction::DeletePreset { id } => presets::delete_preset(state, id),
             ModalAction::RemoveReader { id } => {
-                let mut settings = state.settings;
+                let mut settings = state.ui.settings;
                 {
                     let mut st = settings.write();
                     st.custom_devices.retain(|d| d.id != id);
@@ -464,56 +460,18 @@ pub fn ask_enable_browser(state: AppState, then_install: Option<String>) {
     });
 }
 
-#[component]
-fn ToastHost() -> Element {
-    let state = use_context::<AppState>();
-    let toasts = state.toasts.read().clone();
-    if toasts.is_empty() {
-        return rsx! {};
-    }
-    rsx! {
-        // The newest sits at the bottom with the older ones stacked behind it;
-        // pointing at the stack spreads them out to read.
-        div {
-            class: "toasts",
-            onmouseenter: move |_| { let mut h = state.toasts_hovered; h.set(true); },
-            onmouseleave: move |_| { let mut h = state.toasts_hovered; h.set(false); },
-            for (i, toast) in toasts.iter().rev().enumerate() {
-                {
-                    let id = toast.id;
-                    let look = match toast.kind {
-                        ToastKind::Success => "success",
-                        ToastKind::Warning => "warning",
-                        ToastKind::Error => "error",
-                    };
-                    rsx! {
-                        div {
-                            key: "{toast.id}",
-                            class: if toast.leaving { "toast {look} leaving" } else { "toast {look}" },
-                            style: "--i: {i}",
-                            role: "status",
-                            cat::ToastCat { look: look.to_string() }
-                            div { class: "toast-text", "{toast.text}" }
-                            button { class: "toast-x", title: "Dismiss", onclick: move |_| state.dismiss_toast(id),
-                                Icon { name: "x", size: 14 }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod script_tests {
-    const SCRIPTS: [(&str, &str); 6] = [
+    const SCRIPTS: [(&str, &str); 9] = [
         ("crop-drag.js", include_str!("../js/crop-drag.js")),
-        ("export-split.js", include_str!("../js/export-split.js")),
-        ("preview-editor.js", include_str!("../js/preview-editor.js")),
-        ("tooltip.js", include_str!("../js/tooltip.js")),
+        ("export-split.js", include_str!("../../../../crates/ui/js/export-split.js")),
+        ("preview-editor.js", include_str!("../../../../crates/ui/js/preview-editor.js")),
+        ("tooltip.js", include_str!("../../../../crates/ui/js/tooltip.js")),
+        ("zoom-scrub.js", include_str!("../../../../crates/ui/js/zoom-scrub.js")),
+        ("adder-scroll.js", include_str!("../../../../crates/ui/js/adder-scroll.js")),
         ("keys.js", include_str!("../js/keys.js")),
         ("scroll.js", include_str!("../js/scroll.js")),
+        ("reader.js", include_str!("../js/reader.js")),
     ];
 
     /// `cropBound` as it is written in HTML: `data-crop-bound`.

@@ -1,0 +1,54 @@
+/* Menus that drop down or up, the scrim under them, and dialogs. */
+
+/* ---- dialogs ---- */
+.overlay { animation: fade-in 0.2s ease-out both; position: fixed; inset: 0; background: rgba(22, 18, 16, 0.78); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 80; padding: 20px; }
+.modal { animation: pop-in 0.26s cubic-bezier(0.2, 0.9, 0.3, 1) both; background: var(--sub); border: 0; border-radius: var(--radius-lg); padding: 24px; max-width: 460px; width: 100%; }
+.modal h2 { font-size: 1.4rem; }
+.update-modal { max-width: 500px; }
+.upd-top { display: flex; justify-content: center; margin: -4px 0 6px; }
+.update-modal h2, .update-modal > p { text-align: center; }
+.upd-arrow { animation: upd-bob 1s steps(1) infinite; }
+.upd-spark { animation: upd-twinkle 1.4s steps(1) infinite; }
+@keyframes upd-bob { 0% { transform: translateY(0); } 50% { transform: translateY(1px); } }
+@keyframes upd-twinkle { 0% { opacity: 1; } 50% { opacity: 0.15; } }
+@media (prefers-reduced-motion: reduce) { .upd-arrow, .upd-spark { animation: none; } }
+.modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+.menu-scrim { position: fixed; inset: 0; z-index: 21; }
+.menu { position: absolute; right: 0; z-index: 22; min-width: 220px; padding: 6px; background: var(--dark); border: 1px solid #292929; border-radius: 18px; box-shadow: 0 14px 38px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; gap: 2px; }
+.menu.up { bottom: calc(100% + 10px); animation: pop-in 0.16s ease-out both; }
+.menu-item { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 0; background: transparent; color: var(--text); font: inherit; border-radius: 13px; cursor: pointer; text-align: left; }
+.menu-item:hover { background: var(--third); }
+.menu-item.danger { color: var(--bad); }
+
+/* ---- search filters ---- */
+.backdrop { position: fixed; inset: 0; z-index: 19; }
+
+/* ---- dialog motion ---- */
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pop-in { from { opacity: 0; transform: translateY(22px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.overlay.out { animation: fade-out 0.18s ease-in both; }
+.overlay.out .modal { animation: pop-out 0.18s ease-in both; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes pop-out { to { opacity: 0; transform: translateY(14px) scale(0.98); } }
+.modal-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.modal-head h2 { margin: 0; flex: 1; }
+@media (prefers-reduced-motion: reduce) { .overlay, .modal { animation: none; } }
+
+/* ---- menus fade in just below what opened them ---- */
+@keyframes menu-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.menu.down { top: calc(100% + 6px); bottom: auto; animation: menu-in 0.16s ease-out backwards; }
+.menu.up { animation: menu-up 0.16s ease-out both; }
+@keyframes menu-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.menu-anchor { position: relative; flex: none; }
+/* A line of help under a menu's choices. */
+.menu-note { padding: 8px 12px 4px; max-width: 250px; white-space: normal; border-top: 1px solid var(--line); margin-top: 4px; }
+/* The Library heading's Import menu opens over the sticky search bar below it. */
+.q-head:has(.menu-scrim) { position: relative; z-index: 30; }
+/* An open menu, and the block it opens from, sit above everything else on the page; only the dock and the
+   corner bar stay over it. (The animations that bring blocks in end with `backwards`, so they leave no layer
+   of their own behind that would hold the menu under the blocks after them.) */
+.menu-anchor:has(> .menu-scrim), .bar-menu:has(> .menu-scrim) { z-index: 55; }
+.overview-body > :has(.menu-scrim), .keep.lib > :has(.menu-scrim):not(.action-bar, .lib-top), .rise-in > :has(.menu-scrim):not(.action-bar) { position: relative; z-index: 55; }
+.menu-anchor .menu { min-width: 260px; white-space: nowrap; }
+.menu-sep { height: 1px; margin: 5px 6px; background: var(--line); }

@@ -1,0 +1,62 @@
+/* Settings (Figma "Settings"): a list of its parts in pixel type on the left, the part on the right. */
+
+.page:has(.settings) { max-width: none; }
+.settings { width: 100%; margin: 0 auto; padding-top: clamp(8px, 11vh, 120px); display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 625px) minmax(180px, 1fr); align-items: start; min-width: 0; }
+.settings-nav { position: sticky; top: 36px; grid-column: 1; grid-row: 1; justify-self: end; align-self: start; margin-right: 56px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; padding: 0; border: 0; }
+.settings-nav .nav-item {
+  position: relative; padding: 0 10px; border: 0; border-radius: var(--radius-lg); background: transparent; color: var(--icon);
+  font: 400 24px/normal var(--font-pixel); text-align: left; cursor: pointer; white-space: nowrap;
+  transition: background-color 0.22s ease, color 0.22s ease, transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1);
+}
+.settings-nav .nav-item:hover:not(.active) { color: #d9c5b9; transform: translateX(5px); }
+.settings-nav .nav-item.active { background: var(--icon); color: var(--dark); }
+.settings-nav .nav-item:active { transform: scale(0.97); }
+.settings-content { grid-column: 2; min-width: 0; max-width: 625px; padding: 0 0 24px; animation: screen-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.settings-content > .sx-group:first-child { margin-top: 0; }
+.pills { display: flex; flex-wrap: wrap; gap: 10px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 16px; border: 0; border-radius: var(--radius-lg);
+  background: var(--third); color: var(--icon); font: inherit; cursor: pointer;
+  transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.6, 0.64, 1);
+}
+.pill:hover { background: #52413a; transform: translateY(-1px); }
+.pill.on { background: var(--icon); color: var(--dark); font-weight: 600; }
+.pill.add { color: var(--muted); background: transparent; box-shadow: inset 0 0 0 2px var(--third); }
+@media (max-width: 1100px) {
+  .settings { grid-template-columns: 1fr; padding-top: 0; }
+  .settings-nav { position: static; flex-direction: row; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 22px; }
+  .settings-content { grid-column: 1; max-width: none; }
+}
+
+/* ---- settings: flat rows ---- */
+
+.sx-group { margin: 30px 0 4px; font: 400 1.05rem var(--font-pixel); color: var(--heading); text-transform: uppercase; letter-spacing: 0.04em; }
+
+.sx-row { min-height: 66px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 440px); gap: 28px; align-items: center; padding: 12px 0; }
+.sx-label { font-weight: 500; display: flex; align-items: center; }
+.help { position: relative; display: inline-flex; vertical-align: middle; margin-left: 6px; color: var(--muted); cursor: help; outline: none; }
+.help:hover, .help:focus-visible { color: var(--text); }
+.floating-tip {
+  position: fixed; left: 0; top: 0; z-index: 1000; display: none; max-width: 320px; padding: 9px 12px; pointer-events: none;
+  border: 0; border-radius: var(--radius); background: var(--third); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  color: var(--text); font-size: 0.84rem; font-weight: 400; line-height: 1.45; text-transform: none; letter-spacing: 0; white-space: normal;
+}
+.floating-tip.shown { display: block; }
+.sx-desc { color: var(--muted); font-size: 0.86rem; margin-top: 3px; line-height: 1.45; }
+.sx-control { display: flex; justify-content: flex-end; min-width: 0; }
+.sx-control > input[type="text"], .sx-control > input[type="number"], .sx-control > select { width: 100%; }
+.sx-control > input[type="checkbox"] { width: 20px; height: 20px; }
+.sx-control .seg { width: 100%; }
+.sx-control .seg button { flex: 1; }
+.sx-inline { display: flex; gap: 8px; width: 100%; }
+.sx-buttons { display: flex; gap: 8px; justify-content: flex-end; }
+.sx-inline input { flex: 1; min-width: 0; }
+.sx-note { color: var(--muted); font-size: 0.84rem; margin: 6px 0 0; }
+
+.sx-note.warn { color: var(--warn); }
+
+/* No reader yet: a short welcome and the button to add the first one. */
+.reader-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 14px; max-width: 460px; margin: 0; padding: 40px 32px; border-radius: 25px; background: var(--panel-2, #2a211d); }
+.reader-empty h2 { margin: 0; }
+.reader-empty p { margin: 0; line-height: 1.5; }
+.reader-empty-art { display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; background: var(--icon); color: var(--dark); }

@@ -2,10 +2,11 @@
 
 use super::AppState;
 use dioxus::prelude::*;
+use mangapoint_ui::host::Leave;
+use std::rc::Rc;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Page {
-    Setup,
     Search,
     /// A series the user opened: chapters, downloads, preview, export.
     Series,
@@ -18,73 +19,47 @@ pub enum Page {
     Plan,
     Sources,
     Settings,
+    /// Reading a downloaded series, full window.
+    Reader,
 }
-
-/// Where the user was going when unsaved reader settings stopped them: asked
-/// about, then carried on to.
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub enum Leave {
-    Page(Page),
-    Section(SettingsSection),
-    /// Another reader, by id.
-    Reader(String),
-}
-
-/// Writes the reader form's unsaved changes; true if they were saved. Present
-/// only while the form has changes that are not saved.
-#[derive(Clone)]
-pub struct UnsavedReader(pub std::rc::Rc<dyn Fn() -> bool>);
 
 /// The parts of the Settings page, shown in its own sidebar.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum SettingsSection {
     #[default]
-    Reader,
+    Readers,
     Downloads,
     Files,
     Preferences,
+    /// Where the sources are added, checked and removed.
+    Sources,
     About,
 }
 
 impl AppState {
     /// Go to a page. Unsaved reader settings are asked about first.
     pub fn go(&self, page: Page) {
-        self.leave(Leave::Page(page));
+        let this = *self;
+        self.ui.leave(Leave::Elsewhere(Rc::new(move || this.go_now(page))), page == Page::Settings);
     }
 
-    /// Go somewhere that would lose the reader form's unsaved changes, asking
-    /// what to do with them first; anywhere else, just go.
-    pub fn leave(&self, to: Leave) {
-        let staying = match &to {
-            Leave::Page(page) => *page == Page::Settings,
-            Leave::Section(section) => *section == SettingsSection::Reader,
-            Leave::Reader(_) => false,
+    /// Open a part of Settings. Unsaved reader settings are asked about first.
+    pub fn open_section(&self, section: SettingsSection) {
+        let this = *self;
+        let go = move || {
+            let mut current = this.settings_section;
+            current.set(section);
         };
-        if !staying && self.unsaved_reader.peek().is_some() {
-            let mut prompt = self.leave_prompt;
-            prompt.set(Some(to));
-            return;
-        }
-        self.leave_now(to);
-    }
-
-    /// Carry on to where the user was going, the changes dealt with.
-    pub fn leave_now(&self, to: Leave) {
-        match to {
-            Leave::Page(page) => self.go_now(page),
-            Leave::Section(section) => {
-                let mut current = self.settings_section;
-                current.set(section);
-            }
-            Leave::Reader(id) => {
-                let mut settings = self.settings;
-                settings.write().device = id;
-                self.save_settings();
-            }
-        }
+        self.ui.leave(Leave::Elsewhere(Rc::new(go)), section == SettingsSection::Readers);
     }
 
     fn go_now(&self, page: Page) {
+        // The sources live in Settings.
+        if page == Page::Sources {
+            let mut section = self.settings_section;
+            section.set(SettingsSection::Sources);
+            return self.go_now(Page::Settings);
+        }
         let mut p = self.page;
         // The Export screen borrows the workspace for its own series; the
         // series that was open before it comes back when it is left.

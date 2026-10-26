@@ -1,0 +1,97 @@
+/* Buttons, inputs, pills, chips, banners, switches and the other small controls. */
+
+/* ---- buttons and inputs ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 0; background: var(--third); color: var(--icon); padding: 9px 18px; min-height: 38px; font-size: 0.95rem; font-weight: 500; border-radius: var(--radius-lg);
+  cursor: pointer; white-space: nowrap;
+}
+.btn:hover { background: #52413a; }
+.btn.primary { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.danger { color: var(--bad); }
+.btn.ghost { background: transparent; color: var(--muted); }
+.btn.ghost:hover { color: var(--text); background: var(--third); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+/* One size for every button, so they all match. */
+.btn.small { padding: 7px 16px; min-height: 34px; font-size: 0.9rem; }
+table .btn.small { padding: 6px 12px; min-height: 34px; }
+.btn.big { padding: 11px 16px; font-size: 1rem; width: 100%; }
+input[type="text"], input[type="search"], input[type="url"], input[type="number"], select {
+  border: 2px solid transparent; background: var(--sub); color: var(--text); padding: 7px 12px; border-radius: var(--radius); min-width: 0;
+  transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+input::placeholder { color: var(--placeholder); }
+input:focus, select:focus { outline: 0; border-color: var(--icon); }
+input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.input-icon { position: relative; flex: 1; min-width: 0; }
+.input-icon .icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+.input-icon input { width: 100%; padding-left: 34px; }
+
+/* ---- cards, chips, banners ---- */
+.card { background: var(--sub); border: 0; border-radius: var(--radius-lg); padding: 18px; }
+.card + .card { margin-top: 14px; }
+.card h2 { display: flex; align-items: center; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-size: 0.78rem;
+  background: var(--third); color: var(--icon); border: 0;
+}
+.chip.ok { color: var(--ok); }
+.chip.warn { color: var(--warn); }
+.chip.bad { color: var(--bad); }
+.chip.accent { color: var(--accent-text); background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.banner { display: flex; gap: 10px; align-items: flex-start; border-radius: var(--radius); padding: 11px 15px; margin: 10px 0; background: var(--sub); border: 0; }
+.banner.warn { background: rgba(227, 179, 65, 0.1); box-shadow: inset 0 0 0 1px rgba(227, 179, 65, 0.4); }
+.banner.bad { background: rgba(240, 120, 120, 0.1); box-shadow: inset 0 0 0 1px rgba(240, 120, 120, 0.4); color: var(--bad); }
+.progress { height: 6px; border-radius: 999px; background: var(--third); overflow: hidden; }
+.progress > div { height: 100%; background: var(--accent); transition: width 0.25s; }
+.progress.indeterminate > div { width: 35%; animation: slide 1.1s infinite ease-in-out; }
+@keyframes slide { 0% { margin-left: -35%; } 100% { margin-left: 100%; } }
+.splash { margin: auto; text-align: center; max-width: 420px; padding: 30px; }
+.splash .progress { margin-top: 18px; }
+
+/* ---- lists (sources, exports) ---- */
+.list-row { display: flex; align-items: center; gap: 12px; padding: 11px 2px; border-top: 1px solid var(--line); }
+.list-row:first-child { border-top: 0; }
+.field { display: grid; grid-template-columns: 200px 1fr; gap: 10px; align-items: center; padding: 8px 0; }
+.field > label { color: var(--muted); }
+.field .hint { grid-column: 2; margin-top: -4px; }
+.q-head { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.q-head .btn { margin-top: 4px; }
+.back { margin-bottom: 8px; }
+.pill.small { padding: 5px 14px; font-size: 0.85rem; }
+
+/* ---- a checkbox with its words, and a row of choices joined together ---- */
+
+/* ---- a switch ---- */
+.toggle { position: relative; flex: none; width: 46px; height: 26px; padding: 0; border: 0; border-radius: 999px; background: var(--third); cursor: pointer; transition: background 0.22s ease, border-color 0.22s ease; }
+.toggle .knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--muted); transition: transform 0.26s cubic-bezier(0.3, 1.3, 0.5, 1), background 0.22s ease; }
+.toggle:hover .knob { background: var(--icon); }
+.toggle.on { background: var(--accent); border-color: var(--accent); }
+.toggle.on .knob { transform: translateX(20px); background: var(--dark); }
+.toggle:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 2px; }
+
+.chip.tiny { padding: 1px 8px; font-size: 0.72rem; }
+.tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 4px 3px 10px; border-radius: 999px; background: var(--third); border: 0; font-size: 0.82rem; font-weight: 600; }
+.tag-x { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.tag-x:hover { background: var(--line-strong); color: var(--text); }
+.tag-options { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 30; display: flex; flex-direction: column; padding: 5px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--dark); box-shadow: 0 12px 34px rgba(0, 0, 0, 0.6); }
+.tag-option { padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.tag-option:hover { background: var(--panel-3); }
+
+/* ---- pills you remove by clicking them, a pick-any row, labelled sizes, the reader list ---- */
+.tag { padding: 3px 11px; cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease; }
+.tag:hover { background: #52413a; }
+.tag .tag-x { display: inline-flex; align-items: center; width: 0; margin-left: -4px; overflow: hidden; opacity: 0; color: var(--muted); transition: width 0.15s ease, margin 0.15s ease, opacity 0.15s ease; }
+.tag:hover .tag-x { width: 12px; margin-left: 0; opacity: 1; color: var(--text); }
+.seg.multi button { gap: 9px; }
+.seg.multi .mark { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border: 1.5px solid var(--muted); border-radius: 5px; transition: background-color 0.15s ease, border-color 0.15s ease; }
+.seg.multi button.on .mark { background: var(--accent-text); border-color: var(--accent-text); color: var(--accent); }
+
+.unit-box { position: relative; }
+.unit-box input[type="number"] { width: 112px; padding-right: 32px; }
+.unit-box .unit { position: absolute; right: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 0.8rem; pointer-events: none; }
+.px-scroll { max-height: 300px; overflow-y: auto; padding-right: 2px; }
+.px-size { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+.btn.big { height: 44px; padding: 0 22px; font-size: 1rem; }

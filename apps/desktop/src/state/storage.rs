@@ -52,7 +52,7 @@ pub fn library_files() -> LibraryFiles {
 
 impl AppState {
     pub fn save_settings(&self) {
-        let _ = JsonFile::new(paths().settings_file()).save(&*self.settings.read());
+        let _ = JsonFile::new(paths().settings_file()).save(&*self.ui.settings.read());
     }
 
     pub fn save_sources(&self) {
@@ -121,7 +121,7 @@ impl AppState {
     /// preset chosen for the current reader if there is one, else the user's
     /// defaults.
     pub fn new_series_defaults(&self) -> (library::ConversionSettings, Option<String>) {
-        let settings = self.settings.peek();
+        let settings = self.ui.settings.peek();
         let for_device = settings
             .device_presets
             .get(&settings.device)

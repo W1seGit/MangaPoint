@@ -1,0 +1,60 @@
+/* The colours, the type and the plain elements: what every screen of both apps starts from. */
+:root {
+  color-scheme: dark;
+  /* The palette of the design (Figma "MangaPoint", the variables of its frames). */
+  --dark: #161210;          /* primary/dark-background: the dock, buttons' text, inputs */
+  --bg: #1e1916;            /* the page */
+  --sub: #3b2f2a;           /* primary/sub-background: cards and the search bar */
+  --third: #45362e;         /* primary/thirdenary: pills, tabs, the bottom of a card */
+  --icon: #aa8d7e;          /* text/icon-color: icons, text, the chosen item */
+  --placeholder: #63534a;   /* text/placeholder */
+  --panel: var(--dark);
+  --panel-2: var(--sub);
+  --panel-3: var(--third);
+  --line: #45362e;
+  --line-strong: #5a4739;
+  --text: var(--icon);
+  --heading: #ffffff;
+  --muted: #817f7f;
+  --accent: var(--icon);
+  --accent-hover: #bfa395;
+  --accent-text: var(--dark);
+  --ok: #7fd18b;
+  --warn: #e3b341;
+  --bad: #f08585;
+  --radius: 13px;           /* the small pills (Sort, Sources) */
+  --radius-lg: 25px;        /* border/default-radius: cards, buttons, the search bar */
+  --font-ui: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-pixel: "Pixelify Sans", "Inter", system-ui, sans-serif;
+  font-family: var(--font-ui);
+  font-size: 14.5px;
+  color: var(--text);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+button, input, select { font: inherit; color: inherit; }
+h1 { font-family: var(--font-pixel); color: var(--heading); font-size: 1.9rem; margin: 0 0 4px; font-weight: 400; }
+h2 { font-family: var(--font-pixel); color: var(--heading); font-size: 1.25rem; margin: 0 0 10px; font-weight: 400; }
+p { margin: 0 0 10px; line-height: 1.45; }
+.muted { color: var(--muted); }
+.small { font-size: 0.86rem; }
+.row { display: flex; align-items: center; gap: 10px; }
+.row.wrap { flex-wrap: wrap; }
+.grow { flex: 1; min-width: 0; }
+.spacer { height: 14px; }
+.icon { flex: none; vertical-align: middle; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- search results ---- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 26px 22px; }
+.cover { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; background: var(--panel-2); display: block; }
+.cover.empty { display: flex; align-items: center; justify-content: center; color: var(--line-strong); }
+
+/* ---- scroll bars: thin, no arrows, dark, lighter when pointed at ---- */
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-thumb { background: var(--third); border: 4px solid transparent; border-radius: 999px; background-clip: content-box; transition: background-color 0.15s; }
+::-webkit-scrollbar-thumb:hover { background: #5a4739; background-clip: content-box; border: 4px solid transparent; }
+::-webkit-scrollbar-thumb:active { background: var(--icon); background-clip: content-box; border: 4px solid transparent; }

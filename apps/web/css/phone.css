@@ -1,0 +1,81 @@
+/* Tablets and phones: 44 px targets and dialogs that fill the screen. The dock and the corner bar are the
+   same as on a computer (crates/ui/css/shell.css). */
+
+/* Settings rows stack on narrow screens */
+@media (max-width: 700px) {
+  .sx-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .sx-control { justify-content: flex-start; }
+  .sx-control .seg { width: 100%; }
+  /* The reader form's buttons: Remove and Reset share a row, Save has the whole row under them. */
+  .form-footer { flex-wrap: wrap; gap: 10px; }
+  .form-footer > .grow { display: none; }
+  .form-footer > .btn { flex: 1 1 0; min-width: 0; justify-content: center; }
+  .form-footer > .btn.primary { flex: 1 1 100%; }
+}
+
+/* ---- tablets and phones ---- */
+@media (max-width: 800px) {
+  .content { padding: calc(14px + var(--sat)) max(14px, var(--sar)) calc(170px + var(--sab)) max(14px, var(--sal)); }
+  h1 { font-size: 1.35rem; }
+
+  /* 44px targets */
+  .btn { min-height: 44px; }
+  .btn.small, .btn.ghost.small { min-height: 40px; }
+  .seg button { min-height: 44px; }
+  .pill { min-height: 40px; display: inline-flex; align-items: center; }
+  .menu-item { min-height: 46px; }
+  select, input[type="text"], input[type="search"], input[type="number"] { min-height: 44px; font-size: 16px; }
+  .poster-more { width: 40px; height: 40px; }
+  .toast-x { width: 40px; height: 40px; }
+
+  /* Library */
+  .q-head { gap: 8px; }
+  .lib-tools { gap: 8px; }
+  /* The views get a row to themselves; the filter and the sort share the next one. */
+  .lib-tools .pillrow { flex: 1 1 100%; flex-wrap: nowrap; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .lib-tools .pillrow::-webkit-scrollbar { display: none; }
+  .lib-tools .pillrow .pill { flex: none; padding-left: 14px; padding-right: 14px; }
+  .lib-filter { flex: 1 1 0; width: auto; min-width: 0; }
+  .lib-sort { flex: none; max-width: 48%; }
+  /* A book's chapters: the filter has a row to itself, and the range box and Select the next. */
+  .toolbar:has(#book-filter) { flex-wrap: wrap; }
+  .book-filter-box { flex: 1 1 100%; max-width: none; }
+  .book-range-form { flex: 1 1 100%; margin-left: 0; }
+  #book-range { flex: 1; width: auto; min-width: 0; }
+  .lib-top {
+    top: calc(-14px - var(--sat)); margin: calc(-14px - var(--sat)) calc(-1 * max(14px, var(--sar))) 14px calc(-1 * max(14px, var(--sal)));
+    padding: calc(14px + var(--sat)) max(14px, var(--sar)) 12px max(14px, var(--sal));
+  }
+  .poster-grid { grid-template-columns: repeat(auto-fill, minmax(min(150px, 40%), 1fr)); gap: 22px 14px; }
+
+  /* Dialogs fill the screen */
+  .overlay { padding: 0; align-items: stretch; }
+  .modal { border-radius: 0; max-width: none; padding: calc(16px + var(--sat)) 14px calc(14px + var(--sab)); display: flex; flex-direction: column; overflow-y: auto; }
+  .modal.import { width: 100%; max-height: none; height: 100%; }
+  .modal:not(.import) { align-self: center; border-radius: 12px; margin: 16px; width: auto; max-width: 460px; }
+  .overlay:has(.modal:not(.import)) { align-items: center; padding: 8px; }
+  .import-body { flex: 1; }
+  .import-bar { flex-wrap: wrap; }
+  .import-title { flex: 1 1 100%; order: -1; }
+  .import-file { flex: 1 1 auto; text-align: left; }
+  .import-book-body { grid-template-columns: minmax(0, 1fr); }
+  .import-cover { width: 96px; }
+  .import-chapter { grid-template-columns: auto 64px minmax(0, 1fr); }
+  .import-chapter .import-pages { grid-column: 3; text-align: left; margin-top: -4px; }
+  .import-chapters { max-height: none; }
+  .import-chapter input[type="checkbox"] { width: 22px; height: 22px; }
+  .modal .actions { flex-wrap: wrap; position: sticky; bottom: 0; background: var(--panel); padding-top: 10px; }
+  .modal .actions .btn { flex: 1 1 auto; }
+
+  /* Export and settings */
+  
+  
+  .seg { flex-wrap: nowrap; }
+  .seg button { flex: 1; white-space: normal; }
+
+  /* Toasts above the dock */
+  .toasts { left: 12px; right: 12px; width: auto; bottom: calc(160px + var(--sab)); }
+  .toast { left: 0; right: 0; width: auto; }
+
+}
+

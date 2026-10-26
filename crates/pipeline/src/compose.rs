@@ -73,6 +73,9 @@ pub struct ExportJob {
     pub force_conversion: bool,
     /// Open every file with the series cover (or, without one, its first page).
     pub cover: bool,
+    /// Make the files from the pages as they were saved, with no e-ink
+    /// processing at all (see [`crate::original`]).
+    pub original: Option<crate::original::OriginalExport>,
 }
 
 impl ExportJob {
@@ -94,6 +97,7 @@ impl ExportJob {
             max_pages_per_file: DEFAULT_MAX_PAGES_PER_FILE,
             force_conversion: false,
             cover: true,
+            original: None,
         }
     }
 }
@@ -150,18 +154,18 @@ impl Book {
 }
 
 /// A finished book waiting in the scratch folder to be sent.
-struct Volume {
-    temp: PathBuf,
+pub(crate) struct Volume {
+    pub(crate) temp: PathBuf,
     /// Which group of chapters (see [`Grouping`]) it belongs to.
-    group: usize,
-    chapter_names: Vec<String>,
-    first_number: Option<f64>,
-    last_number: Option<f64>,
+    pub(crate) group: usize,
+    pub(crate) chapter_names: Vec<String>,
+    pub(crate) first_number: Option<f64>,
+    pub(crate) last_number: Option<f64>,
 }
 
 /// Deletes the scratch files however the export ends.
 #[derive(Default)]
-struct Scratch(Vec<PathBuf>);
+pub(crate) struct Scratch(pub(crate) Vec<PathBuf>);
 
 impl Drop for Scratch {
     fn drop(&mut self) {
@@ -182,7 +186,12 @@ fn pages_per_file(job: &ExportJob, format: Format) -> usize {
     if matches!(job.target, ExportTarget::WebDav { .. }) {
         let by_size = if job.series.settings.pictures() {
             let depth = crate::options::output_depth(&job.device, &job.series.settings);
-            (crate::export::WIFI_MAX_FILE_BYTES / epub::typical_page_bytes(depth)).max(1) as usize
+            let page_bytes = if job.series.settings.keeps_color(&job.device) {
+                epub::typical_color_page_bytes()
+            } else {
+                epub::typical_page_bytes(depth)
+            };
+            (crate::export::WIFI_MAX_FILE_BYTES / page_bytes).max(1) as usize
         } else {
             wifi_page_cap(job.device.width, job.device.height, format)
         };
@@ -203,7 +212,7 @@ fn wifi_page_cap(width: u32, height: u32, format: Format) -> usize {
 }
 
 /// Split `count` chapters (by position) into groups.
-fn group_ranges(count: usize, grouping: Grouping) -> Vec<std::ops::Range<usize>> {
+pub(crate) fn group_ranges(count: usize, grouping: Grouping) -> Vec<std::ops::Range<usize>> {
     let size = match grouping {
         Grouping::Single => count.max(1),
         Grouping::PerChapter => 1,
@@ -215,7 +224,7 @@ fn group_ranges(count: usize, grouping: Grouping) -> Vec<std::ops::Range<usize>>
         .collect()
 }
 
-fn unique_name(kind: &str) -> String {
+pub(crate) fn unique_name(kind: &str) -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     format!(
         "mangapoint-{}-{}.{kind}",
@@ -230,6 +239,16 @@ fn unique_name(kind: &str) -> String {
 /// until it is converted, so a few big chapters at once would otherwise reach
 /// several gigabytes.
 const DECODED_BUDGET_MB: u32 = 1536;
+
+/// How many pixels a chapter of `pixels` pixels holds while it is converted:
+/// a colour chapter keeps a luma and two chroma planes, so three times as many.
+fn held_pixels(pixels: u64, color: bool) -> u64 {
+    if color {
+        pixels.saturating_mul(3)
+    } else {
+        pixels
+    }
+}
 
 /// A share of the memory the decoded chapters may use. A chapter takes what
 /// all its pages need at once before it decodes the first, so two chapters
@@ -321,7 +340,7 @@ fn scratch_needed(source_pages: usize, page_bytes: u64, pictures: bool) -> u64 {
 
 /// The room left on the drive that holds `dir`, or `None` for a place that
 /// matches no drive.
-fn available_space(dir: &Path) -> Option<u64> {
+pub(crate) fn available_space(dir: &Path) -> Option<u64> {
     #[cfg(test)]
     if let Some(free) = SCRATCH_FREE.with(|c| c.get()) {
         return Some(free);
@@ -335,7 +354,7 @@ fn available_space(dir: &Path) -> Option<u64> {
         .map(|d| d.available_space())
 }
 
-fn space_verdict(available: Option<u64>, needed: u64, dir: &Path) -> Result<()> {
+pub(crate) fn space_verdict(available: Option<u64>, needed: u64, dir: &Path) -> Result<()> {
     match available {
         Some(available) if available < needed => Err(PipelineError::NoSpace {
             mount: dir.to_path_buf(),
@@ -349,7 +368,11 @@ fn space_verdict(available: Option<u64>, needed: u64, dir: &Path) -> Result<()> 
 /// The size of one converted page of a book, as a guess for the room it needs.
 fn page_bytes_estimate(opts: &ProcessOptions, pictures: bool) -> u64 {
     if pictures {
-        return epub::typical_page_bytes(opts.depth);
+        return if opts.color {
+            epub::typical_color_page_bytes()
+        } else {
+            epub::typical_page_bytes(opts.depth)
+        };
     }
     let (w, h) = opts.output_size();
     converter::xtc::PAGE_HEADER_SIZE as u64
@@ -361,7 +384,7 @@ fn page_bytes_estimate(opts: &ProcessOptions, pictures: bool) -> u64 {
 
 /// Whether a process with this id is running now.
 #[cfg(windows)]
-fn process_is_running(pid: u32) -> bool {
+pub(crate) fn process_is_running(pid: u32) -> bool {
     use std::ffi::c_void;
     extern "system" {
         fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut c_void;
@@ -386,7 +409,7 @@ fn process_is_running(pid: u32) -> bool {
 }
 
 #[cfg(unix)]
-fn process_is_running(pid: u32) -> bool {
+pub(crate) fn process_is_running(pid: u32) -> bool {
     extern "C" {
         fn kill(pid: i32, signal: i32) -> i32;
     }
@@ -455,7 +478,7 @@ fn sweep_spool_at(
 
 /// Take back the files this export already sent to a folder or a drive. Files
 /// on the reader's Wi-Fi share are left: there is no way to take them back.
-fn remove_sent(target: &ExportTarget, sent: &[ExportedFile]) {
+pub(crate) fn remove_sent(target: &ExportTarget, sent: &[ExportedFile]) {
     if matches!(target, ExportTarget::WebDav { .. }) {
         return;
     }
@@ -485,6 +508,9 @@ pub async fn export_series(
     events: Option<UnboundedSender<JobEvent>>,
     cancel: &CancelFlag,
 ) -> Result<ExportOutcome> {
+    if let Some(original) = &job.original {
+        return crate::original::export_original(files, job, original, events, cancel).await;
+    }
     let chapters: Vec<&DownloadedChapter> = job
         .series
         .chapters
@@ -550,6 +576,7 @@ pub async fn export_series(
                 &budget,
             );
             async move {
+                cancel.wait_while_paused().await;
                 if cancel.is_cancelled() {
                     return (group, ci, Err(PipelineError::Cancelled));
                 }
@@ -596,6 +623,7 @@ pub async fn export_series(
     while let Some((group, ci, images)) = converted.next().await {
         let (images, cached) = images?;
         cached_chapters += usize::from(cached);
+        cancel.wait_while_paused().await;
         if cancel.is_cancelled() {
             return Err(PipelineError::Cancelled);
         }
@@ -813,6 +841,13 @@ async fn cover_page(
         if PANIC_IN_COVER.swap(false, Ordering::SeqCst) {
             panic!("injected cover failure");
         }
+        if epub && opts.color {
+            let (luma, chroma) = converter::decode::decode_to_ycc(&bytes).ok()?;
+            let prepared = converter::plan::prepare_owned_color(vec![(luma, chroma)], &opts, &|| false).ok()?;
+            let plan = converter::plan::plan(&prepared, &opts);
+            let page = converter::plan::render_page_color(&prepared, plan.pages.first()?, &opts, [0.0; 4]);
+            return epub::encode_color_page(&page).ok();
+        }
         let gray = decode_page(&bytes).ok()?;
         let page = converter::plan::convert_chapter(&[gray], &opts)
             .into_iter()
@@ -905,7 +940,7 @@ fn write_volume(
 /// `Title - Ch 1-12.xtch`; with several files from one group,
 /// `Title - Part 2 - Ch 13-25.xtch`; a lone unnumbered chapter is named
 /// after itself.
-fn volume_name(
+pub(crate) fn volume_name(
     job: &ExportJob,
     volume: &Volume,
     all: &[Volume],
@@ -994,6 +1029,34 @@ fn pack_chapter(
     packed.into_iter().collect()
 }
 
+/// [`pack_chapter`] for pages kept in colour: each page is drawn by
+/// `render_page_color` (no tone work, no dithering) and saved as a colour JPEG
+/// on the core that drew it. The decoded planes are consumed.
+fn pack_chapter_color(
+    pages: Vec<(GrayImage, [GrayImage; 2])>,
+    opts: &ProcessOptions,
+    cuts_of: &dyn Fn(&converter::ChapterPlan) -> Vec<[f32; 4]>,
+    cancel: &(dyn Fn() -> bool + Sync),
+) -> Result<Vec<Vec<u8>>> {
+    let prepared = converter::plan::prepare_owned_color(pages, opts, cancel).map_err(cancelled)?;
+    let plan = converter::plan::plan(&prepared, opts);
+    let cuts = cuts_of(&plan);
+    let packed = converter::plan::render_all_color_with(
+        &prepared,
+        &plan.pages,
+        opts,
+        &cuts,
+        cancel,
+        |_, image| -> Result<Vec<u8>> { epub::encode_color_page(&image) },
+    )
+    .map_err(cancelled)?;
+    packed.into_iter().collect()
+}
+
+/// A saved page decoded: its place in the chapter, its luma, its chroma planes
+/// when the chapter is kept in colour, and the digest that stands for its bytes.
+type DecodedPage = (usize, GrayImage, Option<[GrayImage; 2]>, [u8; 32]);
+
 /// Decode every saved page of a chapter, then plan and convert it as a whole:
 /// a webtoon's images are joined before they are cut into pages, so the pages
 /// match what the preview showed and the user's corrections apply.
@@ -1063,7 +1126,7 @@ async fn convert_chapter(
             .await
             .map_err(|e| task_failed("measuring the chapter", e, PipelineError::Decode))?
     };
-    let _memory = budget.acquire(sizes).await;
+    let _memory = budget.acquire(held_pixels(sizes, opts.color && epub)).await;
     if cancel.is_cancelled() {
         return Err(PipelineError::Cancelled);
     }
@@ -1072,7 +1135,9 @@ async fn convert_chapter(
     let done = &done;
     let name = chapter.name.as_str();
 
-    let decoded: Vec<Result<(usize, GrayImage, [u8; 32])>> = stream::iter(pages.into_iter().enumerate())
+    // Pages kept in colour are decoded to a luma and two chroma planes.
+    let color = epub && opts.color;
+    let decoded: Vec<Result<DecodedPage>> = stream::iter(pages.into_iter().enumerate())
         .map(|(index, path)| async move {
             if cancel.is_cancelled() {
                 return Err(PipelineError::Cancelled);
@@ -1084,9 +1149,15 @@ async fn convert_chapter(
                 .map_err(|e| PipelineError::Io(path.clone(), e))?;
             // The file's bytes are let go as soon as they are decoded; only
             // the short digest that stands for them in the cache key stays.
-            let (gray, digest) = tokio::task::spawn_blocking(move || {
+            let (gray, chroma, digest) = tokio::task::spawn_blocking(move || {
                 let digest = conversion_cache::page_digest(&bytes);
-                decode_page(&bytes).map(|gray| (gray, digest))
+                if color {
+                    converter::decode::decode_to_ycc(&bytes)
+                        .map(|(luma, chroma)| (luma, Some(chroma), digest))
+                        .map_err(|e| PipelineError::Decode(e.to_string()))
+                } else {
+                    decode_page(&bytes).map(|gray| (gray, None, digest))
+                }
             })
             .await
             .map_err(|e| task_failed("reading a page", e, PipelineError::Decode))?
@@ -1105,7 +1176,7 @@ async fn convert_chapter(
                     total,
                 });
             }
-            Ok((index, gray, digest))
+            Ok((index, gray, chroma, digest))
         })
         // A tall early image must not prevent later completed reads from
         // releasing their slots and starting more work. Restore order below.
@@ -1114,7 +1185,7 @@ async fn convert_chapter(
         .await;
 
     let mut decoded = decoded.into_iter().collect::<Result<Vec<_>>>()?;
-    decoded.sort_unstable_by_key(|(index, _, _)| *index);
+    decoded.sort_unstable_by_key(|(index, _, _, _)| *index);
     if cancel.is_cancelled() {
         return Err(PipelineError::Cancelled);
     }
@@ -1123,31 +1194,37 @@ async fn convert_chapter(
     let crops = crops.clone();
     let chapter_key = chapter.key.clone();
     let packed = tokio::task::spawn_blocking(move || {
-        let (digests, grays): (Vec<_>, Vec<_>) =
-            decoded.into_iter().map(|(_, gray, digest)| (digest, gray)).unzip();
+        let digests: Vec<[u8; 32]> = decoded.iter().map(|(_, _, _, digest)| *digest).collect();
         let fingerprint = conversion_cache::fingerprint_digests(&digests, &key);
         let fingerprint = conversion_cache::with_crops(fingerprint, &crop_configuration);
         let stop = || cancel.is_cancelled();
-        let packed = pack_chapter(
-            grays,
-            &opts,
-            &|plan| {
-                if crop_configuration.is_empty() {
-                    return Vec::new();
-                }
-                plan.pages
-                    .iter()
-                    .map(|page| {
-                        crops
-                            .effective(&chapter_key, &crate::preview::crop_page_key(page))
-                            .unwrap_or_default()
-                            .as_array()
-                    })
-                    .collect()
-            },
-            epub,
-            &stop,
-        )?;
+        let cuts_of = |plan: &converter::ChapterPlan| -> Vec<[f32; 4]> {
+            if crop_configuration.is_empty() {
+                return Vec::new();
+            }
+            plan.pages
+                .iter()
+                .map(|page| {
+                    crops
+                        .effective(&chapter_key, &crate::preview::crop_page_key(page))
+                        .unwrap_or_default()
+                        .as_array()
+                })
+                .collect()
+        };
+        let packed = if color {
+            let pages = decoded
+                .into_iter()
+                .map(|(_, luma, chroma, _)| {
+                    let chroma = chroma.expect("a colour page was decoded with its chroma");
+                    (luma, chroma)
+                })
+                .collect();
+            pack_chapter_color(pages, &opts, &cuts_of, &stop)?
+        } else {
+            let grays = decoded.into_iter().map(|(_, gray, _, _)| gray).collect();
+            pack_chapter(grays, &opts, &cuts_of, epub, &stop)?
+        };
         if epub {
             conversion_cache::save_pictures(&cache_path, &fingerprint, &packed);
         } else {
@@ -1160,7 +1237,7 @@ async fn convert_chapter(
     Ok((packed, false))
 }
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -1265,6 +1342,7 @@ mod tests {
                     pages,
                     bytes: 0,
                     downloaded_at: 1,
+                    quality: None,
                 },
                 1,
             );
@@ -1291,6 +1369,25 @@ mod tests {
     }
 
     // The memory budget
+
+    #[test]
+    fn a_colour_chapter_weighs_three_planes_and_a_colour_page_is_guessed_bigger() {
+        assert_eq!(held_pixels(1_000, false), 1_000);
+        assert_eq!(held_pixels(1_000, true), 3_000);
+        assert_eq!(held_pixels(u64::MAX, true), u64::MAX, "no overflow");
+        let b = MemoryBudget::new(1000);
+        let pixels = 100 << 20;
+        assert_eq!(b.weight(held_pixels(pixels, true)), 3 * b.weight(pixels), "three planes reserve three times");
+        // A colour chapter that would not leave room for another runs alone, not for ever.
+        assert_eq!(b.weight(held_pixels(2000 << 20, true)), 1000);
+        let mut gray = ProcessOptions::manga_default(1264, 1680, converter::Depth::Eight);
+        let gray_bytes = page_bytes_estimate(&gray, true);
+        gray.color = true;
+        assert!(page_bytes_estimate(&gray, true) > 3 * gray_bytes);
+        let mut packed = gray.clone();
+        packed.color = false;
+        assert_eq!(page_bytes_estimate(&gray, false), page_bytes_estimate(&packed, false), "packed pages ignore colour");
+    }
 
     #[test]
     fn a_chapters_share_of_the_budget_follows_its_pixels_and_never_exceeds_it() {
@@ -1454,6 +1551,23 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[tokio::test]
+    async fn an_original_quality_export_checks_the_room_for_its_scratch_file_first() {
+        let (root, files, series) = fixture("nospace-original", 2, 3);
+        let mut job = folder_job(&root, &series);
+        job.original = Some(crate::original::OriginalExport {
+            format: crate::original::OriginalFormat::Cbz,
+            rtl: false,
+        });
+        SCRATCH_FREE.with(|c| c.set(Some(1_000)));
+        let result = export_series(&files, &job, None, &CancelFlag::new()).await;
+        SCRATCH_FREE.with(|c| c.set(None));
+        assert!(matches!(result, Err(PipelineError::NoSpace { available: 1_000, .. })), "{result:?}");
+        assert!(folder_files(&root).is_empty());
+        assert!(export_series(&files, &job, None, &CancelFlag::new()).await.is_ok());
+        let _ = fs::remove_dir_all(root);
+    }
+
     // Panics
 
     #[tokio::test]
@@ -1575,6 +1689,24 @@ mod tests {
             Err(PipelineError::Cancelled)
         ));
         assert!(folder_files(&root).is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn a_paused_export_waits_and_then_goes_on_without_starting_over() {
+        let (root, files, series) = fixture("paused", 2, 3);
+        let job = folder_job(&root, &series);
+        let cancel = CancelFlag::new();
+        cancel.pause();
+        let run = export_series(&files, &job, None, &cancel);
+        let later = async {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            assert!(folder_files(&root).is_empty(), "nothing is made while it is held");
+            cancel.resume();
+        };
+        let (result, ()) = futures_util::future::join(run, later).await;
+        assert!(result.is_ok(), "{result:?}");
+        assert!(!folder_files(&root).is_empty());
         let _ = fs::remove_dir_all(root);
     }
 

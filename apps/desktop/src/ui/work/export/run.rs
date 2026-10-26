@@ -22,6 +22,30 @@ fn waiting_export(state: AppState, item: &SavedExportItem) -> Option<WaitingExpo
     })
 }
 
+/// How many exports are running at the moment: a run that was given up while paused can still be
+/// finishing its last chapter, and whatever deletes its pages waits for it.
+static RUNNING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+/// Whether an export is still at work (even one that is being stopped).
+pub fn export_task_running() -> bool {
+    RUNNING.load(std::sync::atomic::Ordering::SeqCst) > 0
+}
+
+struct Running;
+
+impl Running {
+    fn start() -> Self {
+        RUNNING.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Running
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        RUNNING.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
 /// The export that goes next, taken off the waiting list.
 fn take_next_waiting(state: AppState) -> Option<WaitingExport> {
     let mut waiting = state.export_waiting;
@@ -48,7 +72,7 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
     let first = entries.next();
     waiting.set(entries.collect());
     spawn_forever(async move {
-        let settings = state.settings.peek().clone();
+        let settings = state.ui.settings.peek().clone();
         let Some(target) = saved.target.clone() else {
             forget_export_plan();
             return;
@@ -79,13 +103,26 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
             );
             export.language = settings.language.clone();
             export.grouping = grouping;
+            if let Some(format) = saved.original_format {
+                let library = state.library.peek();
+                export.original = Some(pipeline::OriginalExport {
+                    format,
+                    rtl: logic::export_rtl(library.reading_of(&series.id).map(|p| &p.prefs), series.info.as_ref()),
+                });
+            }
             let mut job = state.job;
+            // Picking up after a pause: carry on from the numbers it stopped at.
+            let resumed = job
+                .peek()
+                .as_ref()
+                .filter(|v| v.paused && v.series_id == series.id)
+                .map_or((0, 0), |v| (v.progress.done(), v.progress.total()));
             job.set(Some(JobView {
                 kind: JobKind::Export,
                 title: series.title.clone(),
                 series_id: series.id.clone(),
                 paused: false,
-                progress: JobProgress::default(),
+                progress: JobProgress { resumed, ..Default::default() },
                 result: None,
                 cancel: cancel.clone(),
             }));
@@ -93,7 +130,11 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
                 "Export started: \"{}\", {} chapter(s) as {}, {}, to {}",
                 series.title,
                 keys.len(),
-                series.settings.output().extension().to_uppercase(),
+                export
+                    .original
+                    .as_ref()
+                    .map_or_else(|| series.settings.output().extension(), |o| o.format.extension())
+                    .to_uppercase(),
                 match grouping {
                     Grouping::Single => "one file".to_string(),
                     Grouping::PerChapter => "one file per chapter".to_string(),
@@ -101,7 +142,11 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
                 },
                 describe_target(&target)
             );
-            run_export(state, series, export, target.clone(), cancel).await;
+            run_export(state, series, export, target.clone(), cancel.clone()).await;
+            // Given up while held: the one that took its place is paused, so nothing goes on.
+            if !job.peek().as_ref().is_some_and(|v| v.cancel.same(&cancel)) {
+                return;
+            }
             let paused = job
                 .peek()
                 .as_ref()
@@ -109,6 +154,35 @@ pub(super) fn run_saved_export(state: AppState, saved: SavedExport) {
             if paused {
                 info!("Export paused; it goes on from \"{}\"", item.series_id);
                 return;
+            }
+            // Paused too late to hold this one (its last chapter or its files were being written): it
+            // finished, and the next one waits, paused, as asked.
+            let paused_late = job.peek().as_ref().is_some_and(|v| v.paused);
+            if paused_late {
+                if let Some(next) = take_next_waiting(state) {
+                    persist_export_plan(
+                        state,
+                        &saved,
+                        &SavedExportItem {
+                            series_id: next.series_id.clone(),
+                            keys: next.keys.clone(),
+                        },
+                    );
+                    info!("Export paused; \"{}\" waits to be resumed", next.title);
+                    job.set(Some(JobView {
+                        kind: JobKind::Export,
+                        title: next.title,
+                        series_id: next.series_id,
+                        paused: true,
+                        progress: JobProgress::default(),
+                        result: None,
+                        cancel: CancelFlag::new(),
+                    }));
+                    return;
+                }
+                if let Some(view) = job.write().as_mut() {
+                    view.paused = false;
+                }
             }
             // Finished, failed or stopped on purpose: the next one goes on.
             current = take_next_waiting(state);
@@ -139,9 +213,10 @@ pub fn pause_export(state: AppState) {
     let mut guard = job.write();
     if let Some(view) = guard.as_mut() {
         if view.result.is_none() && !view.paused {
+            // Held where it is: what is under way finishes, nothing new starts, and Resume
+            // lets it go on with the same run, so nothing starts over.
             view.paused = true;
-            view.cancel.cancel();
-            view.progress.stopping = true;
+            view.cancel.pause();
         }
     }
 }
@@ -152,6 +227,13 @@ pub fn pause_export(state: AppState) {
 pub fn resume_export(state: AppState) {
     let paused = state.job.peek().as_ref().is_some_and(|v| v.paused);
     if !paused {
+        return;
+    }
+    // A run that is only being held (the app was not closed) just goes on.
+    let mut job = state.job;
+    if let Some(view) = job.write().as_mut().filter(|v| v.cancel.is_paused()) {
+        view.cancel.resume();
+        view.paused = false;
         return;
     }
     let saved = JsonFile::<SavedExport>::new(paths().export_job_file()).load();
@@ -215,6 +297,10 @@ pub fn resume_export_unchecked(state: AppState) {
 /// place (paused, so nothing starts by itself).
 pub fn drop_paused_export(state: AppState) {
     let mut job = state.job;
+    // A run that is only being held ends; it does not go on to the next one by itself.
+    if let Some(view) = job.peek().as_ref() {
+        view.cancel.cancel();
+    }
     job.set(None);
     let mut saved = JsonFile::<SavedExport>::new(paths().export_job_file()).load();
     if saved.next < saved.items.len() {
@@ -269,6 +355,7 @@ pub(super) async fn run_export(
     target: ExportTarget,
     cancel: CancelFlag,
 ) {
+    let _running = Running::start();
     let mut job = state.job;
     let started = Instant::now();
     let files = library_files();
@@ -284,7 +371,7 @@ pub(super) async fn run_export(
             for event in &batch {
                 log_event(event, &mut logged);
             }
-            if let Some(view) = job.write().as_mut() {
+            if let Some(view) = job.write().as_mut().filter(|v| v.cancel.same(&cancel)) {
                 for event in &batch {
                     view.progress.apply(event);
                 }
@@ -319,7 +406,11 @@ pub(super) async fn run_export(
                 title: series.title.clone(),
                 chapters: outcome.chapters,
                 pages: outcome.pages,
-                format: series.settings.output().extension().to_string(),
+                format: export
+                    .original
+                    .as_ref()
+                    .map_or_else(|| series.settings.output().extension(), |o| o.format.extension())
+                    .to_string(),
                 files: outcome
                     .files
                     .iter()
@@ -346,7 +437,7 @@ pub(super) async fn run_export(
             }
             state.notify(format!("{}: {}", series.title, summary.to_lowercase()));
             crate::notify::finished(state, "Export finished", &format!("{}: {summary}", series.title));
-            if let Some(view) = job.write().as_mut() {
+            if let Some(view) = job.write().as_mut().filter(|v| v.cancel.same(&cancel)) {
                 view.result = Some(Ok(summary));
             }
         }
@@ -357,7 +448,10 @@ pub(super) async fn run_export(
             } else {
                 e.to_string()
             };
-            if cancelled {
+            let paused = job.peek().as_ref().is_some_and(|v| v.paused && v.cancel.same(&cancel));
+            if cancelled && paused {
+                info!("Export stopped for now; the converted chapters are kept");
+            } else if cancelled {
                 info!("Export cancelled");
             } else {
                 warn!("Export failed: {message}");
@@ -366,7 +460,7 @@ pub(super) async fn run_export(
                 crate::notify::finished(state, "Export failed", &format!("{}: {message}", series.title));
                 state.error(format!("{}: {message}", series.title));
             }
-            if let Some(view) = job.write().as_mut() {
+            if let Some(view) = job.write().as_mut().filter(|v| v.cancel.same(&cancel)) {
                 if cancelled && view.paused {
                     // Paused, not stopped: it stays as it was, to be resumed.
                     view.progress.stopping = false;

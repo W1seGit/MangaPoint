@@ -13,6 +13,7 @@ use series_card::SeriesCard;
 use source_panel::SourcePanel;
 
 use crate::ui::widgets::{Busy, EmptyState, EngineStarting, Icon, Loading};
+use mangapoint_ui::art::design::Figure;
 use crate::logic::{self, SearchFilters, SearchSort};
 use crate::state::{AppState, Page};
 use dioxus::prelude::*;
@@ -41,11 +42,11 @@ pub fn SearchPage() -> Element {
 
     let installed = use_resource(move || async move {
         let _ = state.sources_version.read();
-        let lang = state.settings.read().language.clone();
+        let lang = state.ui.settings.read().language.clone();
         let client = state.client()?;
         SourceManager::new(&*client).installed(&lang).await.ok()
     });
-    let excluded = state.settings.read().search_excluded_sources.clone();
+    let excluded = state.ui.settings.read().search_excluded_sources.clone();
     let mut sources: Vec<SourceInfo> = match &*installed.read() {
         Some(Some(items)) => items
             .iter()
@@ -140,7 +141,7 @@ pub fn SearchPage() -> Element {
     };
     // Change which sources are searched.
     let set_excluded = move |list: Vec<String>| {
-        let mut settings = state.settings;
+        let mut settings = state.ui.settings;
         settings.write().search_excluded_sources = list;
         state.save_settings();
     };
@@ -156,7 +157,7 @@ pub fn SearchPage() -> Element {
     };
 
     // Before anything is searched the box sits in the middle of the window, under
-    // the cat. Searching moves it up and widens it (see style.css).
+    // the mascot. Searching moves it up and widens it (see css/desktop.css).
     let idle = view.query.is_empty() && !view.searching;
     // Until the catalog engine is up there is nothing to search with: show how
     // far it is instead of the box, which then arrives.
@@ -166,7 +167,11 @@ pub fn SearchPage() -> Element {
     rsx! {
       div { class: if idle { "search-stage idle arrive" } else { "search-stage arrive" },
         div { class: "search-hero",
-            super::ocean::OceanHero {}
+            h1 { class: "hero-title",
+                for (i, letter) in "MangaPoint".chars().enumerate() {
+                    span { key: "{i}", style: "--i: {i}", "{letter}" }
+                }
+            }
         }
         // The search box is all there is at the top. It is a grid of two things
         // in one place: an invisible copy of the full-size box, which holds the
@@ -205,7 +210,7 @@ pub fn SearchPage() -> Element {
                     input {
                         class: "searchbox-input",
                         r#type: "search",
-                        placeholder: "Type a manga, manhua, or manhwa here…",
+                        placeholder: "Type a Manga, Manhua, or Manwha here...",
                         value: "{text}",
                         autofocus: true,
                         oninput: move |e| text.set(e.value()),
@@ -214,7 +219,7 @@ pub fn SearchPage() -> Element {
                         // The sort and the sources flow and wrap together, so a
                         // second row starts under the sort pill. Pointing anywhere
                         // at the box, typing in it, or opening the panel folds the
-                        // source pills into one dropdown (see style.css).
+                        // source pills into one dropdown (see css/desktop.css).
                         div { class: "pills-flow",
                             div { class: "sort-pill",
                                 select {
@@ -225,7 +230,7 @@ pub fn SearchPage() -> Element {
                                         option { key: "{option_sort.key()}", value: "{option_sort.key()}", selected: option_sort == sort, "Sort: {option_sort.label()}" }
                                     }
                                 }
-                                span { class: "chev", Icon { name: "chevron-down", size: 14 } }
+                                span { class: "chev", Figure { name: "chevron" } }
                             }
                             button {
                                 class: if filters_open() { "pill-btn fil-btn is-open" } else { "pill-btn fil-btn" }, r#type: "button",
@@ -235,18 +240,18 @@ pub fn SearchPage() -> Element {
                                     filters_open.set(!filters_open());
                                 },
                                 "{filter_button}"
-                                Icon { name: "chevron-down", size: 14 }
+                                Figure { name: "chevron" }
                             }
                             for label in filter_pills.iter() {
                                 span { class: "src-pill fil-pill", key: "{label}", "{label}" }
                             }
                             button {
-                                class: if open() { "pill-btn is-open" } else { "pill-btn" }, r#type: "button",
+                                class: if open() { "pill-btn src-btn is-open" } else { "pill-btn src-btn" }, r#type: "button",
                                 title: "Choose which sources to search",
                                 disabled: total == 0,
                                 onclick: move |_| { if open() { close_panel() } else { filters_open.set(false); open.set(true) } },
                                 "{sources_label}"
-                                Icon { name: "chevron-down", size: 14 }
+                                Figure { name: "chevron" }
                             }
                             for source in included.iter() {
                                 span { class: "src-pill", key: "{source.id}", "{source.name}" }
@@ -256,8 +261,8 @@ pub fn SearchPage() -> Element {
                             }
                         }
                         // Submitting the form (this button or Enter) starts the search.
-                        button { class: "search-circle", r#type: "submit", title: "Search",
-                            Icon { name: "search", size: 18 }
+                        button { class: "search-circle", r#type: "submit", title: "Search", "aria-label": "Search",
+                            Figure { name: "search-button" }
                         }
                     }
                 }
@@ -294,7 +299,7 @@ pub fn SearchPage() -> Element {
             p { class: "muted small", style: "margin: 6px 2px 0", "Checking chapter lists to pick the best source for each…" }
         } else if !view.query.is_empty() && view.ranked.is_empty() && !view.no_sources && !view.none_selected {
             EmptyState {
-                title: "The cat looked everywhere",
+                title: "No results",
                 message: format!("It found nothing for “{}”. Try another spelling, or add more sources.", view.query),
                 scene: "search",
             }

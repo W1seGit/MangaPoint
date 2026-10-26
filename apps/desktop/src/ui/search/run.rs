@@ -34,8 +34,8 @@ pub fn clear_search(state: AppState) {
 pub fn run_search(state: AppState, query: String) {
     spawn_forever(async move {
         let Some(client) = state.client() else { return };
-        let lang = state.settings.read().language.clone();
-        let preferred = state.settings.read().preferred_sources.clone();
+        let lang = state.ui.settings.read().language.clone();
+        let preferred = state.ui.settings.read().preferred_sources.clone();
 
         let mut view = state.search;
         let generation = state.search.peek().generation + 1;
@@ -60,7 +60,7 @@ pub fn run_search(state: AppState, query: String) {
             return;
         };
         let installed = installed.unwrap_or_default();
-        let excluded = state.settings.peek().search_excluded_sources.clone();
+        let excluded = state.ui.settings.peek().search_excluded_sources.clone();
         let all: Vec<_> = installed.into_iter().map(|i| i.source).collect();
         let none_installed = all.is_empty();
         let sources: Vec<_> = all

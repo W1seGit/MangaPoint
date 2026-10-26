@@ -56,6 +56,56 @@ impl Debouncer {
     }
 }
 
+/// How often reading progress, which changes every moment, may ask for the
+/// library to be saved. The position is always kept in memory; it reaches the
+/// disk at most this often, and at once when the reader is left or the window
+/// closes.
+const PROGRESS_EVERY_MS: u64 = 2000;
+
+/// Decides when a change of reading position may mark the library as needing a
+/// save: the first one at once, the ones that follow within [`PROGRESS_EVERY_MS`]
+/// are held and marked by the background task when the time is up, or by
+/// [`AppState::flush_saves`]. Plain data and times given by the caller.
+#[derive(Debug, Default)]
+pub struct SaveGate {
+    last: Option<u64>,
+    pending: bool,
+}
+
+impl SaveGate {
+    /// The position changed at `now_ms`. True if the library is to be marked now.
+    pub fn changed(&mut self, now_ms: u64, every_ms: u64) -> bool {
+        match self.last {
+            Some(last) if now_ms.saturating_sub(last) < every_ms => {
+                self.pending = true;
+                false
+            }
+            _ => {
+                self.last = Some(now_ms);
+                self.pending = false;
+                true
+            }
+        }
+    }
+
+    /// Called now and then: true if a held change is due to be marked.
+    pub fn tick(&mut self, now_ms: u64, every_ms: u64) -> bool {
+        let due = self.pending && self.last.is_none_or(|l| now_ms.saturating_sub(l) >= every_ms);
+        if due {
+            self.pending = false;
+            self.last = Some(now_ms);
+        }
+        due
+    }
+
+    /// Take a held change whatever the time (leaving the reader, closing the window).
+    pub fn take_pending(&mut self) -> bool {
+        std::mem::take(&mut self.pending)
+    }
+}
+
+static PROGRESS: Mutex<SaveGate> = Mutex::new(SaveGate { last: None, pending: false });
+
 /// One file kept by the saver: when it is due, and which copy of it is the
 /// newest to have been written.
 struct Slot {
@@ -160,6 +210,25 @@ impl AppState {
         LIBRARY.mark();
     }
 
+    /// The reading position changed (it is already in the library in memory):
+    /// written to disk at most every couple of seconds, and when the reader is
+    /// left (see [`AppState::flush_reading`]) or the window closes.
+    pub fn save_progress(&self) {
+        let go = PROGRESS.lock().is_ok_and(|mut g| g.changed(now_ms(), PROGRESS_EVERY_MS));
+        if go {
+            self.apply_pending_reading();
+            LIBRARY.mark();
+        }
+    }
+
+    /// Mark any held reading position for saving now.
+    pub fn flush_reading(&self) {
+        let held = PROGRESS.lock().is_ok_and(|mut g| g.take_pending());
+        if self.apply_pending_reading() || held {
+            LIBRARY.mark();
+        }
+    }
+
     /// The queue changed: saved soon, like the library.
     pub(super) fn mark_queue_changed(&self) {
         QUEUE.mark();
@@ -171,6 +240,10 @@ impl AppState {
         super::spawn_forever(async move {
             loop {
                 tokio::time::sleep(LOOK_EVERY).await;
+                if PROGRESS.lock().is_ok_and(|mut g| g.tick(now_ms(), PROGRESS_EVERY_MS)) {
+                    state.apply_pending_reading();
+                    LIBRARY.mark();
+                }
                 if let Some(number) = LIBRARY.claim(false) {
                     let copy = state.library.peek().clone();
                     if let Ok(failure) = tokio::task::spawn_blocking(move || write_library(number, copy)).await {
@@ -190,6 +263,7 @@ impl AppState {
     /// Write anything marked as changed, now. For when the window closes and
     /// before an export starts.
     pub fn flush_saves(&self) {
+        self.flush_reading();
         if let Some(number) = LIBRARY.claim(true) {
             report(*self, "your library", write_library(number, self.library.peek().clone()));
         }
@@ -237,6 +311,32 @@ mod tests {
             }
         }
         assert!((5..=10).contains(&saves), "{saves} saves for 10 s of changes");
+    }
+
+    #[test]
+    fn reading_progress_is_marked_at_most_every_two_seconds_and_never_lost() {
+        let mut g = SaveGate::default();
+        assert!(g.changed(10_000, 2000), "the first change is marked at once");
+        // A scroll report every 250 ms for five seconds.
+        let mut marks = 0;
+        for t in (10_250..15_000).step_by(250) {
+            if g.changed(t, 2000) || g.tick(t, 2000) {
+                marks += 1;
+            }
+        }
+        assert!((2..=3).contains(&marks), "{marks} marks in 5 s");
+        // Held changes are not lost: the task's tick marks them when due ...
+        let mut h = SaveGate::default();
+        assert!(h.changed(0, 2000));
+        assert!(!h.changed(500, 2000));
+        assert!(!h.tick(1_999, 2000));
+        assert!(h.tick(2_000, 2000));
+        assert!(!h.tick(9_000, 2000), "and only once");
+        // ... and leaving the reader takes them at once.
+        assert!(!h.changed(2_100, 2000));
+        assert!(h.take_pending());
+        assert!(!h.take_pending());
+        assert!(!SaveGate::default().tick(5, 2000), "nothing changed, nothing to mark");
     }
 
     #[test]
