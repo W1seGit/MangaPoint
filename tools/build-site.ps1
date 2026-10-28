@@ -25,17 +25,22 @@ New-Item -ItemType Directory -Force (Join-Path $dist 'art'), (Join-Path $dist 'i
 $site = Join-Path $root 'apps\site'
 Copy-Item (Join-Path $site 'index.html'), (Join-Path $site 'site.css'), (Join-Path $site 'site.js') $dist
 Copy-Item (Join-Path $site 'art\*.svg') (Join-Path $dist 'art')
-# The app's own style sheets: its fonts, and its colours and type.
-Copy-Item (Join-Path $root 'crates\ui\css\fonts.css'), (Join-Path $root 'crates\ui\css\base.css') $dist
+# The app's own style sheets: its colours and type, and its fonts as files (crates/ui/assets/fonts/web;
+# the desktop app's copy is inside its CSS, which is too heavy to put in front of a page).
+$webFonts = Join-Path $root 'crates\ui\assets\fonts\web'
+Copy-Item (Join-Path $root 'crates\ui\css\base.css'), (Join-Path $webFonts 'fonts.css') $dist
+New-Item -ItemType Directory -Force (Join-Path $dist 'fonts') | Out-Null
+Copy-Item (Join-Path $webFonts 'fonts\*.woff2') (Join-Path $dist 'fonts')
 # The clouds and rocks of the app's Search page.
 foreach ($name in 'search-cloud-1', 'search-cloud-2', 'search-rock-1', 'search-rock-2') {
     Copy-Item (Join-Path $root "crates\ui\assets\svg\$name.svg") (Join-Path $dist 'art')
 }
 $icons = Join-Path $root 'apps\web\assets\icons'
 Copy-Item (Join-Path $icons 'favicon-32.png'), (Join-Path $icons 'apple-touch-icon.png') (Join-Path $dist 'icons')
-foreach ($name in 'series', 'read', 'export', 'web-phone') {
-    Copy-Item (Join-Path $root "docs\screenshots\$name.jpg") (Join-Path $dist 'img')
-}
+# The screenshots as WebP (tools/make-site-images.py makes them from docs/screenshots).
+Copy-Item (Join-Path $site 'img\*.webp') (Join-Path $dist 'img')
+# How long a browser keeps the files that rarely change (see the file).
+Copy-Item (Join-Path $site '_headers') $dist
 Copy-Item (Join-Path $root 'docs\banner.png') (Join-Path $dist 'img\banner.png')
 
 Write-Host "built $dist"

@@ -1,0 +1,11 @@
+# Cloudflare reads this file (it is not served). Fonts, pictures and the mascot's art are a week in the
+# browser's cache and are then checked again; style sheets, scripts and the page itself are checked on
+# every visit (the default), so an edit shows at once.
+/fonts/*
+  Cache-Control: public, max-age=604800
+/art/*
+  Cache-Control: public, max-age=604800
+/img/*
+  Cache-Control: public, max-age=604800
+/icons/*
+  Cache-Control: public, max-age=604800

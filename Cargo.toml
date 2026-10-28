@@ -47,3 +47,21 @@ opt-level = 3
 # rest, where speed matters, stay at the full level.
 [profile.release.package.mangapoint]
 opt-level = 2
+
+# The website's two WebAssembly files (tools/build-web.*). Each is downloaded by every visitor, so they are
+# built for size: whole-program optimisation (dead code goes), one code unit, no unwinding (WebAssembly
+# cannot unwind anyway), and no symbol names (a third of the file, only useful to a debugger).
+#   web         the page (Dioxus): smallest code ("z"), a third less to download than the speed-first build.
+#   web-engine  the converter: it is what resizes and encodes pictures, so it keeps full speed.
+# (wasm-opt was tried on both and makes the compressed download no smaller, so the build does not run it.)
+[profile.web]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+[profile.web-engine]
+inherits = "web"
+opt-level = 3

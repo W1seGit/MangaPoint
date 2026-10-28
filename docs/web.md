@@ -122,11 +122,28 @@ tools\serve-web.ps1            # http://127.0.0.1:8080/
 
 `apps/web/dist` is the whole site. The build compiles `mangapoint-web` and
 `web-engine` for `wasm32`, runs `wasm-bindgen --target web`, copies `apps/web/assets`, `apps/web/js`, `apps/web/css` and
-the desktop style sheets, then `tools/web-precache.mjs` hashes every file and
+the shared style sheets (`css/ui.css`, with the fonts as files in `css/fonts`), then `tools/web-precache.mjs` hashes every file and
 writes `sw.js` with a versioned precache list (the version is a hash of all
 files and of the worker itself, so any change is a new cache and the old one is deleted).
 Hosts may redirect a file (Cloudflare sends `/index.html` to `/`); the worker stores what the
 redirect led to, since a browser refuses to show a page that a worker answers with a redirect.
+
+### What a visitor downloads
+
+Size is a feature: the first visit is about 0.6 MB (the page's WebAssembly 485 KB, its fonts 78 KB, the style
+sheets 24 KB and the scripts 45 KB, all compressed); the 470 KB converter is only fetched when someone
+exports (the service worker also keeps it for offline use). That comes from:
+
+* **Two build profiles** (root `Cargo.toml`): `web` for the page (smallest code, whole-program optimisation,
+  no symbol names) and `web-engine` for the converter (the same, but full speed, because it resizes and
+  encodes pictures). `wasm-opt` was tried on both and makes the compressed download no smaller, so the build
+  does not run it.
+* **Fonts as files**, split by script (`crates/ui/assets/fonts/web`, made by `tools/make-web-fonts.py`): a page
+  in English downloads Inter's Latin part (66 KB) and Pixelify Sans's (12 KB); Latin Extended and Cyrillic are
+  only fetched when a title uses them. The desktop app keeps its fonts inside `fonts.css`, which a website
+  should not do (it blocks the page and cannot be cached on its own).
+* **Preload hints** in `apps/web/assets/index.html`: the two fonts, the page's scripts and the WebAssembly
+  start downloading together, not one after another.
 
 Tests: `cargo test -p formats -p mangapoint-ui -p mangapoint-web -p web-engine`,
 `node --test apps/web/js/test`,

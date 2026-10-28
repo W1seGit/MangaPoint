@@ -25,11 +25,14 @@ The names are those of the variables in the Figma frames. They are the custom pr
   `--font-pixel`.
 * **Inter**: everything else. `--font-ui`.
 
-Both are under the SIL Open Font License (see `crates/ui/assets/fonts`). `crates/ui/css/fonts.css` holds them as
-small embedded web fonts (Latin, Latin Extended, Cyrillic), so the website and the app need no download. To
-make it again from the two variable fonts of `github.com/google/fonts`:
+Both are under the SIL Open Font License (see `crates/ui/assets/fonts`). The desktop app holds them inside
+`crates/ui/css/fonts.css` as small embedded web fonts (Latin, Latin Extended, Cyrillic), so it needs no files.
+The two websites use real files instead (`crates/ui/assets/fonts/web`: weights 400 to 700, one file per script,
+fetched only when a page uses that script). To make either again from the two variable fonts of
+`github.com/google/fonts`:
 
-    python tools/make-fonts.py Inter.ttf PixelifySans.ttf crates/ui/css/fonts.css
+    python tools/make-fonts.py Inter.ttf PixelifySans.ttf crates/ui/css/fonts.css    # the desktop app
+    python tools/make-web-fonts.py Inter.ttf PixelifySans.ttf                        # the websites
 
 ## Figures
 

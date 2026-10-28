@@ -13,7 +13,10 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<!-- The app's own fonts, colours and type (crates/ui/css), then what this page adds -->
+<!-- The app's own fonts, colours and type (crates/ui), then what this page adds. The two fonts every
+     visitor needs are fetched now, alongside the style sheets, and not once they are found in them. -->
+<link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/pixelify-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="site.css">
@@ -101,7 +104,7 @@
         <li><svg class="i"><use href="art/icons.svg#check"/></svg>Picks up where it stopped if you close the app</li>
       </ul>
     </div>
-    <figure class="frame"><img src="img/series.jpg" loading="lazy" width="1440" height="900" alt="A series page: its cover, details and description, then every chapter merged from its sources"></figure>
+    <figure class="frame"><img src="img/series.webp" loading="lazy" width="1440" height="900" alt="A series page: its cover, details and description, then every chapter merged from its sources"></figure>
   </div>
 
   <div class="row-feature flip">
@@ -114,7 +117,7 @@
         <li><svg class="i"><use href="art/icons.svg#check"/></svg>Drop files on the Library to import them</li>
       </ul>
     </div>
-    <figure class="frame"><img src="img/read.jpg" loading="lazy" width="1440" height="900" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom"></figure>
+    <figure class="frame"><img src="img/read.webp" loading="lazy" width="1440" height="900" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom"></figure>
   </div>
 
   <div class="row-feature">
@@ -127,7 +130,7 @@
         <li><svg class="i"><use href="art/icons.svg#book-open"/></svg>Presets for manga, manhwa and manhua, or your own</li>
       </ul>
     </div>
-    <figure class="frame"><img src="img/export.jpg" loading="lazy" width="1440" height="900" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it"></figure>
+    <figure class="frame"><img src="img/export.webp" loading="lazy" width="1440" height="900" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it"></figure>
   </div>
 
   <div class="readers">
@@ -154,7 +157,7 @@
       </ul>
       <a class="btn primary" href="https://app.mangapoint.org/"><svg class="i"><use href="art/icons.svg#globe"/></svg><span>Open the web app</span></a>
     </div>
-    <figure class="phones"><img src="img/web-phone.jpg" loading="lazy" width="1282" height="900" alt="The website on a phone: the Library, a book's page with its chapters, and the reader"></figure>
+    <figure class="phones"><img src="img/web-phone.webp" loading="lazy" width="1282" height="900" alt="The website on a phone: the Library, a book's page with its chapters, and the reader"></figure>
   </div>
 </section>
 
