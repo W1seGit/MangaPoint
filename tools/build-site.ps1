@@ -23,12 +23,14 @@ if (Test-Path $dist) {
 New-Item -ItemType Directory -Force (Join-Path $dist 'art'), (Join-Path $dist 'icons'), (Join-Path $dist 'img') | Out-Null
 
 $site = Join-Path $root 'apps\site'
-Copy-Item (Join-Path $site 'index.html'), (Join-Path $site 'site.css'), (Join-Path $site 'site.js') $dist
+Copy-Item (Join-Path $site 'index.html'), (Join-Path $site 'site.js') $dist
 Copy-Item (Join-Path $site 'art\*.svg') (Join-Path $dist 'art')
 # The app's own style sheets: its colours and type, and its fonts as files (crates/ui/assets/fonts/web;
 # the desktop app's copy is inside its CSS, which is too heavy to put in front of a page).
 $webFonts = Join-Path $root 'crates\ui\assets\fonts\web'
-Copy-Item (Join-Path $root 'crates\ui\css\base.css'), (Join-Path $webFonts 'fonts.css') $dist
+# One style sheet instead of three (each one held the page back): fonts, the app's colours and type, the page.
+$css = (Join-Path $webFonts 'fonts.css'), (Join-Path $root 'crates\ui\css\base.css'), (Join-Path $site 'site.css') | ForEach-Object { [IO.File]::ReadAllText($_) }
+[IO.File]::WriteAllText((Join-Path $dist 'site.css'), ($css -join "`n"), (New-Object System.Text.UTF8Encoding $false))
 New-Item -ItemType Directory -Force (Join-Path $dist 'fonts') | Out-Null
 Copy-Item (Join-Path $webFonts 'fonts\*.woff2') (Join-Path $dist 'fonts')
 # The clouds and rocks of the app's Search page.

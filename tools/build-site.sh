@@ -14,11 +14,12 @@ dist="$root/apps/site/dist"
 rm -rf "$dist"
 mkdir -p "$dist/art" "$dist/icons" "$dist/img"
 
-cp "$root/apps/site/index.html" "$root/apps/site/site.css" "$root/apps/site/site.js" "$dist/"
+cp "$root/apps/site/index.html" "$root/apps/site/site.js" "$dist/"
 cp "$root/apps/site/art/"*.svg "$dist/art/"
 # The app's own style sheets: its colours and type, and its fonts as files (crates/ui/assets/fonts/web;
 # the desktop app's copy is inside its CSS, which is too heavy to put in front of a page).
-cp "$root/crates/ui/css/base.css" "$root/crates/ui/assets/fonts/web/fonts.css" "$dist/"
+# One style sheet instead of three (each one held the page back): fonts, the app's colours and type, the page.
+for f in "$root/crates/ui/assets/fonts/web/fonts.css" "$root/crates/ui/css/base.css" "$root/apps/site/site.css"; do cat "$f"; echo; done > "$dist/site.css"
 mkdir -p "$dist/fonts"
 cp "$root/crates/ui/assets/fonts/web/fonts/"*.woff2 "$dist/fonts/"
 # The clouds and rocks of the app's Search page.

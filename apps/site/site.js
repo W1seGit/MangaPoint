@@ -5,7 +5,7 @@
 const bar = document.querySelector('.top');
 const onScroll = () => bar.classList.toggle('scrolled', window.scrollY > 8);
 window.addEventListener('scroll', onScroll, { passive: true });
-onScroll();
+requestAnimationFrame(onScroll);
 
 // Which system this is, as far as the browser says: 'windows', 'mac', 'linux', 'phone' or ''.
 function system() {

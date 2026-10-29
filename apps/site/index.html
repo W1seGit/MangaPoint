@@ -17,8 +17,7 @@
      visitor needs are fetched now, alongside the style sheets, and not once they are found in them. -->
 <link rel="preload" href="fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/pixelify-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="base.css">
+<link rel="preconnect" href="https://api.github.com" crossorigin>
 <link rel="stylesheet" href="site.css">
 <script src="site.js" defer></script>
 </head>
@@ -104,7 +103,7 @@
         <li><svg class="i"><use href="art/icons.svg#check"/></svg>Picks up where it stopped if you close the app</li>
       </ul>
     </div>
-    <figure class="frame"><img src="img/series.webp" loading="lazy" width="1440" height="900" alt="A series page: its cover, details and description, then every chapter merged from its sources"></figure>
+    <figure class="frame"><img src="img/series.webp" srcset="img/series-720.webp 720w, img/series.webp 1440w" sizes="(max-width: 900px) calc(100vw - 52px), 640px" loading="lazy" width="1440" height="900" alt="A series page: its cover, details and description, then every chapter merged from its sources"></figure>
   </div>
 
   <div class="row-feature flip">
@@ -117,7 +116,7 @@
         <li><svg class="i"><use href="art/icons.svg#check"/></svg>Drop files on the Library to import them</li>
       </ul>
     </div>
-    <figure class="frame"><img src="img/read.webp" loading="lazy" width="1440" height="900" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom"></figure>
+    <figure class="frame"><img src="img/read.webp" srcset="img/read-720.webp 720w, img/read.webp 1440w" sizes="(max-width: 900px) calc(100vw - 52px), 640px" loading="lazy" width="1440" height="900" alt="The reader: a page of a chapter, with the chapter picker at the top and the series and how far you are at the bottom"></figure>
   </div>
 
   <div class="row-feature">
@@ -130,7 +129,7 @@
         <li><svg class="i"><use href="art/icons.svg#book-open"/></svg>Presets for manga, manhwa and manhua, or your own</li>
       </ul>
     </div>
-    <figure class="frame"><img src="img/export.webp" loading="lazy" width="1440" height="900" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it"></figure>
+    <figure class="frame"><img src="img/export.webp" srcset="img/export-720.webp 720w, img/export.webp 1440w" sizes="(max-width: 900px) calc(100vw - 52px), 640px" loading="lazy" width="1440" height="900" alt="The Export screen: presets and edit options, the page as downloaded next to the page made for the reader, and where to send it"></figure>
   </div>
 
   <div class="readers">

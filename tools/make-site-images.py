@@ -13,5 +13,8 @@ OUT.mkdir(parents=True, exist_ok=True)
 for name in ("series", "read", "export", "web-phone"):
     source = ROOT / "docs" / "screenshots" / f"{name}.jpg"
     target = OUT / f"{name}.webp"
-    Image.open(source).convert("RGB").save(target, "WEBP", quality=80, method=6)
+    image = Image.open(source).convert("RGB")
+    image.save(target, "WEBP", quality=80, method=6)
+    if image.width == 1440:  # phones get half the width (srcset in index.html)
+        image.resize((720, image.height // 2), Image.LANCZOS).save(OUT / f"{name}-720.webp", "WEBP", quality=80, method=6)
     print(f"{target.name}: {source.stat().st_size // 1024} KB -> {target.stat().st_size // 1024} KB")
