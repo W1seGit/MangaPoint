@@ -14,6 +14,13 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <!-- Start what the app needs now, in parallel: its two fonts, and its code (boot.js asks for these
+       one after another, and the WebAssembly is by far the biggest). -->
+  <link rel="preload" href="css/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="css/fonts/pixelify-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="modulepreload" href="js/mp.js">
+  <link rel="modulepreload" href="pkg/mangapoint_web.js">
+  <link rel="preload" href="pkg/mangapoint_web_bg.wasm" as="fetch" type="application/wasm" crossorigin>
   <!-- The look shared with the desktop app (crates/ui/css, joined at build time) -->
   <link rel="stylesheet" href="css/ui.css">
   <!-- What a browser and a phone add (apps/web/css) -->

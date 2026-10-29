@@ -39,23 +39,16 @@ if (Test-Path $dist) {
 New-Item -ItemType Directory -Force (Join-Path $dist 'css'), (Join-Path $dist 'pkg') | Out-Null
 
 Write-Host '== page (Rust, Dioxus) =='
-Run cargo @('build', '-p', 'mangapoint-web', '--target', 'wasm32-unknown-unknown', '--release')
+Run cargo @('build', '-p', 'mangapoint-web', '--target', 'wasm32-unknown-unknown', '--profile', 'web')
 Run wasm-bindgen @('--target', 'web', '--no-typescript', '--out-dir', (Join-Path $dist 'pkg'), '--out-name', 'mangapoint_web',
-    (Join-Path $target 'wasm32-unknown-unknown\release\mangapoint_web.wasm'))
+    (Join-Path $target 'wasm32-unknown-unknown\web\mangapoint_web.wasm'))
 
 if (-not $NoEngine) {
     Write-Host '== converter (Web Worker) =='
-    Run cargo @('build', '-p', 'web-engine', '--target', 'wasm32-unknown-unknown', '--release')
+    Run cargo @('build', '-p', 'web-engine', '--target', 'wasm32-unknown-unknown', '--profile', 'web-engine')
     New-Item -ItemType Directory -Force (Join-Path $dist 'engine') | Out-Null
     Run wasm-bindgen @('--target', 'web', '--no-typescript', '--out-dir', (Join-Path $dist 'engine'), '--out-name', 'web_engine',
-        (Join-Path $target 'wasm32-unknown-unknown\release\web_engine.wasm'))
-}
-
-if (Get-Command wasm-opt -ErrorAction SilentlyContinue) {
-    Get-ChildItem -Path $dist -Recurse -Filter '*_bg.wasm' | ForEach-Object {
-        & wasm-opt -O2 --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o "$($_.FullName).opt" $_.FullName
-        if ($LASTEXITCODE -eq 0) { Move-Item -Force "$($_.FullName).opt" $_.FullName }
-    }
+        (Join-Path $target 'wasm32-unknown-unknown\web-engine\web_engine.wasm'))
 }
 
 Write-Host '== site files =='
@@ -67,12 +60,18 @@ Remove-Item -Recurse -Force (Join-Path $dist 'js\test') -ErrorAction SilentlyCon
 Copy-Item -Recurse (Join-Path $root 'apps\web\assets\icons') (Join-Path $dist 'icons')
 # The style sheets, each folder's files in the order of its ORDER file: css/ui.css is the look shared
 # with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (apps/web/css).
-function Join-Css([string]$Folder, [string]$Out) {
-    $names = Get-Content (Join-Path $Folder 'ORDER') | Where-Object { $_.Trim() }
-    $text = ($names | ForEach-Object { [IO.File]::ReadAllText((Join-Path $Folder $_.Trim())) }) -join "`n"
-    [IO.File]::WriteAllText($Out, $text, (New-Object System.Text.UTF8Encoding $false))
+# The desktop app holds its fonts inside fonts.css; the website uses real font files instead (a third of
+# the size, cached on their own, and a script nobody reads is never downloaded): crates/ui/assets/fonts/web.
+function Join-Css([string]$Folder, [string]$Out, [string]$First = '', [string]$Skip = '') {
+    $names = Get-Content (Join-Path $Folder 'ORDER') | Where-Object { $_.Trim() -and $_.Trim() -ne $Skip }
+    $parts = @($names | ForEach-Object { [IO.File]::ReadAllText((Join-Path $Folder $_.Trim())) })
+    if ($First) { $parts = @([IO.File]::ReadAllText($First)) + $parts }
+    [IO.File]::WriteAllText($Out, ($parts -join "`n"), (New-Object System.Text.UTF8Encoding $false))
 }
-Join-Css (Join-Path $root 'crates\ui\css') (Join-Path $dist 'css\ui.css')
+$webFonts = Join-Path $root 'crates\ui\assets\fonts\web'
+New-Item -ItemType Directory -Force (Join-Path $dist 'css\fonts') | Out-Null
+Copy-Item (Join-Path $webFonts 'fonts\*.woff2') (Join-Path $dist 'css\fonts')
+Join-Css (Join-Path $root 'crates\ui\css') (Join-Path $dist 'css\ui.css') (Join-Path $webFonts 'fonts.css') 'fonts.css'
 Join-Css (Join-Path $root 'apps\web\css') (Join-Path $dist 'css\web.css')
 
 # The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.

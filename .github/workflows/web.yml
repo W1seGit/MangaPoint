@@ -18,6 +18,7 @@ on:
       - "tools/shared-ui.test.mjs"
       - "crates/ui/**"
       - "crates/formats/**"
+      - "Cargo.toml"
       - ".github/workflows/web.yml"
   pull_request:
     paths:
@@ -29,6 +30,7 @@ on:
       - "tools/shared-ui.test.mjs"
       - "crates/ui/**"
       - "crates/formats/**"
+      - "Cargo.toml"
       - ".github/workflows/web.yml"
   workflow_dispatch:
 

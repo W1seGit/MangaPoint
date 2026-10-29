@@ -33,23 +33,16 @@ rm -rf "$dist"
 mkdir -p "$dist/css" "$dist/pkg"
 
 echo "== page (Rust, Dioxus) =="
-cargo build -p mangapoint-web --target wasm32-unknown-unknown --release
+cargo build -p mangapoint-web --target wasm32-unknown-unknown --profile web
 wasm-bindgen --target web --no-typescript --out-dir "$dist/pkg" --out-name mangapoint_web \
-  "$target/wasm32-unknown-unknown/release/mangapoint_web.wasm"
+  "$target/wasm32-unknown-unknown/web/mangapoint_web.wasm"
 
 if [ "$engine" = 1 ]; then
   echo "== converter (Web Worker) =="
-  cargo build -p web-engine --target wasm32-unknown-unknown --release
+  cargo build -p web-engine --target wasm32-unknown-unknown --profile web-engine
   mkdir -p "$dist/engine"
   wasm-bindgen --target web --no-typescript --out-dir "$dist/engine" --out-name web_engine \
-    "$target/wasm32-unknown-unknown/release/web_engine.wasm"
-fi
-
-# Smaller downloads when binaryen is installed.
-if command -v wasm-opt >/dev/null 2>&1; then
-  for f in "$dist"/pkg/*_bg.wasm "$dist"/engine/*_bg.wasm; do
-    [ -f "$f" ] && wasm-opt -O2 --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals -o "$f.opt" "$f" && mv "$f.opt" "$f" || true
-  done
+    "$target/wasm32-unknown-unknown/web-engine/web_engine.wasm"
 fi
 
 echo "== site files =="
@@ -61,13 +54,19 @@ rm -rf "$dist/js/test"
 cp -r "$root/apps/web/assets/icons" "$dist/icons"
 # The style sheets, each folder's files in the order of its ORDER file: css/ui.css is the look shared
 # with the desktop app (crates/ui/css), css/web.css what a browser and a phone add (apps/web/css).
+# The desktop app holds its fonts inside fonts.css; the website uses real font files instead (a third of
+# the size, cached on their own, and a script nobody reads is never downloaded): crates/ui/assets/fonts/web.
 join_css() {
-  : > "$2"
   while IFS= read -r name; do
-    [ -n "$name" ] && { cat "$1/$name"; printf '\n'; } >> "$2"
+    [ -n "$name" ] && [ "$name" != "${3:-}" ] && { cat "$1/$name"; printf '\n'; } >> "$2"
   done < "$1/ORDER"
 }
-join_css "$root/crates/ui/css" "$dist/css/ui.css"
+webfonts="$root/crates/ui/assets/fonts/web"
+mkdir -p "$dist/css/fonts"
+cp "$webfonts"/fonts/*.woff2 "$dist/css/fonts/"
+cp "$webfonts/fonts.css" "$dist/css/ui.css"
+join_css "$root/crates/ui/css" "$dist/css/ui.css" fonts.css
+: > "$dist/css/web.css"
 join_css "$root/apps/web/css" "$dist/css/web.css"
 
 # The page scripts shared with the desktop app (crates/ui/js), loaded by name from js/ui/.

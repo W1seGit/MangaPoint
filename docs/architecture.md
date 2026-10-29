@@ -23,10 +23,12 @@ Do not copy a shared implementation into an app to change it.
 | `apps/web/js` | IndexedDB/OPFS, archive import, page URL lifetime, reader events, workers and browser APIs |
 | `apps/site` | The home page (mangapoint.org): plain HTML, CSS and a little JS, with no build step of its own |
 
-The home page uses the app's own `fonts.css` and `base.css`, the Search page's clouds and rocks, and the
+The home page uses the app's own `base.css` and fonts (as files, `crates/ui/assets/fonts/web`), the Search page's clouds and rocks, and the
 mascot's scenes. Those are SVG files in `apps/site/art` made from the drawings in `crates/ui/src/art` by
 `SITE_ART=write cargo test -p mangapoint-ui site_art`; the same test fails when they fall behind.
-`tools/build-site.sh` (or `.ps1`) copies it all into `apps/site/dist`, which any static host can serve; it
+`tools/build-site.sh` (or `.ps1`) copies it all into `apps/site/dist`, which any static host can serve (its
+screenshots are WebP, made by `tools/make-site-images.py`; `_headers` sets how long Cloudflare lets a browser keep
+fonts and pictures); it
 is on Cloudflare at mangapoint.org (`apps/site/wrangler.jsonc`, and docs/web.md, Hosting).
 
 The look (palette, type, figures, the dock and the corner bar) is described in [design.md](design.md).
